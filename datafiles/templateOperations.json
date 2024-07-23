@@ -1,0 +1,10 @@
+{
+  "template": [[
+    "ID",
+    "Date",
+    "Amount",
+    "Category",
+    "Notes",
+    "Source"
+  ],[50,130,100,200,300,150]]
+}

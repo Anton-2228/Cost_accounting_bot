@@ -1,0 +1,11 @@
+python-dotenv
+asyncpg
+psycopg
+psycopg-binary
+sqlalchemy
+alembic
+pydantic-settings
+aiogram
+httplib2
+googleAPI
+asyncio
