@@ -23,35 +23,20 @@ def add_gmail(user_telegram_id: int, gmail: str):
         spreadsheet.gmail.append(gmail)
         session.commit()
 
-# def add_spreadsheetid(user_telegram_id: int, spreadsheet_id: str):
-#     with session_factory() as session:
-#         user: UsersOrm = session.scalar(select(UsersOrm)
-#                                         .where(UsersOrm.telegram_id == user_telegram_id))
-#         spreadsheet: SpreadSheetsOrm = session.get(SpreadSheetsOrm, user.spreadsheet_id)
-#         spreadsheet.spreadsheet_id = spreadsheet_id
-#         session.commit()
-
-# def get_gmail(user_telegram_id: int):
-#     with session_factory() as session:
-#         user: UsersOrm = session.scalar(select(UsersOrm).where(UsersOrm.telegram_id == user_telegram_id))
-#         spreadsheet: SpreadSheetsOrm = session.get(SpreadSheetsOrm, user.spreadsheet_id)
-#         return spreadsheet.gmail
-
 def get_spreadsheetid(user_telegram_id: int):
     with session_factory() as session:
         user: UsersOrm = session.scalar(select(UsersOrm).where(UsersOrm.telegram_id == user_telegram_id))
         spreadsheet: SpreadSheetsOrm = session.get(SpreadSheetsOrm, user.spreadsheet_id)
         return spreadsheet.spreadsheet_id
 
-def get_start_date(user_telegram_id: int):
+def get_spreadsheet(user_telegram_id: int):
     with session_factory() as session:
         user: UsersOrm = session.scalar(select(UsersOrm).where(UsersOrm.telegram_id == user_telegram_id))
         spreadsheet: SpreadSheetsOrm = session.get(SpreadSheetsOrm, user.spreadsheet_id)
-        return spreadsheet.start_date
+        return spreadsheet
 
-# def update_date(user_telegram_id: int, new_date: datetime.date):
+# def get_start_date(user_telegram_id: int):
 #     with session_factory() as session:
 #         user: UsersOrm = session.scalar(select(UsersOrm).where(UsersOrm.telegram_id == user_telegram_id))
 #         spreadsheet: SpreadSheetsOrm = session.get(SpreadSheetsOrm, user.spreadsheet_id)
-#         spreadsheet.start_date = new_date
-#         session.commit()
+#         return spreadsheet.start_date

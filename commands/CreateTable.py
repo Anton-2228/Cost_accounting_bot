@@ -5,7 +5,7 @@ from aiogram.fsm.context import FSMContext
 from aiogram.types import Message
 
 from commands.Command import Command
-from database.queries.spreadsheets_queries import create, get_start_date
+from database.queries.spreadsheets_queries import create
 from database.queries.users_queries import create_user
 from init import States, daysUntilNextMonth
 
@@ -66,7 +66,7 @@ class CreateTable(Command):
                     await state.clear()
 
                     await self.commandManager.getCommands()['table'].execute(message, state)
-                    await self.commandManager.getCommands()['help'].execute(message, state)
+                    # await self.commandManager.getCommands()['help'].execute(message, state)
                 else:
                     await message.answer("Число должно быть > 0 и < 29")
             except Exception as e:

@@ -12,6 +12,11 @@ class CategoriesTypes(Enum):
     COST = "cost"
     INCOME = "income"
 
+class StatusTypes(Enum):
+    ACTIVE = "active"
+    INACTIVE = "inactive"
+    DELETED = "deleted"
+
 class UsersOrm(Base):
     __tablename__ = "users"
 
@@ -34,10 +39,11 @@ class CategoriesOrm(Base):
 
     id: Mapped[int] = mapped_column(primary_key=True)
     spreadsheet_id: Mapped[int] = mapped_column(ForeignKey("spreadsheets.id", ondelete="CASCADE"))
-    active: Mapped[bool]
+    # active: Mapped[bool]
+    status: Mapped[StatusTypes] = mapped_column(PgEnum(StatusTypes, name="status_types", create_type=True))
     type: Mapped[CategoriesTypes] = mapped_column(PgEnum(CategoriesTypes, name="categories_types", create_type=True))
     title: Mapped[str]
-    associations: Mapped[str] # подумать про list
+    associations: Mapped[list[str]] = mapped_column(ARRAY(String)) # подумать про list
 
 
 class SourcesOrm(Base):
@@ -45,11 +51,12 @@ class SourcesOrm(Base):
 
     id: Mapped[int] = mapped_column(primary_key=True)
     spreadsheet_id: Mapped[int] = mapped_column(ForeignKey("spreadsheets.id", ondelete="CASCADE"))
-    active: Mapped[bool]
+    # active: Mapped[bool]
+    status: Mapped[StatusTypes] = mapped_column(PgEnum(StatusTypes, name="status_types", create_type=True))
     title: Mapped[str]
-    associations: Mapped[str] # подумать про list
-    start_balance: Mapped[int]
-    current_balance: Mapped[int]
+    associations: Mapped[list[str]] = mapped_column(ARRAY(String)) # подумать про list
+    start_balance: Mapped[float]
+    current_balance: Mapped[float]
 
 class RecordsOrm(Base):
     __tablename__ = "records"

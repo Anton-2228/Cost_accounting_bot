@@ -168,6 +168,15 @@ class Spreadsheet:
             "data": reqData
         }).execute()
 
+    def cleanValues(self, spreadsheetID, range):
+        sheetService = self.sheetService
+        response = sheetService.spreadsheets().values().clear(spreadsheetId=spreadsheetID, range=range).execute()
+
+    def getValues(self, spreadsheetID, range):
+        sheetService = self.sheetService
+        result = sheetService.spreadsheets().values().get(spreadsheetId=spreadsheetID, range=range).execute()
+        return result
+
     def getSheets(self, spreadsheetID):
         response = self.sheetService.spreadsheets().get(spreadsheetId=spreadsheetID).execute()
         sheets = {}
