@@ -1,3 +1,4 @@
+from aiogram.filters import CommandObject
 from aiogram.fsm.context import FSMContext
 from aiogram.types import Message
 
@@ -9,5 +10,5 @@ class Command:
         self.spreadsheet = Spreadsheet()
         self.commandManager = command_manager
 
-    async def execute(self, message: Message, state: FSMContext):
+    async def execute(self, message: Message, state: FSMContext, command: CommandObject):
         pass

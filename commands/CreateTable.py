@@ -1,6 +1,7 @@
 import datetime
 import re
 
+from aiogram.filters import CommandObject
 from aiogram.fsm.context import FSMContext
 from aiogram.types import Message
 
@@ -15,7 +16,7 @@ class CreateTable(Command):
         super().__init__(command_manager)
         self.temp_data = {}
 
-    async def execute(self, message: Message, state: FSMContext):
+    async def execute(self, message: Message, state: FSMContext, command: CommandObject):
         cur_state = await state.get_state()
         if cur_state == None:
             self.temp_data[message.from_user.id] = {}
@@ -58,14 +59,14 @@ class CreateTable(Command):
                                                                       daysUntilNextMonth[start_date.month])
 
                     print(f"https://docs.google.com/spreadsheets/d/{spreadsheetID}/")
-                    id = create(gmail=gmail, spreadsheet_id=spreadsheetID)
+                    id = create(gmail=gmail, spreadsheet_id=spreadsheetID, start_date=start_date)
                     create_user(telegram_id=message.from_user.id, spreadsheet_id=id)
 
                     del self.temp_data[message.from_user.id]
 
                     await state.clear()
 
-                    await self.commandManager.getCommands()['table'].execute(message, state)
+                    await self.commandManager.getCommands()['table'].execute(message, state, command)
                     # await self.commandManager.getCommands()['help'].execute(message, state)
                 else:
                     await message.answer("Число должно быть > 0 и < 29")

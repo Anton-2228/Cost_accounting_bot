@@ -1,5 +1,6 @@
 import re
 
+from aiogram.filters import CommandObject
 from aiogram.fsm.context import FSMContext
 from aiogram.types import Message
 
@@ -9,7 +10,7 @@ from init import States
 
 
 class AddEmail(Command):
-    async def execute(self, message: Message, state: FSMContext):
+    async def execute(self, message: Message, state: FSMContext, command: CommandObject):
         cur_state = await state.get_state()
         if cur_state == None:
             await state.set_state(States.ADD_EMAIL)

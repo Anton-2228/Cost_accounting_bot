@@ -3,7 +3,7 @@ from enum import Enum
 from typing import List
 
 from sqlalchemy import MetaData, Column, Table, Integer, String, ForeignKey, text
-from sqlalchemy.orm import Mapped, mapped_column
+from sqlalchemy.orm import Mapped, mapped_column, relationship
 from sqlalchemy.dialects.postgresql import ENUM as PgEnum, ARRAY
 
 from database.database import Base
@@ -28,11 +28,13 @@ class SpreadSheetsOrm(Base):
     __tablename__ = "spreadsheets"
 
     id: Mapped[int] = mapped_column(primary_key=True)
-    spreadsheet_id: Mapped[str] = mapped_column(nullable=True)
+    spreadsheet_id: Mapped[str]
     gmail: Mapped[list[str]] = mapped_column(ARRAY(String))
     # Начало текущего месяца
     # start_date: Mapped[datetime.date] = mapped_column(server_default=text("TIMEZONE('utc', now())::date"))
-    start_date: Mapped[datetime.date] = mapped_column(nullable=True)
+    start_date: Mapped[datetime.date]
+
+    # categories: Mapped[list["CategoriesOrm"]] = relationship()
 
 class CategoriesOrm(Base):
     __tablename__ = "categories"
@@ -44,6 +46,8 @@ class CategoriesOrm(Base):
     type: Mapped[CategoriesTypes] = mapped_column(PgEnum(CategoriesTypes, name="categories_types", create_type=True))
     title: Mapped[str]
     associations: Mapped[list[str]] = mapped_column(ARRAY(String)) # подумать про list
+
+    # spreadsheet: Mapped["SpreadSheetsOrm"] = relationship()
 
 
 class SourcesOrm(Base):
@@ -58,11 +62,14 @@ class SourcesOrm(Base):
     start_balance: Mapped[float]
     current_balance: Mapped[float]
 
+    # spreadsheet: Mapped["SpreadSheetsOrm"] = relationship()
+
 class RecordsOrm(Base):
     __tablename__ = "records"
 
     id: Mapped[int] = mapped_column(primary_key=True)
-    added_at: Mapped[datetime.datetime] = mapped_column(server_default=text("TIMEZONE('utc', now())"))
+    spreadsheet_id: Mapped[int] = mapped_column(ForeignKey("spreadsheets.id", ondelete="CASCADE"))
+    added_at: Mapped[datetime.date] = mapped_column(server_default=text("TIMEZONE('utc', now())"))
     amount: Mapped[int]
     category: Mapped[int] = mapped_column(ForeignKey("categories.id", ondelete="SET NULL"))
     notes: Mapped[str]

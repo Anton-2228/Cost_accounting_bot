@@ -5,6 +5,10 @@ from database.models import StatusTypes, CategoriesOrm, CategoriesTypes
 from database.queries.spreadsheets_queries import get_spreadsheet
 from validation import validate_category_row
 
+def get_category(id):
+    with session_factory() as session:
+        category: CategoriesOrm = session.get(CategoriesOrm, id)
+        return category
 
 def remove_category(id: int):
     with session_factory() as session:
@@ -17,6 +21,14 @@ def set_status(id: int, status: StatusTypes):
         category: CategoriesOrm = session.get(CategoriesOrm, id)
         category.status = status
         session.commit()
+
+def get_categories_by_spreadsheet(spreadsheet_id):
+    with session_factory() as session:
+        categories: CategoriesOrm = session.scalars(select(CategoriesOrm)
+                                                   .where(CategoriesOrm.spreadsheet_id == spreadsheet_id and
+                                                          CategoriesOrm.status == StatusTypes.ACTIVE)).all()
+        return categories
+
 
 def synchronizeCategories(message, scope, spreadsheetWrapper):
     with session_factory() as session:
@@ -55,8 +67,10 @@ def synchronizeCategories(message, scope, spreadsheetWrapper):
                     elif row[3] == '1':
                         category.type = CategoriesTypes.COST
                     category.title = row[4]
-                    category.associations = row[5].split()
-                    categories.append([row[0], row[1], row[2], row[3], row[4], row[5]])
+                    category.associations = [x.lower() for x in row[5].split()]
+                    category.associations.append(row[4].lower())
+                    category.associations = list(set(category.associations))
+                    categories.append([row[0], row[1], row[2], row[3], row[4], ' '.join(category.associations)])
                 else:
                     if row[1] == '1':
                         status = StatusTypes.ACTIVE
@@ -67,7 +81,9 @@ def synchronizeCategories(message, scope, spreadsheetWrapper):
                     elif row[3] == '1':
                         type = CategoriesTypes.COST
                     title = row[4]
-                    associations = row[5].split()
+                    associations = [x.lower() for x in row[5].split()]
+                    associations.append(row[4].lower())
+                    associations = list(set(associations))
                     category = CategoriesOrm(spreadsheet_id=spreadsheet.id,
                                              status=status,
                                              type=type,
@@ -76,7 +92,7 @@ def synchronizeCategories(message, scope, spreadsheetWrapper):
                     session.add(category)
                     session.flush()
                     add_categories.append(category)
-                    categories.append([category.id, row[1], row[2], row[3], row[4], row[5]])
+                    categories.append([category.id, row[1], row[2], row[3], row[4], ' '.join(associations)])
             result['categories'] = categories
             session.commit()
             return result

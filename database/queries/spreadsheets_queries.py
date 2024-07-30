@@ -6,14 +6,13 @@ from database.database import session_factory
 from database.models import SpreadSheetsOrm, UsersOrm
 
 
-def create(gmail: str, spreadsheet_id: str = None):
+def create(gmail: str, spreadsheet_id: str, start_date: datetime.date):
     with session_factory() as session:
-        spreadsheet = SpreadSheetsOrm(spreadsheet_id=spreadsheet_id, gmail=gmail)
+        spreadsheet = SpreadSheetsOrm(spreadsheet_id=spreadsheet_id, gmail=gmail, start_date=start_date)
         session.add_all([spreadsheet])
-        # Пиздец
-        id = session.scalar(select(SpreadSheetsOrm.id).where(SpreadSheetsOrm.spreadsheet_id == spreadsheet_id))
         session.commit()
-    return id
+        spreadsheet: SpreadSheetsOrm = session.get(SpreadSheetsOrm, spreadsheet.id)
+    return spreadsheet.id
 
 def add_gmail(user_telegram_id: int, gmail: str):
     with session_factory() as session:

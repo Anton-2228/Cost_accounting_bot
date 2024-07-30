@@ -5,11 +5,34 @@ from database.models import StatusTypes, SourcesOrm
 from database.queries.spreadsheets_queries import get_spreadsheet
 from validation import validate_sources_row
 
+def get_source(id):
+    with session_factory() as session:
+        source: SourcesOrm = session.get(SourcesOrm, id)
+        return source
 
 def set_status(id: int, status: StatusTypes):
     with session_factory() as session:
-        category: SourcesOrm = session.get(SourcesOrm, id)
-        category.status = status
+        source: SourcesOrm = session.get(SourcesOrm, id)
+        source.status = status
+        session.commit()
+
+def get_sources_by_spreadsheet(spreadsheet_id):
+    with session_factory() as session:
+        sources: SourcesOrm = session.scalars(select(SourcesOrm)
+                                                   .where(SourcesOrm.spreadsheet_id == spreadsheet_id and
+                                                          SourcesOrm.status == StatusTypes.ACTIVE)).all()
+        return sources
+
+def set_current_balance(id, current_balance):
+    with session_factory() as session:
+        source: SourcesOrm = session.get(SourcesOrm, id)
+        source.current_balance = current_balance
+        session.commit()
+
+def update_current_balance(id, shift):
+    with session_factory() as session:
+        source: SourcesOrm = session.get(SourcesOrm, id)
+        source.current_balance = source.current_balance + shift
         session.commit()
 
 def synchronizeSources(message, scope, spreadsheetWrapper):
@@ -19,12 +42,9 @@ def synchronizeSources(message, scope, spreadsheetWrapper):
         tmp_sql_sources = session.scalars(select(SourcesOrm)).all()
         sql_sources = {}
         for i in tmp_sql_sources:
-            print(i)
-            print(i.id)
             sql_sources[i.id] = i
 
         if "values" in spreadsheets_sources:
-            print(spreadsheets_sources)
             result = {'result': 'error'}
             message = validate_sources_row(spreadsheets_sources)
             if message is not None:
@@ -48,16 +68,20 @@ def synchronizeSources(message, scope, spreadsheetWrapper):
                     elif row[1] == '0':
                         source.status = StatusTypes.INACTIVE
                     source.title = row[2]
-                    source.associations = row[3].split()
+                    source.associations = [x.lower() for x in row[3].split()]
+                    source.associations.append(row[2].lower())
+                    source.associations = list(set(source.associations))
                     source.start_balance = float(row[4])
-                    sources.append([row[0], row[1], row[2], row[3], row[4], row[5]])
+                    sources.append([row[0], row[1], row[2], ' '.join(source.associations), row[4], source.current_balance])
                 else:
                     if row[1] == '1':
                         status = StatusTypes.ACTIVE
                     elif row[1] == '0':
                         status = StatusTypes.INACTIVE
                     title = row[2]
-                    associations = row[3].split()
+                    associations = [x.lower() for x in row[3].split()]
+                    associations.append(row[2].lower())
+                    associations = list(set(associations))
                     start_balance = float(row[4])
                     source = SourcesOrm(spreadsheet_id=spreadsheet.id,
                                         status=status,
@@ -68,7 +92,7 @@ def synchronizeSources(message, scope, spreadsheetWrapper):
                     session.add(source)
                     session.flush()
                     add_sources.append(source)
-                    sources.append([source.id, row[1], row[2], row[3], row[4], source.current_balance])
+                    sources.append([source.id, row[1], row[2], ' '.join(source.associations), row[4], source.current_balance])
             result['sources'] = sources
             session.commit()
             return result

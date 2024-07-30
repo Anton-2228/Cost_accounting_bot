@@ -12,5 +12,5 @@ class CommandManager:
         for i in commands:
             self.addCommand(i, commands[i])
 
-    async def launchCommand(self, title, message, state):
-        response = await self.commands[title].execute(message, state)
+    async def launchCommand(self, title, message, state, command):
+        response = await self.commands[title].execute(message, state, command)
