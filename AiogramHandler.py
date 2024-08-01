@@ -77,8 +77,9 @@ async def timer():
         spreadsheets = get_all_spreadsheets()
         for i in spreadsheets:
             end_date = i.start_date + datetime.timedelta(days=daysUntilNextMonth[i.start_date.month])
-            tz = datetime.timezone(datetime.timedelta(hours=2, minutes=50))
-            today = datetime.datetime.now(tz=tz).date()
+            # tz = datetime.timezone(datetime.timedelta(hours=2, minutes=50))
+            # today = datetime.datetime.now(tz=tz).date()
+            today = datetime.date.today()
             if today == end_date:
                 spreadsheetWrapper = commandManager.getCommands()['help'].spreadsheet
                 update_start_date(i.id, end_date)

@@ -69,8 +69,8 @@ class RecordsOrm(Base):
 
     id: Mapped[int] = mapped_column(primary_key=True)
     spreadsheet_id: Mapped[int] = mapped_column(ForeignKey("spreadsheets.id", ondelete="CASCADE"))
-    test: Mapped[datetime.datetime] = mapped_column(server_default=text("TIMEZONE('utc-2:50', now())"))
-    added_at: Mapped[datetime.date] = mapped_column(server_default=text("TIMEZONE('utc-2:50', now())"))
+    # test: Mapped[datetime.datetime] = mapped_column(server_default=text("TIMEZONE('utc-3', now())"))
+    added_at: Mapped[datetime.date] = mapped_column(server_default=text("TIMEZONE('utc-3', now())"))
     amount: Mapped[int]
     category: Mapped[int] = mapped_column(ForeignKey("categories.id", ondelete="SET NULL"))
     notes: Mapped[str]

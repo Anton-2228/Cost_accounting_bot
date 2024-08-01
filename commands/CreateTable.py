@@ -44,9 +44,9 @@ class CreateTable(Command):
 
         elif cur_state == States.COMFIRM_CHANGE_DATE_RESET:
             try:
-                tz = datetime.timezone(datetime.timedelta(hours=2, minutes=50))
-                today = datetime.datetime.now(tz=tz).date()
-                # today = datetime.date.today()
+                # tz = datetime.timezone(datetime.timedelta(hours=2, minutes=50))
+                # today = datetime.datetime.now(tz=tz).date()
+                today = datetime.date.today()
                 new_day = int(message.text.split()[0])
                 if new_day > 0 and new_day < 29:
                     if new_day > today.day:
