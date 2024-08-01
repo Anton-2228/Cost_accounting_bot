@@ -1,3 +1,4 @@
+import datetime
 import os
 
 import asyncio
@@ -8,7 +9,8 @@ from aiogram.types import Message
 from CommandManager import CommandManager
 from commands import get_commands
 from database.core import create_tables
-from init import createBot, createDispatcher, createRouter, States
+from database.queries.spreadsheets_queries import get_all_spreadsheets, update_start_date, get_spreadsheet_by_id
+from init import createBot, createDispatcher, createRouter, States, daysUntilNextMonth, alf
 
 bot = createBot(os.getenv('API_TOKEN'))
 dp = createDispatcher()
@@ -70,9 +72,42 @@ async def start_polling():
     dp.include_routers(router)
     await dp.start_polling(bot)
 
+async def timer():
+    while True:
+        spreadsheets = get_all_spreadsheets()
+        for i in spreadsheets:
+            end_date = i.start_date + datetime.timedelta(days=daysUntilNextMonth[i.start_date.month])
+            tz = datetime.timezone(datetime.timedelta(hours=2, minutes=50))
+            today = datetime.datetime.now(tz=tz).date()
+            if today == end_date:
+                spreadsheetWrapper = commandManager.getCommands()['help'].spreadsheet
+                update_start_date(i.id, end_date)
+                spreadsheet = get_spreadsheet_by_id(i.id)
+                response = spreadsheetWrapper.addNewOperationsSheet(spreadsheet.spreadsheet_id,
+                                                                    end_date)
+                response = spreadsheetWrapper.addNewStatisticsSheet(spreadsheet.spreadsheet_id,
+                                                                    end_date,
+                                                                    daysUntilNextMonth[end_date.month])
+                total_values = await commandManager.getCommands()['sync'].sync_total(spreadsheet)
+                values = []
+                values += total_values
+
+                spreadsheetWrapper.setValues(spreadsheet.spreadsheet_id, values)
+
+                sheets = spreadsheetWrapper.getSheets(spreadsheet.spreadsheet_id)
+                print(sheets)
+                spreadsheetWrapper.spreadSheetSetStyler.setStyleTotalLists(spreadsheet.spreadsheet_id,
+                                                                         sheets["Stat. " + str(spreadsheet.start_date)],
+                                                                         daysUntilNextMonth[
+                                                                             spreadsheet.start_date.month],
+                                                                         total_values[0][-1],
+                                                                         total_values[1][-1])
+
+        await asyncio.sleep(60)
+
 async def start():
-    await asyncio.gather(start_polling())
-    # await asyncio.gather(start_polling(), timer())
+    # await asyncio.gather(start_polling())
+    await asyncio.gather(start_polling(), timer())
 
 if __name__ == "__main__":
     create_tables()

@@ -5,9 +5,8 @@
     "Income",
     "Cost",
     "Name",
-    "Associations",
-    "Limits"
-  ],[50,100,100,100,200,300,100]],
+    "Associations"
+  ],[50,100,100,100,200,300]],
   "Bills": [[
     "ID",
     "Active",

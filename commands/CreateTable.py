@@ -6,7 +6,7 @@ from aiogram.fsm.context import FSMContext
 from aiogram.types import Message
 
 from commands.Command import Command
-from database.queries.spreadsheets_queries import create
+from database.queries.spreadsheets_queries import create, get_spreadsheet
 from database.queries.users_queries import create_user
 from init import States, daysUntilNextMonth
 
@@ -17,6 +17,11 @@ class CreateTable(Command):
         self.temp_data = {}
 
     async def execute(self, message: Message, state: FSMContext, command: CommandObject):
+        # spreadsheet = get_spreadsheet(message.from_user.id)
+        # if spreadsheet != None:
+        #     await message.answer('Таблица уже создана')
+        #     return
+
         cur_state = await state.get_state()
         if cur_state == None:
             self.temp_data[message.from_user.id] = {}
@@ -39,7 +44,9 @@ class CreateTable(Command):
 
         elif cur_state == States.COMFIRM_CHANGE_DATE_RESET:
             try:
-                today = datetime.date.today()
+                tz = datetime.timezone(datetime.timedelta(hours=2, minutes=50))
+                today = datetime.datetime.now(tz=tz).date()
+                # today = datetime.date.today()
                 new_day = int(message.text.split()[0])
                 if new_day > 0 and new_day < 29:
                     if new_day > today.day:

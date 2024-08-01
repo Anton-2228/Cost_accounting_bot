@@ -19,7 +19,7 @@ def set_status(id: int, status: StatusTypes):
 def get_sources_by_spreadsheet(spreadsheet_id):
     with session_factory() as session:
         sources: SourcesOrm = session.scalars(select(SourcesOrm)
-                                                   .where(SourcesOrm.spreadsheet_id == spreadsheet_id and
+                                                   .where(SourcesOrm.spreadsheet_id == spreadsheet_id,
                                                           SourcesOrm.status == StatusTypes.ACTIVE)).all()
         return sources
 

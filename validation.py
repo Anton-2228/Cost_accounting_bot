@@ -85,3 +85,20 @@ def validate_delete_command_args(args):
         delete_id = int(args)
     except:
         return 'Было передано не число'
+
+def validate_transfer_command_args(args, sources):
+    if args == None:
+        return 'Передайте аргументы'
+    args = args.split()
+    if len(args) != 3:
+        return f'Было передано {len(args)} аргументов, а должно быть 3'
+    amount = args[0]
+    from_source = args[1].lower()
+    to_source = args[2].lower()
+    if re.fullmatch(r'\d+', amount) == None:
+        return "Сумма должна быть натуральным числом"
+    sources_associations = [association.lower() for source in sources for association in source.associations]
+    if from_source not in sources_associations:
+        return "Источника отправителя нет, либо он выключен"
+    if to_source not in sources_associations:
+        return "Источника получателя нет, либо он выключен"

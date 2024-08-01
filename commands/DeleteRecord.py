@@ -8,11 +8,17 @@ from database.queries.categories_queries import get_category
 from database.queries.records_queries import get_records_by_current_month, remove_record
 from database.queries.sources_queries import update_current_balance, get_source
 from database.queries.spreadsheets_queries import get_spreadsheet
+from database.queries.users_queries import get_user
 from validation import validate_delete_command_args
 
 
 class DeleteRecord(Command):
     async def execute(self, message: Message, state: FSMContext, command: CommandObject):
+        user = get_user(message.from_user.id)
+        if user == None:
+            await message.answer('Сначала создайте таблицу')
+            return
+
         spreadsheet = get_spreadsheet(message.from_user.id)
         delete_id = command.args
         print(delete_id)
@@ -39,8 +45,10 @@ class DeleteRecord(Command):
         values = []
         value_record = await self.commandManager.getCommands()['sync'].sync_records(spreadsheet)
         source_value = await self.commandManager.getCommands()['sync'].sync_sour(message)
+        total_values = await self.commandManager.getCommands()['sync'].sync_total(spreadsheet)
         values.append(value_record)
         values.append(source_value)
+        values += total_values
 
         self.spreadsheet.cleanValues(spreadsheet.spreadsheet_id, f'{str(spreadsheet.start_date)}!A2:F100000')
         self.spreadsheet.setValues(spreadsheet.spreadsheet_id, values)

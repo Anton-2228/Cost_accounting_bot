@@ -1,4 +1,4 @@
-class SpreadSheetSetStyler():
+class SpreadSheetSetStyler:
     def __init__(self, sheetService, driveService, templateTitle, templateOperation, templateStatistics):
         self.sheetService = sheetService
         self.driveService = driveService
@@ -345,6 +345,83 @@ class SpreadSheetSetStyler():
             }
         })
 
+        response = self.sheetService.spreadsheets().batchUpdate(spreadsheetId=spreadsheetID, body={
+            'requests': reqData
+        }).execute()
+
+    def setStyleTotalLists(self, spreadsheetID, sheetId, daysCurMonth, incomeRows, costRows):
+        print(spreadsheetID)
+        print(sheetId)
+        print(daysCurMonth)
+        print(len(incomeRows))
+        print(len(costRows))
+        print(incomeRows)
+        print(costRows)
+        reqData = []
+        reqData.append({
+            "repeatCell": {
+                "range": {
+                    "sheetId": sheetId,
+                    "startRowIndex": 1,
+                    "endRowIndex": 1000,
+                    "startColumnIndex": 0,
+                    "endColumnIndex": daysCurMonth + 2
+                },
+                "cell": {
+                    "userEnteredFormat": {
+                        "backgroundColor": {
+                            "red": 1.0,
+                            "green": 1.0,
+                            "blue": 1.0
+                        }
+                    }
+                },
+                "fields": "userEnteredFormat(backgroundColor)"
+            }
+        })
+
+        reqData.append({
+            "repeatCell": {
+                "range": {
+                    "sheetId": sheetId,
+                    "startRowIndex": 1,
+                    "endRowIndex": 1 + len(incomeRows),
+                    "startColumnIndex": 0,
+                    "endColumnIndex": daysCurMonth + 2
+                },
+                "cell": {
+                    "userEnteredFormat": {
+                        "backgroundColor": {
+                            "red": 0.824,
+                            "green": 0.96,
+                            "blue": 0.753
+                        }
+                    }
+                },
+                "fields": "userEnteredFormat(backgroundColor)"
+            }
+        })
+        reqData.append({
+            "repeatCell": {
+                "range": {
+                    "sheetId": sheetId,
+                    "startRowIndex": 1 + len(incomeRows) + 1,
+                    "endRowIndex": 1 + len(incomeRows) + 1 + len(costRows),
+                    "startColumnIndex": 0,
+                    "endColumnIndex": daysCurMonth + 2
+                },
+                "cell": {
+                    "userEnteredFormat": {
+                        "backgroundColor": {
+                            "red": 0.921,
+                            "green": 0.703,
+                            "blue": 0.703
+                        }
+                    }
+                },
+                "fields": "userEnteredFormat(backgroundColor)"
+            }
+        })
         response = self.sheetService.spreadsheets().batchUpdate(spreadsheetId=spreadsheetID, body={
             'requests': reqData
         }).execute()

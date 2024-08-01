@@ -6,11 +6,16 @@ from aiogram.types import Message
 
 from commands.Command import Command
 from database.queries.spreadsheets_queries import add_gmail, get_spreadsheetid
+from database.queries.users_queries import get_user
 from init import States
 
 
 class AddEmail(Command):
     async def execute(self, message: Message, state: FSMContext, command: CommandObject):
+        user = get_user(message.from_user.id)
+        if user == None:
+            await message.answer('Сначала создайте таблицу')
+            return
         cur_state = await state.get_state()
         if cur_state == None:
             await state.set_state(States.ADD_EMAIL)

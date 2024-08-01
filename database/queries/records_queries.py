@@ -23,10 +23,21 @@ def get_records_by_current_month(spreadsheet_id, start_date: datetime.date):
     end_date = start_date + datetime.timedelta(days=daysUntilNextMonth[start_date.month])
     with session_factory() as session:
         records: RecordsOrm = session.scalars(select(RecordsOrm)
-                                                    .where(RecordsOrm.spreadsheet_id == spreadsheet_id and
+                                                    .where(RecordsOrm.spreadsheet_id == spreadsheet_id,
                                                            RecordsOrm.added_at.between(start_date, end_date))
                                               .order_by(RecordsOrm.id)).all()
         return records
+
+def get_records_by_current_month_by_category(spreadsheet_id, start_date: datetime.date, category_id):
+    end_date = start_date + datetime.timedelta(days=daysUntilNextMonth[start_date.month])
+    with session_factory() as session:
+        records: list[RecordsOrm] = session.scalars(select(RecordsOrm)
+                                                    .where(RecordsOrm.spreadsheet_id == spreadsheet_id,
+                                                           RecordsOrm.category == category_id,
+                                                           RecordsOrm.added_at.between(start_date, end_date))
+                                              .order_by(RecordsOrm.id)).all()
+        return records
+
 
 def remove_record(id: int):
     with session_factory() as session:

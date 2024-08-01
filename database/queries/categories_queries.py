@@ -25,7 +25,7 @@ def set_status(id: int, status: StatusTypes):
 def get_categories_by_spreadsheet(spreadsheet_id):
     with session_factory() as session:
         categories: CategoriesOrm = session.scalars(select(CategoriesOrm)
-                                                   .where(CategoriesOrm.spreadsheet_id == spreadsheet_id and
+                                                   .where(CategoriesOrm.spreadsheet_id == spreadsheet_id,
                                                           CategoriesOrm.status == StatusTypes.ACTIVE)).all()
         return categories
 

@@ -3,6 +3,7 @@ from aiogram.fsm.context import FSMContext
 from aiogram.types import Message
 
 from Spreadsheet import Spreadsheet
+from SpreadsheetSetStyles import SpreadSheetSetStyler
 
 
 class Command:

@@ -9,12 +9,18 @@ from database.queries.records_queries import create_record, get_records_by_curre
 from database.queries.sources_queries import get_sources_by_spreadsheet, set_current_balance, get_source, \
     update_current_balance
 from database.queries.spreadsheets_queries import get_spreadsheet
+from database.queries.users_queries import get_user
 from init import States
 from validation import validate_records_row
 
 
 class AddRecord(Command):
     async def execute(self, message: Message, state: FSMContext, command: CommandObject):
+        user = get_user(message.from_user.id)
+        if user == None:
+            await message.answer('Сначала создайте таблицу')
+            return
+
         spreadsheet = get_spreadsheet(message.from_user.id)
 
         categories: list[CategoriesOrm] = get_categories_by_spreadsheet(spreadsheet.id)
@@ -62,7 +68,9 @@ class AddRecord(Command):
         values.append([str(spreadsheet.start_date), "ROWS", f"A{count}:F{count}", value])
 
         source_value = await self.commandManager.getCommands()['sync'].sync_sour(message)
+        total_values = await self.commandManager.getCommands()['sync'].sync_total(spreadsheet)
         values.append(source_value)
+        values += total_values
 
         self.spreadsheet.setValues(spreadsheet.spreadsheet_id, values)
 
