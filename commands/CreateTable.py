@@ -66,7 +66,7 @@ class CreateTable(Command):
                                                                       daysUntilNextMonth[start_date.month])
 
                     print(f"https://docs.google.com/spreadsheets/d/{spreadsheetID}/")
-                    id = create(gmail=gmail, spreadsheet_id=spreadsheetID, start_date=start_date)
+                    id = create(gmail=[gmail], spreadsheet_id=spreadsheetID, start_date=start_date)
                     create_user(telegram_id=message.from_user.id, spreadsheet_id=id)
 
                     del self.temp_data[message.from_user.id]

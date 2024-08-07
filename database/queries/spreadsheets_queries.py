@@ -6,7 +6,7 @@ from database.database import session_factory
 from database.models import SpreadSheetsOrm, UsersOrm
 
 
-def create(gmail: str, spreadsheet_id: str, start_date: datetime.date):
+def create(gmail: list[str], spreadsheet_id: str, start_date: datetime.date):
     with session_factory() as session:
         spreadsheet = SpreadSheetsOrm(spreadsheet_id=spreadsheet_id, gmail=gmail, start_date=start_date)
         session.add_all([spreadsheet])
