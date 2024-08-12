@@ -6,13 +6,15 @@ from aiogram.filters import Command, StateFilter, CommandObject
 from aiogram.fsm.context import FSMContext
 from aiogram.types import Message
 
-from CommandManager import CommandManager
+from command_manager import CommandManager
+from telethon_bot import TelethonBot
 from commands import get_commands
 from database.core import create_tables
 from database.queries.spreadsheets_queries import get_all_spreadsheets, update_start_date, get_spreadsheet_by_id
 from init import createBot, createDispatcher, createRouter, States, daysUntilNextMonth, alf
 
 bot = createBot(os.getenv('API_TOKEN'))
+telethon_bot = TelethonBot()
 dp = createDispatcher()
 router = createRouter()
 commandManager = CommandManager()
@@ -107,7 +109,11 @@ async def timer():
         await asyncio.sleep(60)
 
 async def start():
-    # await asyncio.gather(start_polling())
+    # await asyncio.gather(telethon_bot.start())
+    # async with telethon_bot:
+        # await telethon_bot.client.get_me()
+        # await telethon_bot.start()
+    # telethon_bot.client.loop.run_until_complete(telethon_bot.start())
     await asyncio.gather(start_polling(), timer())
 
 if __name__ == "__main__":

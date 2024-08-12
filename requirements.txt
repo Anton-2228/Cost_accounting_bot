@@ -9,3 +9,6 @@ aiogram
 httplib2
 googleAPI
 asyncio
+telethon
+langchain
+langchain-openai

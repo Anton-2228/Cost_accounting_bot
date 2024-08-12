@@ -2,8 +2,8 @@ from aiogram.filters import CommandObject
 from aiogram.fsm.context import FSMContext
 from aiogram.types import Message
 
-from Spreadsheet import Spreadsheet
-from SpreadsheetSetStyles import SpreadSheetSetStyler
+from spreadsheet import Spreadsheet
+from spreadsheet_set_styles import SpreadSheetSetStyler
 
 
 class Command:

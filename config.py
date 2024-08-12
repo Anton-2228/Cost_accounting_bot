@@ -1,5 +1,5 @@
 import os
-from dotenv import load_dotenv
+import init
 
 class Settings:
     db_host = os.getenv('db_host')

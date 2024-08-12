@@ -1,6 +1,6 @@
 import datetime
 
-from SpreadsheetSetStyles import SpreadSheetSetStyler
+from spreadsheet_set_styles import SpreadSheetSetStyler
 from init import createSheetService, createDriveService, getTemplateTitle, getTemplateOperations, getTemplateStatistics
 
 

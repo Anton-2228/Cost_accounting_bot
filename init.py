@@ -12,7 +12,7 @@ from aiogram import Bot, Dispatcher, Router
 # from aiogram.contrib.fsm_storage.memory import MemoryStorage
 # from aiogram.contrib.middlewares.logging import LoggingMiddleware
 
-from CommandManager import CommandManager
+from command_manager import CommandManager
 
 # from Timer import Timer
 
@@ -68,6 +68,11 @@ def getTemplateStatistics():
     with open('datafiles/templateStatistics.json', 'r') as file:
         templateStatistics = json.load(file)
     return templateStatistics
+
+def getSystemPrompt():
+    with open('datafiles/prompts/system.txt', 'r') as file:
+        prompt = file.read()
+    return prompt
 
 # def createTimer():
 #     return Timer()
