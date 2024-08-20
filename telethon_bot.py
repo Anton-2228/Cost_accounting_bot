@@ -1,6 +1,5 @@
 from os import getenv
-
-import init
+import redis
 
 from telethon import TelegramClient, events
 
@@ -17,6 +16,7 @@ class TelethonBot:
             print(me.username)
 
             self.target_chat = await self.client.get_entity("@Cheki_FNS_bot")
+            self.send_chat = await self.client.get_entity("@fcktbbot")
 
             self.client.add_event_handler(self.handle_new_message, events.NewMessage)
 
@@ -26,4 +26,4 @@ class TelethonBot:
         sender = await event.message.get_sender()
         if event.chat_id == self.target_chat.id and sender.id == self.target_chat.id:
             message_text = event.message.message
-            print(message_text)
+            await self.client.send_message(entity=self.send_chat, message=message_text)

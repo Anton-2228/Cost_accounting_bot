@@ -41,7 +41,7 @@ class Transfer(Command):
         update_current_balance(to_source.id, amount)
 
         values = []
-        source_value = await self.commandManager.getCommands()['sync'].sync_sour(message)
+        source_value = await self.commandManager.getCommands()['sync'].sync_sour(spreadsheet)
         values.append(source_value)
         self.spreadsheet.setValues(spreadsheet.spreadsheet_id, values)
 

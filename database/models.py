@@ -46,6 +46,7 @@ class CategoriesOrm(Base):
     type: Mapped[CategoriesTypes] = mapped_column(PgEnum(CategoriesTypes, name="categories_types", create_type=True))
     title: Mapped[str]
     associations: Mapped[list[str]] = mapped_column(ARRAY(String)) # подумать про list
+    product_types: Mapped[list[str]] = mapped_column(ARRAY(String))
 
     # spreadsheet: Mapped["SpreadSheetsOrm"] = relationship()
 
@@ -71,7 +72,7 @@ class RecordsOrm(Base):
     spreadsheet_id: Mapped[int] = mapped_column(ForeignKey("spreadsheets.id", ondelete="CASCADE"))
     # test: Mapped[datetime.datetime] = mapped_column(server_default=text("TIMEZONE('utc-3', now())"))
     added_at: Mapped[datetime.date] = mapped_column(server_default=text("TIMEZONE('utc-3', now())"))
-    amount: Mapped[int]
+    amount: Mapped[float]
     category: Mapped[int] = mapped_column(ForeignKey("categories.id", ondelete="SET NULL"))
     notes: Mapped[str]
     source: Mapped[int] = mapped_column(ForeignKey("sources.id", ondelete="SET NULL"))

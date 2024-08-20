@@ -12,3 +12,4 @@ asyncio
 telethon
 langchain
 langchain-openai
+redis

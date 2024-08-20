@@ -1,3 +1,5 @@
+import copy
+
 from sqlalchemy import select
 
 from database.database import session_factory
@@ -30,9 +32,9 @@ def get_categories_by_spreadsheet(spreadsheet_id):
         return categories
 
 
-def synchronizeCategories(message, scope, spreadsheetWrapper):
+def synchronizeCategories(spreadsheet, scope, spreadsheetWrapper):
     with session_factory() as session:
-        spreadsheet = get_spreadsheet(message.from_user.id)
+        # spreadsheet = get_spreadsheet(message.from_user.id)
         spreadsheets_categories = spreadsheetWrapper.getValues(spreadsheet.spreadsheet_id, scope)
         tmp_sql_categories = session.scalars(select(CategoriesOrm)).all()
         sql_categories = {}
@@ -40,6 +42,10 @@ def synchronizeCategories(message, scope, spreadsheetWrapper):
             sql_categories[i.id] = i
 
         if "values" in spreadsheets_categories:
+            for i in range(len(copy.deepcopy(spreadsheets_categories["values"]))):
+                row = spreadsheets_categories["values"][i]
+                if len(row) != 0:
+                    spreadsheets_categories["values"][i].extend([''] * (7 - len(row)))
             result = {'result': 'error'}
             message = validate_category_row(spreadsheets_categories)
             if message is not None:
@@ -52,7 +58,7 @@ def synchronizeCategories(message, scope, spreadsheetWrapper):
             for z, row in enumerate(spreadsheets_categories["values"]):
                 if len(row) == 0:
                     continue
-                if len(row) == 1:
+                if row[1] == '' and row[2] == '' and row[3] == '' and row[4] == '' and row[5] == '' and row[6] == '':
                     id = row[0]
                     set_status(id, StatusTypes.DELETED)
                     continue
@@ -70,7 +76,8 @@ def synchronizeCategories(message, scope, spreadsheetWrapper):
                     category.associations = [x.lower() for x in row[5].split()]
                     category.associations.append(row[4].lower())
                     category.associations = list(set(category.associations))
-                    categories.append([row[0], row[1], row[2], row[3], row[4], ' '.join(category.associations)])
+                    category.product_types = list(set([x.lower() for x in row[6].split(', ')]))
+                    categories.append([row[0], row[1], row[2], row[3], row[4], ' '.join(category.associations), ', '.join(category.product_types)])
                 else:
                     if row[1] == '1':
                         status = StatusTypes.ACTIVE
@@ -84,15 +91,17 @@ def synchronizeCategories(message, scope, spreadsheetWrapper):
                     associations = [x.lower() for x in row[5].split()]
                     associations.append(row[4].lower())
                     associations = list(set(associations))
+                    product_types = list(set([x.lower() for x in row[6].split(', ')]))
                     category = CategoriesOrm(spreadsheet_id=spreadsheet.id,
                                              status=status,
                                              type=type,
                                              title=title,
-                                             associations=associations)
+                                             associations=associations,
+                                             product_types=product_types)
                     session.add(category)
                     session.flush()
                     add_categories.append(category)
-                    categories.append([category.id, row[1], row[2], row[3], row[4], ' '.join(associations)])
+                    categories.append([category.id, row[1], row[2], row[3], row[4], ' '.join(associations), ', '.join(product_types)])
             result['categories'] = categories
             session.commit()
             return result

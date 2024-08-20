@@ -350,13 +350,6 @@ class SpreadSheetSetStyler:
         }).execute()
 
     def setStyleTotalLists(self, spreadsheetID, sheetId, daysCurMonth, incomeRows, costRows):
-        print(spreadsheetID)
-        print(sheetId)
-        print(daysCurMonth)
-        print(len(incomeRows))
-        print(len(costRows))
-        print(incomeRows)
-        print(costRows)
         reqData = []
         reqData.append({
             "repeatCell": {

@@ -7,7 +7,9 @@ def validate_category_row(spreadsheets_categories):
     names = []
     associations = []
     for z, row in enumerate(spreadsheets_categories["values"]):
-        if len(row) == 0 or len(row) == 1:
+        if len(row) == 0:
+            continue
+        if row[1] == '' and row[2] == '' and row[3] == '' and row[4] == '' and row[5] == '' and row[6] == '':
             continue
         if len(row) < 6:
             return f"В категориях в {z + 1} строке не все поля заполнены"
@@ -69,8 +71,10 @@ def validate_records_row(row, categories:list[CategoriesOrm], sources:list[Sourc
     source = args[2].lower()
     notes = ' '.join(args[3:])
 
-    if re.fullmatch(r'\d+', amount) == None:
-        return "Сумма должна быть натуральным числом"
+    try:
+        float(amount)
+    except:
+        return "Сумма должна быть числом"
 
     categories_associations = [association.lower() for category in categories for association in category.associations]
     if category not in categories_associations:
@@ -95,10 +99,19 @@ def validate_transfer_command_args(args, sources):
     amount = args[0]
     from_source = args[1].lower()
     to_source = args[2].lower()
-    if re.fullmatch(r'\d+', amount) == None:
-        return "Сумма должна быть натуральным числом"
+
+    try:
+        float(amount)
+    except:
+        return "Сумма должна быть числом"
+
     sources_associations = [association.lower() for source in sources for association in source.associations]
     if from_source not in sources_associations:
         return "Источника отправителя нет, либо он выключен"
     if to_source not in sources_associations:
         return "Источника получателя нет, либо он выключен"
+
+def validate_check_enter(row, sources:list[SourcesOrm]):
+    sources_associations = [association.lower() for source in sources for association in source.associations]
+    if row.lower() not in sources_associations:
+        return "Источника нет, либо он выключен"

@@ -1,3 +1,4 @@
+from commands.AddCheck import AddCheck
 from commands.AddEmail import AddEmail
 from commands.AddRecord import AddRecord
 from commands.CreateTable import CreateTable
@@ -17,5 +18,6 @@ def get_commands(command_manager):
                 "sync": Synchronize(command_manager),
                 "del": DeleteRecord(command_manager),
                 "transfer": Transfer(command_manager),
-                "addRecord": AddRecord(command_manager)}
+                "addRecord": AddRecord(command_manager),
+                "addCheck": AddCheck(command_manager)}
     return commands

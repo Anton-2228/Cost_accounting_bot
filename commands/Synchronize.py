@@ -25,8 +25,8 @@ class Synchronize(Command):
             return
 
         spreadsheet = get_spreadsheet(message.from_user.id)
-        category_value = await self.sync_cat(message)
-        source_value = await self.sync_sour(message)
+        category_value = await self.sync_cat(spreadsheet)
+        source_value = await self.sync_sour(spreadsheet)
         total_values = await self.sync_total(spreadsheet)
 
         if isinstance(category_value, str):
@@ -65,8 +65,8 @@ class Synchronize(Command):
             await state.clear()
             await message.answer("Синхронизация успешна")
 
-    async def sync_cat(self, message):
-        resultSyncCat = synchronizeCategories(message, "Categories!A2:G100000", self.spreadsheet)
+    async def sync_cat(self, spreadsheet):
+        resultSyncCat = synchronizeCategories(spreadsheet, "Categories!A2:G100000", self.spreadsheet)
         if resultSyncCat is not None:
             if resultSyncCat['result'] == 'error':
                 return resultSyncCat['message']
@@ -74,8 +74,8 @@ class Synchronize(Command):
             return ["Categories", "ROWS", f'A2:G{len(categories) + 2}', categories]
         return 'Добавьте хотя бы одну категорию'
 
-    async def sync_sour(self, message):
-        resultSyncSour = synchronizeSources(message, "Bills!A2:F100000", self.spreadsheet)
+    async def sync_sour(self, spreadsheet):
+        resultSyncSour = synchronizeSources(spreadsheet, "Bills!A2:F100000", self.spreadsheet)
         if resultSyncSour is not None:
             if resultSyncSour['result'] == 'error':
                 return resultSyncSour['message']
@@ -110,11 +110,14 @@ class Synchronize(Command):
             records = sorted(records, key=lambda x: x.added_at)
             income_categories[i].append(0)
             for x, z in enumerate(dates):
-                su = sum([x.amount for x in records if x.added_at == z])
+                su = int(sum([x.amount for x in records if x.added_at == z]))
                 income_categories[i].append(su)
                 income_categories[i][0] += su
                 total_income[x+1] += su
+            income_categories[i][0] = int(income_categories[i][0])
             total_income[0] += income_categories[i][0]
+            # income_categories[i][0] = int(income_categories[i][0])
+        # total_income[0] = int(total_income[0])
 
         total_cost = [0 for _ in range(daysUntilNextMonth[spreadsheet.start_date.month] + 1)]
         for i in cost_categories:
@@ -122,11 +125,13 @@ class Synchronize(Command):
             records = sorted(records, key=lambda x: x.added_at)
             cost_categories[i].append(0)
             for x, z in enumerate(dates):
-                su = sum([x.amount for x in records if x.added_at == z])
+                su = int(sum([x.amount for x in records if x.added_at == z]))
                 cost_categories[i].append(su)
                 cost_categories[i][0] += su
                 total_cost[x+1] += su
             total_cost[0] += cost_categories[i][0]
+            # cost_categories[i][0] = int(cost_categories[i][0])
+        # total_cost[0] = int(total_cost[0])
 
         values = []
 

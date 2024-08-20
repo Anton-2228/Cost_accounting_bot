@@ -1,3 +1,5 @@
+import copy
+
 from sqlalchemy import select
 
 from database.database import session_factory
@@ -35,9 +37,9 @@ def update_current_balance(id, shift):
         source.current_balance = source.current_balance + shift
         session.commit()
 
-def synchronizeSources(message, scope, spreadsheetWrapper):
+def synchronizeSources(spreadsheet, scope, spreadsheetWrapper):
     with session_factory() as session:
-        spreadsheet = get_spreadsheet(message.from_user.id)
+        # spreadsheet = get_spreadsheet(message.from_user.id)
         spreadsheets_sources = spreadsheetWrapper.getValues(spreadsheet.spreadsheet_id, scope)
         tmp_sql_sources = session.scalars(select(SourcesOrm)).all()
         sql_sources = {}
@@ -45,6 +47,10 @@ def synchronizeSources(message, scope, spreadsheetWrapper):
             sql_sources[i.id] = i
 
         if "values" in spreadsheets_sources:
+            for i in range(len(copy.deepcopy(spreadsheets_sources["values"]))):
+                row = spreadsheets_sources["values"][i]
+                if len(row) != 0:
+                    spreadsheets_sources["values"][i].extend([''] * (6 - len(row)))
             result = {'result': 'error'}
             message = validate_sources_row(spreadsheets_sources)
             if message is not None:

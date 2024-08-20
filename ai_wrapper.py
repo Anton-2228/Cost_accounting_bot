@@ -1,3 +1,4 @@
+import json
 from os import getenv
 
 from langchain.agents import AgentExecutor
@@ -5,14 +6,18 @@ from langchain.prompts import ChatPromptTemplate, MessagesPlaceholder
 from langchain_core.messages import AIMessage
 from langchain_openai import ChatOpenAI
 
-from init import getSystemPrompt
+from init import getFirstPrompt, getSecondPrompt
 
 
 class AiWrapper:
-    def __init__(self):
-        system = getSystemPrompt()
-        base_agent = ChatPromptTemplate.from_messages(
-            [("system", system)]
+    def __init__(self, pr=None):
+        first = getFirstPrompt()
+        second = getSecondPrompt()
+        first_base_agent = ChatPromptTemplate.from_messages(
+            [("system", first)]
+        )
+        second_base_agent = ChatPromptTemplate.from_messages(
+            [("system", second)]
         )
 
         api_key = getenv("OPENAI_API_KEY")
@@ -22,9 +27,24 @@ class AiWrapper:
         model = getenv("OPENAI_MODEL")
         assert model is not None, "Set enviroment variable 'OPENAI_MODEL'"
 
-        model = ChatOpenAI(model=model, openai_api_key=api_key, base_url=base_url)
-        self.agent = base_agent | model
+        model = ChatOpenAI(model=model, openai_api_key=api_key, base_url=base_url, temperature=0.2)
+        self.first_agent = first_base_agent | model
+        self.second_agent = second_base_agent | model
 
-AIWRAPPER = AiWrapper()
-resp = AIWRAPPER.agent.invoke({"num": 2})
-print(resp)
+    def first_invoke_check(self, input: dict):
+        resp: AIMessage = self.first_agent.invoke(input)
+        print(resp.content)
+        try:
+            answer = json.loads(resp.content)
+        except:
+            answer = json.loads(resp.content[7:][:-3])
+        return answer
+
+    def second_invoke_check(self, input: dict):
+        resp: AIMessage = self.second_agent.invoke(input)
+        print(resp.content)
+        try:
+            answer = json.loads(resp.content)
+        except:
+            answer = json.loads(resp.content[7:][:-3])
+        return answer

@@ -44,7 +44,7 @@ class DeleteRecord(Command):
 
         values = []
         value_record = await self.commandManager.getCommands()['sync'].sync_records(spreadsheet)
-        source_value = await self.commandManager.getCommands()['sync'].sync_sour(message)
+        source_value = await self.commandManager.getCommands()['sync'].sync_sour(spreadsheet)
         total_values = await self.commandManager.getCommands()['sync'].sync_total(spreadsheet)
         values.append(value_record)
         values.append(source_value)

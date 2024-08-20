@@ -11,12 +11,12 @@ from telethon_bot import TelethonBot
 from commands import get_commands
 from database.core import create_tables
 from database.queries.spreadsheets_queries import get_all_spreadsheets, update_start_date, get_spreadsheet_by_id
-from init import createBot, createDispatcher, createRouter, States, daysUntilNextMonth, alf
+from init import States, daysUntilNextMonth, bot, telethon_bot, dp, router, get_user_state
 
-bot = createBot(os.getenv('API_TOKEN'))
-telethon_bot = TelethonBot()
-dp = createDispatcher()
-router = createRouter()
+# bot = createBot(os.getenv('API_TOKEN'))
+# telethon_bot = TelethonBot()
+# dp = createDispatcher()
+# router = createRouter() = createRouter()
 commandManager = CommandManager()
 commandManager.addCommands(get_commands(commandManager))
 
@@ -31,21 +31,21 @@ commandManager.addCommands(get_commands(commandManager))
 async def startFunc(message: Message, state: FSMContext, command: CommandObject = None):
     response = await commandManager.launchCommand('start', message, state, command)
 
-@router.message(Command('addemail'))
+@router.message(Command('addemail'), StateFilter(None))
 @router.message(States.ADD_EMAIL)
 async def addEmail(message: Message, state: FSMContext, command: CommandObject = None):
     response = await commandManager.launchCommand('addEmail', message, state, command)
 
-@router.message(Command('help'))
+@router.message(Command('help'), StateFilter(None))
 async def help(message: Message, state: FSMContext, command: CommandObject = None):
     response = await commandManager.launchCommand('help', message, state, command)
 
-@router.message(Command('sync'))
+@router.message(Command('sync'), StateFilter(None))
 @router.message(States.CORRECT_TABLE, Command('sync'))
 async def synchronize(message: Message, state: FSMContext, command: CommandObject = None):
     response = await commandManager.launchCommand('sync', message, state, command)
 
-@router.message(Command('transfer'))
+@router.message(Command('transfer'), StateFilter(None))
 async def transfer(message: Message, state: FSMContext, command: CommandObject = None):
     response = await commandManager.launchCommand('transfer', message, state, command)
 
@@ -53,22 +53,29 @@ async def transfer(message: Message, state: FSMContext, command: CommandObject =
 async def errorRecord(message: Message, state: FSMContext, command: CommandObject = None):
     await message.answer("Исправьте таблицу и синхронизируйте её")
 
-@router.message(Command('table'))
+@router.message(Command('table'), StateFilter(None))
 async def getTable(message: Message, state: FSMContext, command: CommandObject = None):
     response = await commandManager.launchCommand('table', message, state, command)
 
-@router.message(Command('del'))
+@router.message(Command('del'), StateFilter(None))
 async def deleteLastRecord(message: Message, state: FSMContext, command: CommandObject = None):
     response = await commandManager.launchCommand('del', message, state, command)
 
-@router.message(Command('deletetable'))
+@router.message(Command('deletetable'), StateFilter(None))
 @router.message(States.COMFIRM_DELETE)
 async def deleteTable(message: Message, state: FSMContext, command: CommandObject = None):
     response = await commandManager.launchCommand('deleteTable', message, state, command)
 
-@router.message(StateFilter(None))
+@router.message(Command('add'), StateFilter(None))
 async def newRecord(message: Message, state: FSMContext, command: CommandObject = None):
     response = await commandManager.launchCommand('addRecord', message, state, command)
+
+@router.message(StateFilter(None))
+@router.message(States.CONFIRM_TYPES_CHECK)
+@router.message(States.CONFIRM_CATEGORIES_CHECK)
+@router.message(States.FINISH_CHECK)
+async def newCheck(message: Message, state: FSMContext, command: CommandObject = None):
+    response = await commandManager.launchCommand('addCheck', message, state, command)
 
 async def start_polling():
     dp.include_routers(router)
@@ -114,7 +121,7 @@ async def start():
         # await telethon_bot.client.get_me()
         # await telethon_bot.start()
     # telethon_bot.client.loop.run_until_complete(telethon_bot.start())
-    await asyncio.gather(start_polling(), timer())
+    await asyncio.gather(start_polling(), timer(), telethon_bot.start())
 
 if __name__ == "__main__":
     create_tables()

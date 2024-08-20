@@ -21,22 +21,37 @@ class AddRecord(Command):
             await message.answer('Сначала создайте таблицу')
             return
 
-        spreadsheet = get_spreadsheet(message.from_user.id)
+        # args = command.args.split()
+        # amount = float(args[0])
+        # cat = args[1].lower()
+        # sour = args[2].lower()
+        # notes = ' '.join(args[3:])
 
-        categories: list[CategoriesOrm] = get_categories_by_spreadsheet(spreadsheet.id)
-        sources: list[SourcesOrm] = get_sources_by_spreadsheet(spreadsheet.id)
+        add_resuld = await self.add_record(message.from_user.id, command.args)
 
-        res = validate_records_row(message.text, categories, sources)
-        if res is not None:
-            await message.answer(res)
-            return
+        await message.answer(add_resuld['message'])
 
-        args = message.text.split()
+
+    async def add_record(self, id, row):
+        response = {}
+        args = row.split()
+
         amount = float(args[0])
         cat = args[1].lower()
         sour = args[2].lower()
         notes = ' '.join(args[3:])
 
+        spreadsheet = get_spreadsheet(id)
+
+        categories: list[CategoriesOrm] = get_categories_by_spreadsheet(spreadsheet.id)
+        sources: list[SourcesOrm] = get_sources_by_spreadsheet(spreadsheet.id)
+
+        res = validate_records_row(row, categories, sources)
+        if res is not None:
+            # await message.answer(res)
+            response["message"] = res
+            response["status"] = "error"
+            return response
 
         for i in categories:
             if cat in i.associations:
@@ -67,14 +82,20 @@ class AddRecord(Command):
         count = len(records) + 1
         values.append([str(spreadsheet.start_date), "ROWS", f"A{count}:F{count}", value])
 
-        source_value = await self.commandManager.getCommands()['sync'].sync_sour(message)
+        source_value = await self.commandManager.getCommands()['sync'].sync_sour(spreadsheet)
         total_values = await self.commandManager.getCommands()['sync'].sync_total(spreadsheet)
         values.append(source_value)
         values += total_values
 
         self.spreadsheet.setValues(spreadsheet.spreadsheet_id, values)
 
-        await message.answer(f"Сумма {args[0]}\n{typeCat} --> {category.title}\nиз {source.title}\nc пометкой: {notes}\nid:{record.id}")
+        res = f"Сумма {args[0]}\n{typeCat} --> {category.title}\nиз {source.title}\nc пометкой: {notes}\nid:{record.id}"
+        response["message"] = res
+        response["status"] = "success"
+
+        return response
+
+
+        # await message.answer(f"Сумма {args[0]}\n{typeCat} --> {category.title}\nиз {source.title}\nc пометкой: {notes}\nid:{record.id}")
 
         # await self.commandManager.getCommands()['sync'].execute(message, state, command)
-

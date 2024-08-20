@@ -3,7 +3,11 @@ import os
 
 import httplib2
 import googleapiclient.discovery
+from aiogram.client.default import DefaultBotProperties
+from aiogram.enums import ParseMode
+from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import StatesGroup, State
+from aiogram.fsm.storage.base import StorageKey
 from aiogram.fsm.storage.memory import MemoryStorage
 from dotenv import load_dotenv
 from oauth2client.service_account import ServiceAccountCredentials
@@ -13,6 +17,7 @@ from aiogram import Bot, Dispatcher, Router
 # from aiogram.contrib.middlewares.logging import LoggingMiddleware
 
 from command_manager import CommandManager
+from telethon_bot import TelethonBot
 
 # from Timer import Timer
 
@@ -24,6 +29,19 @@ credentials = ServiceAccountCredentials.from_json_keyfile_name(os.getenv('creden
                                                                     'https://www.googleapis.com/auth/drive'])
 httpAuth = credentials.authorize(httplib2.Http())
 
+storage = MemoryStorage()
+
+bot = Bot(token=os.getenv('API_TOKEN'),
+          default=DefaultBotProperties(
+              parse_mode=ParseMode.HTML
+          ))
+
+dp = Dispatcher(storage=storage)
+
+router = Router()
+
+telethon_bot = TelethonBot()
+
 class States(StatesGroup):
     # mode = HelperMode.snake_case
 
@@ -33,18 +51,28 @@ class States(StatesGroup):
     COMFIRM_DELETE = State()
     COMFIRM_CHANGE_DATE_RESET = State()
     ADD_EMAIL = State()
+    CONFIRM_TYPES_CHECK = State()
+    CONFIRM_CATEGORIES_CHECK = State()
+    FINISH_CHECK = State()
 
-def createBot(token):
-    # bot = Bot(token=Settings.API_TOKEN)
-    bot = Bot(token=token)
-    return bot
-def createDispatcher():
-    dp = Dispatcher(storage=MemoryStorage())
-    return dp
+async def get_user_state(user_id: int):
+    storage_key = StorageKey(bot_id=bot.id, chat_id=user_id, user_id=user_id)
+    context = FSMContext(storage=dp.storage, key=storage_key)
+    state = await context.get_state()
+    return state
 
-def createRouter():
-    router = Router()
-    return router
+# def createBot(token):
+#     # bot = Bot(token=Settings.API_TOKEN)
+#     bot = Bot(token=token)
+#     return bot
+
+# def createDispatcher():
+#     dp = Dispatcher(storage=storage)
+#     return dp
+
+# def createRouter():
+#     router = Router()
+#     return router
 
 def createSheetService():
     sheetService = googleapiclient.discovery.build('sheets', 'v4', http=httpAuth)
@@ -69,8 +97,13 @@ def getTemplateStatistics():
         templateStatistics = json.load(file)
     return templateStatistics
 
-def getSystemPrompt():
-    with open('datafiles/prompts/system.txt', 'r') as file:
+def getFirstPrompt():
+    with open('datafiles/prompts/first.txt', 'r') as file:
+        prompt = file.read()
+    return prompt
+
+def getSecondPrompt():
+    with open('datafiles/prompts/second.txt', 'r') as file:
         prompt = file.read()
     return prompt
 
