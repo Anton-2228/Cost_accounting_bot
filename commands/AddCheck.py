@@ -27,26 +27,8 @@ class AddCheck(Command):
         if cur_state == None:
             self.temp_data[message.from_user.id] = {}
             self.temp_data[message.from_user.id]["check"] = message.text
-
-            input = await self.create_first_input(message, spreadsheet)
-
-            answer = self.ai_wrapper.first_invoke_check(input)
-            # print(answer)
-
-            records = {}
-            for x, i in enumerate(answer):
-                record = i
-                record[2] = record[2].lower()
-                record[3] = record[3].lower()
-                records[x+1] = record
-
-            self.temp_data[message.from_user.id]["records"] = records
-
-            output = await self.create_output_for_types(spreadsheet.id, message.from_user.id)
-            await message.answer(output)
-
+            await self.preparing_first_stage(message, spreadsheet)
             await message.answer("Правильно ли модель распределила типы по товарам?\n\nЕсли нет, то напишите через запятую номера товаров, тире, тип, который хотите дать этим товарам. С новой строки можете писать сколько угодно таких правок.\n\nЕсли да, то напишите 'Да'")
-
             await state.set_state(States.CONFIRM_TYPES_CHECK)
 
         elif cur_state == States.CONFIRM_TYPES_CHECK:
@@ -56,7 +38,6 @@ class AddCheck(Command):
                     if records[id][2] == "":
                         records[id][2] = records[id][3]
                 await state.set_state(States.CONFIRM_CATEGORIES_CHECK)
-                print(self.temp_data[message.from_user.id]["records"])
             elif message.text == "/cancel":
                 await message.answer("Отмена успешна")
                 await state.clear()
@@ -76,7 +57,6 @@ class AddCheck(Command):
 
                 output = await self.create_output_for_types(spreadsheet.id, message.from_user.id)
                 await message.answer(output)
-
                 await message.answer("Правильно ли модель распределила типы по товарам?\n\nЕсли нет, то напишите через запятую номера товаров, тире, тип, который хотите дать этим товарам. С новой строки можете писать сколько угодно таких правок.\n\nЕсли да, то напишите 'Да'")
 
         elif cur_state == States.CONFIRM_CATEGORIES_CHECK:
