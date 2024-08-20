@@ -45,12 +45,16 @@ class AddCheck(Command):
             output = await self.create_output_for_types(spreadsheet.id, message.from_user.id)
             await message.answer(output)
 
-            await message.answer("Правильно ли модель распределила типы по товарам?\n\nЕсли нет, то напишите через пробел номера товаров, тире, тип, который хотите дать этим товарам. С новой строки можете писать сколько угодно таких правок.\n\nЕсли да, то напишите 'Да'")
+            await message.answer("Правильно ли модель распределила типы по товарам?\n\nЕсли нет, то напишите через запятую номера товаров, тире, тип, который хотите дать этим товарам. С новой строки можете писать сколько угодно таких правок.\n\nЕсли да, то напишите 'Да'")
 
             await state.set_state(States.CONFIRM_TYPES_CHECK)
 
         elif cur_state == States.CONFIRM_TYPES_CHECK:
             if message.text.lower() == "да":
+                records = self.temp_data[message.from_user.id]["records"]
+                for id in records:
+                    if records[id][2] == "":
+                        records[id][2] = records[id][3]
                 await state.set_state(States.CONFIRM_CATEGORIES_CHECK)
                 print(self.temp_data[message.from_user.id]["records"])
             elif message.text == "/cancel":
@@ -63,16 +67,12 @@ class AddCheck(Command):
                     ids, type = line.split("-")
                     ids = ids.strip()
                     type = type.strip().lower()
-                    ids = [int(i.strip()) for i in ids]
+                    ids = [int(i.strip()) for i in ids.split(',')]
                     for id in ids:
                         if id in records:
                             records[id][2] = type
                         else:
                             await message.answer("Указан несуществующий id")
-
-                for id in records:
-                    if records[id][2] == "":
-                        records[id][2] = records[id][3]
 
                 output = await self.create_output_for_types(spreadsheet.id, message.from_user.id)
                 await message.answer(output)
