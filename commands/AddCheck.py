@@ -12,7 +12,7 @@ from database.queries.categories_queries import get_categories_by_spreadsheet
 from database.queries.sources_queries import get_sources_by_spreadsheet
 from database.queries.spreadsheets_queries import get_spreadsheet
 from init import States
-from validation import validate_check_enter
+from validation import validate_check_enter, validate_types_input, validate_categories_input
 
 
 class AddCheck(Command):
@@ -23,11 +23,10 @@ class AddCheck(Command):
 
     async def execute(self, message: Message, state: FSMContext, command: CommandObject):
         cur_state = await state.get_state()
-        spreadsheet = get_spreadsheet(message.from_user.id)
         if cur_state == None:
             self.temp_data[message.from_user.id] = {}
             self.temp_data[message.from_user.id]["check"] = message.text
-            await self.preparing_first_stage(message, spreadsheet)
+            await self.preparing_first_stage(message)
             await message.answer("Правильно ли модель распределила типы по товарам?\n\nЕсли нет, то напишите через запятую номера товаров, тире, тип, который хотите дать этим товарам. С новой строки можете писать сколько угодно таких правок.\n\nЕсли да, то напишите 'Да'")
             await state.set_state(States.CONFIRM_TYPES_CHECK)
 
@@ -37,65 +36,103 @@ class AddCheck(Command):
                 for id in records:
                     if records[id][2] == "":
                         records[id][2] = records[id][3]
-                await self.preparing_second_stage(message, spreadsheet)
-                await message.answer("")
+                await self.preparing_second_stage(message)
+                await message.answer("Правильно ли модель распределила категории по товарам?\n\nЕсли нет, то напишите через запятую номера товаров, тире, категорию(или её ассоциацию), которую хотите дать этим товарам. С новой строки можете писать сколько угодно таких правок.\n\nЕсли да, то напишите 'Да'")
                 await state.set_state(States.CONFIRM_CATEGORIES_CHECK)
             elif message.text == "/cancel":
                 await message.answer("Отмена успешна")
                 await state.clear()
             else:
-                row = message.text
-                records = self.temp_data[message.from_user.id]["records"]
-                for line in row.split("\n"):
-                    ids, type = line.split("-")
-                    ids = ids.strip()
-                    type = type.strip().lower()
-                    ids = [int(i.strip()) for i in ids.split(',')]
-                    for id in ids:
-                        if id in records:
-                            records[id][2] = type
-                        else:
-                            await message.answer("Указан несуществующий id")
-
-                output = await self.create_output_for_types(spreadsheet.id, message.from_user.id)
-                await message.answer(output)
-                await message.answer("Правильно ли модель распределила типы по товарам?\n\nЕсли нет, то напишите через запятую номера товаров, тире, тип, который хотите дать этим товарам. С новой строки можете писать сколько угодно таких правок.\n\nЕсли да, то напишите 'Да'")
+                await self.first_stage(message)
 
         elif cur_state == States.CONFIRM_CATEGORIES_CHECK:
             if message.text.lower() == "да":
+                await message.answer("Напишите источник, с которого произведена трата")
                 await state.set_state(States.FINISH_CHECK)
             elif message.text == "/cancel":
                 await message.answer("Отмена успешна")
                 await state.clear()
             else:
-                pass
+                await self.second_stage(message)
 
-                # record_source = message.text.split()[0].lower()
-                # notes = ' '.join(message.text.split()[1:])
-                # sources: list[SourcesOrm] = get_sources_by_spreadsheet(spreadsheet.id)
-                # err_message = validate_check_enter(record_source, sources)
-                # if err_message != None:
-                #     await message.answer(err_message)
-                #     return
-                # # for i in sources:
-                # #     if record_source in i.associations:
-                # #         source = i
-                #
-                # print(self.temp_data[message.from_user.id]["records"])
-                # for record_category in self.temp_data[message.from_user.id]["records"]:
-                #     for row_record in self.temp_data[message.from_user.id]["records"][record_category]:
-                #         # row_record = self.temp_data[message.from_user.id]["records"][record_category]
-                #         print(row_record)
-                #         print(record_source)
-                #         record = f"{row_record[0]} {record_category} {record_source} {row_record[1]}"
-                #         if notes != "":
-                #             record += f"; {notes}"
-                #         await self.commandManager.getCommands()['addRecord'].add_record(message.from_user.id, record)
-                #
-                # await message.answer("Траты успешно добавлены")
-                # await state.clear()
+        elif cur_state == States.FINISH_CHECK:
+            if message.text == '/cancel':
+                await message.answer("Отмена успешна")
+                await state.clear()
+            else:
+                await self.third_stage(message)
+                await state.clear()
 
-    async def preparing_first_stage(self, message: Message, spreadsheet):
+    async def first_stage(self, message: Message):
+        spreadsheet = get_spreadsheet(message.from_user.id)
+        row = message.text
+        records = self.temp_data[message.from_user.id]["records"]
+        err_message = validate_types_input(row, records)
+        if err_message:
+            await message.answer(err_message)
+            return
+        for line in row.split("\n"):
+            ids, category_row = line.split("-")
+            ids = ids.strip()
+            category_row = category_row.strip().lower()
+            ids = [int(i.strip()) for i in ids.split(',')]
+            for id in ids:
+                if id in records:
+                    records[id][2] = category_row
+                else:
+                    await message.answer("Указан несуществующий id")
+
+        output = await self.create_output_for_types(spreadsheet.id, message.from_user.id)
+        await message.answer(output)
+        await message.answer(
+            "Правильно ли модель распределила типы по товарам?\n\nЕсли нет, то напишите через запятую номера товаров, тире, тип, который хотите дать этим товарам. С новой строки можете писать сколько угодно таких правок.\n\nЕсли да, то напишите 'Да'")
+
+    async def second_stage(self, message: Message):
+        spreadsheet = get_spreadsheet(message.from_user.id)
+        row = message.text
+        categories: list[CategoriesOrm] = get_categories_by_spreadsheet(spreadsheet.id)
+        records = self.temp_data[message.from_user.id]["records"]
+        err_message = validate_categories_input(row, records, categories)
+        if err_message:
+            await message.answer(err_message)
+            return
+        for line in row.split("\n"):
+            ids, category_row = line.split("-")
+            ids = ids.strip()
+            category_row = category_row.strip().lower()
+            ids = [int(i.strip()) for i in ids.split(',')]
+            for id in ids:
+                if id in records:
+                    for i in categories:
+                        if category_row in i.associations:
+                            records[id][4] = i.title
+                else:
+                    await message.answer("Указан несуществующий id")
+        model_record_ids = self.temp_data[message.from_user.id]["model_record_ids"]
+        output = await self.create_output_for_categories(message.from_user.id, categories, model_record_ids)
+        await message.answer(output)
+        await message.answer(
+            "Правильно ли модель распределила категории по товарам?\n\nЕсли нет, то напишите через запятую номера товаров, тире, категорию(или её ассоциацию), которую хотите дать этим товарам. С новой строки можете писать сколько угодно таких правок.\n\nЕсли да, то напишите 'Да'")
+
+    async def third_stage(self, message: Message):
+        spreadsheet = get_spreadsheet(message.from_user.id)
+        record_source = message.text.lower()
+        sources: list[SourcesOrm] = get_sources_by_spreadsheet(spreadsheet.id)
+        err_message = validate_check_enter(record_source, sources)
+        if err_message != None:
+            await message.answer(err_message)
+            return
+
+        records = self.temp_data[message.from_user.id]["records"]
+        for id in records:
+            record = records[id]
+            add_record = f"{record[1]} {record[4]} {record_source} {record[2]}"
+            await self.commandManager.getCommands()['addRecord'].add_record(message.from_user.id, add_record)
+
+        await message.answer("Траты успешно добавлены")
+
+    async def preparing_first_stage(self, message: Message):
+        spreadsheet = get_spreadsheet(message.from_user.id)
         input = await self.create_first_input(message, spreadsheet)
 
         answer = self.ai_wrapper.first_invoke_check(input)
@@ -113,7 +150,8 @@ class AddCheck(Command):
         output = await self.create_output_for_types(spreadsheet.id, message.from_user.id)
         await message.answer(output)
 
-    async def preparing_second_stage(self, message: Message, spreadsheet):
+    async def preparing_second_stage(self, message: Message):
+        spreadsheet = get_spreadsheet(message.from_user.id)
         records = self.temp_data[message.from_user.id]["records"]
         categories: list[CategoriesOrm] = get_categories_by_spreadsheet(spreadsheet.id)
         product_types = await self.get_product_types(categories)
@@ -131,6 +169,7 @@ class AddCheck(Command):
         for i in answer:
             records[i[0]].append(i[1])
         model_record_ids = [x[0] for x in answer]
+        self.temp_data[message.from_user.id]["model_record_ids"] = model_record_ids
 
         output = await self.create_output_for_categories(message.from_user.id, categories, model_record_ids)
         await message.answer(output)

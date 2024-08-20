@@ -115,3 +115,33 @@ def validate_check_enter(row, sources:list[SourcesOrm]):
     sources_associations = [association.lower() for source in sources for association in source.associations]
     if row.lower() not in sources_associations:
         return "Источника нет, либо он выключен"
+
+def validate_types_input(row, records):
+    try:
+        for line in row.split("\n"):
+            ids, category_row = line.split("-")
+            ids = ids.strip()
+            category_row = category_row.strip().lower()
+            ids = [int(i.strip()) for i in ids.split(',')]
+            for id in ids:
+                if id not in records:
+                    return "Указан несуществующий id"
+    except:
+        return "Странный ввод"
+
+def validate_categories_input(row, records, categories):
+    categories_associations = [association.lower() for category in categories for association in category.associations]
+    try:
+        for line in row.split("\n"):
+            ids, category_row = line.split("-")
+            ids = ids.strip()
+            category_row = category_row.strip().lower()
+            ids = [int(i.strip()) for i in ids.split(',')]
+            for id in ids:
+                if id not in records:
+                    return "Указан несуществующий id"
+                else:
+                    if category_row not in categories_associations:
+                        return "Указана категория, которой нет, либо она выключена"
+    except:
+        return "Странный ввод"
