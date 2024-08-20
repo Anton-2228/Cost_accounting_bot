@@ -37,6 +37,8 @@ class AddCheck(Command):
                 for id in records:
                     if records[id][2] == "":
                         records[id][2] = records[id][3]
+                await self.preparing_second_stage(message, spreadsheet)
+                await message.answer("")
                 await state.set_state(States.CONFIRM_CATEGORIES_CHECK)
             elif message.text == "/cancel":
                 await message.answer("Отмена успешна")
@@ -67,6 +69,7 @@ class AddCheck(Command):
                 await state.clear()
             else:
                 pass
+
                 # record_source = message.text.split()[0].lower()
                 # notes = ' '.join(message.text.split()[1:])
                 # sources: list[SourcesOrm] = get_sources_by_spreadsheet(spreadsheet.id)
@@ -92,41 +95,87 @@ class AddCheck(Command):
                 # await message.answer("Траты успешно добавлены")
                 # await state.clear()
 
+    async def preparing_first_stage(self, message: Message, spreadsheet):
+        input = await self.create_first_input(message, spreadsheet)
+
+        answer = self.ai_wrapper.first_invoke_check(input)
+        # print(answer)
+
+        records = {}
+        for x, i in enumerate(answer):
+            record = i
+            record[2] = record[2].lower()
+            record[3] = record[3].lower()
+            records[x + 1] = record
+
+        self.temp_data[message.from_user.id]["records"] = records
+
+        output = await self.create_output_for_types(spreadsheet.id, message.from_user.id)
+        await message.answer(output)
+
+    async def preparing_second_stage(self, message: Message, spreadsheet):
+        records = self.temp_data[message.from_user.id]["records"]
+        categories: list[CategoriesOrm] = get_categories_by_spreadsheet(spreadsheet.id)
+        product_types = await self.get_product_types(categories)
+        model_records = {}
+        for id in records:
+            record = records[id]
+            if record[2] not in product_types:
+                model_records[id] = record
+            else:
+                for category in categories:
+                    if record[2] in category.product_types:
+                        records[id].append(category.title)
+        input = await self.create_second_input(categories, model_records)
+        answer = self.ai_wrapper.second_invoke_check(input)
+        for i in answer:
+            records[i[0]].append(i[1])
+        model_record_ids = [x[0] for x in answer]
+
+        output = await self.create_output_for_categories(message.from_user.id, categories, model_record_ids)
+        await message.answer(output)
+
+
     async def create_first_input(self, message: Message, spreadsheet):
         input = {}
 
-        types_input = await self.types_input(spreadsheet)
-        input["types"] = types_input
+        categories: list[CategoriesOrm] = get_categories_by_spreadsheet(spreadsheet.id)
+
+        product_types = await self.get_product_types(categories)
+
+        input["types"] = ', '.join(product_types)
         input["check"] = self.temp_data[message.from_user.id]["check"]
 
         return input
 
-    async def types_input(self, spreadsheet):
-        categories: list[CategoriesOrm] = get_categories_by_spreadsheet(spreadsheet.id)
+    async def get_product_types(self, categories):
         types = []
         for category in categories:
             if category.type == CategoriesTypes.COST:
                 types += category.product_types
-        return ', '.join(types)
+        return types
 
-    async def create_second_input(self, message: Message, spreadsheet):
+    async def create_second_input(self, categories, model_records):
         input = {}
 
-        category_input = await self.category_input(spreadsheet)
-        input["categories"] = category_input
-        input["check"] = self.temp_data[message.from_user.id]["check"]
+        input["categories"] = await self.get_category_titles(categories)
+        input["products"] = await self.product_input(model_records)
 
         return input
 
-    async def category_input(self, spreadsheet):
-        categories: list[CategoriesOrm] = get_categories_by_spreadsheet(spreadsheet.id)
-
-        input = ""
+    async def get_category_titles(self, categories):
+        input = []
         for category in categories:
-            input += (f"Название: {category.title}\n"
-                      f"Ассоциации: {category.associations}\n"
-                      f"Описание: {category.description}\n\n")
+            input.append(category.title)
+        return input
 
+    async def product_input(self, model_records):
+        input = []
+        for id in model_records:
+            record = model_records[id]
+            input.append({"id": id,
+                          "title": record[0],
+                          "type": record[2]})
         return input
 
     async def create_output_for_types(self, spreadsheet_id, user_id):
@@ -147,4 +196,23 @@ class AddCheck(Command):
                     output += f'    <b>{product[2].upper()}</b>\n'
             else:
                 output += f'    <b>{product[3].upper()}</b>\n'
+        return output
+
+    async def create_output_for_categories(self, user_id, categories, model_record_ids):
+        category_titles = await self.get_category_titles(categories)
+        records = self.temp_data[user_id]["records"]
+        output = ""
+        for id in records:
+            record = records[id]
+            if id not in model_record_ids:
+                output += (f'{record[0]}\n'
+                           f'   <b>{record[4]}</b>\n')
+        output += '\n'
+        for id in model_record_ids:
+            record = records[id]
+            output += f'{id}) {record[0]}\n'
+            if record[4] in category_titles:
+                output += f'    <b>{record[4]}</b>\n'
+            else:
+                output += f'    <b>{record[4].upper()}</b>\n'
         return output
