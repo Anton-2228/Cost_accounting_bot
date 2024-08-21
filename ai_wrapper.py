@@ -7,6 +7,7 @@ from langchain_core.messages import AIMessage
 from langchain_openai import ChatOpenAI
 
 from init import getFirstPrompt, getSecondPrompt
+from utils import parsing_model_json_response
 
 
 class AiWrapper:
@@ -34,17 +35,12 @@ class AiWrapper:
     def first_invoke_check(self, input: dict):
         resp: AIMessage = self.first_agent.invoke(input)
         print(resp.content)
-        try:
-            answer = json.loads(resp.content)
-        except:
-            answer = json.loads(resp.content[7:][:-3])
+        resp: AIMessage = self.second_agent.invoke(input)
+        answer = parsing_model_json_response(resp.content)
         return answer
 
     def second_invoke_check(self, input: dict):
         resp: AIMessage = self.second_agent.invoke(input)
         print(resp.content)
-        try:
-            answer = json.loads(resp.content)
-        except:
-            answer = json.loads(resp.content[7:][:-3])
+        answer = parsing_model_json_response(resp.content)
         return answer

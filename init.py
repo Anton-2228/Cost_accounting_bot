@@ -16,8 +16,7 @@ from aiogram import Bot, Dispatcher, Router
 # from aiogram.contrib.fsm_storage.memory import MemoryStorage
 # from aiogram.contrib.middlewares.logging import LoggingMiddleware
 
-from command_manager import CommandManager
-from telethon_bot import TelethonBot
+from check_wrapper.telethon_bot import TelethonBot
 
 # from Timer import Timer
 

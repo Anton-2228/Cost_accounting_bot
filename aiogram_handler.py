@@ -1,5 +1,4 @@
 import datetime
-import os
 
 import asyncio
 from aiogram.filters import Command, StateFilter, CommandObject
@@ -7,11 +6,10 @@ from aiogram.fsm.context import FSMContext
 from aiogram.types import Message
 
 from command_manager import CommandManager
-from telethon_bot import TelethonBot
 from commands import get_commands
 from database.core import create_tables
 from database.queries.spreadsheets_queries import get_all_spreadsheets, update_start_date, get_spreadsheet_by_id
-from init import States, daysUntilNextMonth, bot, telethon_bot, dp, router, get_user_state
+from init import States, daysUntilNextMonth, bot, telethon_bot, dp, router
 
 # bot = createBot(os.getenv('API_TOKEN'))
 # telethon_bot = TelethonBot()

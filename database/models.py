@@ -2,7 +2,7 @@ import datetime
 from enum import Enum
 from typing import List
 
-from sqlalchemy import MetaData, Column, Table, Integer, String, ForeignKey, text
+from sqlalchemy import MetaData, Column, Table, Integer, String, ForeignKey, text, BigInteger
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 from sqlalchemy.dialects.postgresql import ENUM as PgEnum, ARRAY
 
@@ -21,7 +21,7 @@ class UsersOrm(Base):
     __tablename__ = "users"
 
     id: Mapped[int] = mapped_column(primary_key=True)
-    telegram_id: Mapped[int]
+    telegram_id: Mapped[int] = mapped_column(BigInteger)
     spreadsheet_id: Mapped[str] = mapped_column(ForeignKey("spreadsheets.id", ondelete="SET NULL"), nullable=True)
 
 class SpreadSheetsOrm(Base):
