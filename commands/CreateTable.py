@@ -6,6 +6,7 @@ from aiogram.fsm.context import FSMContext
 from aiogram.types import Message
 
 from commands.Command import Command
+from commands.utils.utils import check_spreadsheet_exist
 from database.queries.spreadsheets_queries import create, get_spreadsheet
 from database.queries.users_queries import create_user
 from init import States, daysUntilNextMonth
@@ -17,9 +18,8 @@ class CreateTable(Command):
         self.temp_data = {}
 
     async def execute(self, message: Message, state: FSMContext, command: CommandObject):
-        # spreadsheet = get_spreadsheet(message.from_user.id)
-        # if spreadsheet != None:
-        #     await message.answer('Таблица уже создана')
+        # resp = await check_spreadsheet_exist(message)
+        # if resp == 'error':
         #     return
 
         cur_state = await state.get_state()

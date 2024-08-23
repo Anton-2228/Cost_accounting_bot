@@ -1,7 +1,7 @@
 import datetime
 
-from spreadsheet_set_styles import SpreadSheetSetStyler
 from init import createSheetService, createDriveService, getTemplateTitle, getTemplateOperations, getTemplateStatistics
+from spreadsheet_wrapper.spreadsheet_set_styles import SpreadSheetSetStyler
 
 
 class Spreadsheet:

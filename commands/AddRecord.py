@@ -21,11 +21,11 @@ class AddRecord(Command):
             await message.answer('Сначала создайте таблицу')
             return
 
-        # args = command.args.split()
-        # amount = float(args[0])
-        # cat = args[1].lower()
-        # sour = args[2].lower()
-        # notes = ' '.join(args[3:])
+        args = command.args.split()
+        amount = float(args[0])
+        cat = args[1].lower()
+        sour = args[2].lower()
+        notes = ' '.join(args[3:])
 
         add_resuld = await self.add_record(message.from_user.id, command.args)
 

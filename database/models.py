@@ -76,6 +76,8 @@ class RecordsOrm(Base):
     category: Mapped[int] = mapped_column(ForeignKey("categories.id", ondelete="SET NULL"))
     notes: Mapped[str]
     source: Mapped[int] = mapped_column(ForeignKey("sources.id", ondelete="SET NULL"))
+    product_name: Mapped[str] = mapped_column(nullable=True)
+    check_json: Mapped[str] = mapped_column(nullable=True)
 
 # metadata = MetaData()
 

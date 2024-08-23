@@ -9,6 +9,7 @@ from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import StatesGroup, State
 from aiogram.fsm.storage.base import StorageKey
 from aiogram.fsm.storage.memory import MemoryStorage
+from aiogram.types import BotCommand
 from dotenv import load_dotenv
 from oauth2client.service_account import ServiceAccountCredentials
 
@@ -54,6 +55,18 @@ class States(StatesGroup):
     CONFIRM_CATEGORIES_CHECK = State()
     FINISH_CHECK = State()
 
+COMMANDS = [
+    BotCommand(command="del", description="Удаление указанной записи(либо последней)"),
+    BotCommand(command="sync", description="Синхронизация таблицы и бота"),
+    BotCommand(command="table", description="Получить ссылку на таблицу"),
+    BotCommand(command="addemail", description="Привязать новой почты"),
+    BotCommand(command="help", description="Вывести подсказку по боту"),
+    BotCommand(command="deletetable", description="Удаление таблицы"),
+    BotCommand(command="start", description="Создание новой таблицы"),
+    BotCommand(command="transfer", description="Перевод денег со счета на счет"),
+    BotCommand(command="add", description="Добавление новой записи в таблицу")
+]
+
 async def get_user_state(user_id: int):
     storage_key = StorageKey(bot_id=bot.id, chat_id=user_id, user_id=user_id)
     context = FSMContext(storage=dp.storage, key=storage_key)
@@ -97,12 +110,17 @@ def getTemplateStatistics():
     return templateStatistics
 
 def getFirstPrompt():
-    with open('datafiles/prompts/first.txt', 'r') as file:
+    with open('datafiles/prompts/get_TYPES_for_check_SYSTEM_prompt.txt', 'r') as file:
         prompt = file.read()
     return prompt
 
 def getSecondPrompt():
-    with open('datafiles/prompts/second.txt', 'r') as file:
+    with open('datafiles/prompts/get_CATEGORIES_for_check_SYSTEM_prompt.txt', 'r') as file:
+        prompt = file.read()
+    return prompt
+
+def getCredentialsCheckPrompt():
+    with open('datafiles/prompts/get_credentials_check_prompt.txt', 'r') as file:
         prompt = file.read()
     return prompt
 

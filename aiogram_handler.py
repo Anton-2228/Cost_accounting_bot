@@ -9,7 +9,7 @@ from command_manager import CommandManager
 from commands import get_commands
 from database.core import create_tables
 from database.queries.spreadsheets_queries import get_all_spreadsheets, update_start_date, get_spreadsheet_by_id
-from init import States, daysUntilNextMonth, bot, telethon_bot, dp, router
+from init import States, daysUntilNextMonth, bot, telethon_bot, dp, router, COMMANDS
 
 # bot = createBot(os.getenv('API_TOKEN'))
 # telethon_bot = TelethonBot()
@@ -76,6 +76,7 @@ async def newCheck(message: Message, state: FSMContext, command: CommandObject =
     response = await commandManager.launchCommand('addCheck', message, state, command)
 
 async def start_polling():
+    await bot.set_my_commands(commands=COMMANDS)
     dp.include_routers(router)
     await dp.start_polling(bot)
 

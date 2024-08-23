@@ -3,13 +3,13 @@ from aiogram.fsm.context import FSMContext
 from aiogram.types import Message
 
 from commands.Command import Command
+from datafiles import HELP
 
 
 class GetHelp(Command):
     def __init__(self, command_manager):
         super().__init__(command_manager)
-        with open('datafiles/help.txt', 'r', encoding='utf-8') as file:
-            self.help = file.read()
+        self.help = HELP
 
     async def execute(self, message: Message, state: FSMContext, command: CommandObject):
         await message.answer(self.help)
