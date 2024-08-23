@@ -9,4 +9,4 @@ GET_CATEGORIES_FOR_CHECK_USER_PROMPT = (Path(__file__).parent / "prompts/get_CAT
 FIRST_STAGE_ADD_CHECK_MESSAGE = (Path(__file__).parent / "messages/first_stage_add_check_message.txt").read_text()
 SECOND_STAGE_ADD_CHECK_MESSAGE = (Path(__file__).parent / "messages/second_stage_add_check_message.txt").read_text()
 FINISH_STAGE_ADD_CHECK_MESSAGE = (Path(__file__).parent / "messages/finish_stage_add_check_message.txt").read_text()
-HELP = (Path(__file__).parent / "messages/help.txt").read_text()
+HELP_MESSAGE = (Path(__file__).parent / "messages/help_message.txt").read_text()
