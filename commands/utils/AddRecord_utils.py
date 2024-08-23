@@ -73,7 +73,6 @@ async def add_record(data: dict, spreadsheet: SpreadSheetsOrm, commandManager: C
     check_json = data['check_json']
 
     if category.type == CategoriesTypes.INCOME:
-        typeCat = 'доход'
         update_current_balance(source.id, amount)
         record = create_record(spreadsheet_id=spreadsheet.id,
                                amount=amount,
@@ -83,7 +82,6 @@ async def add_record(data: dict, spreadsheet: SpreadSheetsOrm, commandManager: C
                                name=name,
                                check_json=check_json)
     elif category.type == CategoriesTypes.COST:
-        typeCat = 'расход'
         update_current_balance(source.id, -amount)
         record = create_record(spreadsheet_id=spreadsheet.id,
                                amount=-amount,
