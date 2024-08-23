@@ -1,4 +1,5 @@
 from command_manager import CommandManager
+from commands.utils.utils import category_by_association, source_by_association
 from database.models import CategoriesOrm, SourcesOrm, CategoriesTypes, SpreadSheetsOrm
 from database.queries.records_queries import create_record, get_records_by_current_month
 from database.queries.sources_queries import update_current_balance
@@ -49,28 +50,13 @@ def parse_records_row(row, categories:list[CategoriesOrm], sources:list[SourcesO
 
     return response
 
-
-def category_by_association(row_category: str, categories:list[CategoriesOrm]) -> CategoriesOrm:
-    category = None
-    for cur_category in categories:
-        if row_category in cur_category.associations:
-            category = cur_category
-    return category
-
-def source_by_association(row_source: str, sources:list[SourcesOrm]) -> SourcesOrm:
-    source = None
-    for cur_source in sources:
-        if row_source in cur_source.associations:
-            source = cur_source
-    return source
-
 async def add_record(data: dict, spreadsheet: SpreadSheetsOrm, commandManager: CommandManager, spreadsheetWrapper: SpreadsheetWrapper) -> int:
-    amount = data['amount']
-    category = data['category']
-    source = data['source']
-    notes = data['notes']
-    name = data['name']
-    check_json = data['check_json']
+    amount: float = data['amount']
+    category: CategoriesOrm = data['category']
+    source: SourcesOrm = data['source']
+    notes: str = data['notes']
+    name: str = data['name']
+    check_json: str = data['check_json']
 
     if category.type == CategoriesTypes.INCOME:
         update_current_balance(source.id, amount)

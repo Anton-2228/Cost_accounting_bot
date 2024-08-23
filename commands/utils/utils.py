@@ -1,8 +1,24 @@
 from aiogram.types import Message
 
+from database.models import CategoriesOrm, SourcesOrm
 from database.queries.spreadsheets_queries import get_spreadsheet
 from database.queries.users_queries import get_user
 
+def category_by_association(row_category: str, categories:list[CategoriesOrm]) -> CategoriesOrm:
+    row_category = row_category.lower()
+    category = None
+    for cur_category in categories:
+        if row_category in cur_category.associations:
+            category = cur_category
+    return category
+
+def source_by_association(row_source: str, sources:list[SourcesOrm]) -> SourcesOrm:
+    row_source.lower()
+    source = None
+    for cur_source in sources:
+        if row_source in cur_source.associations:
+            source = cur_source
+    return source
 
 async def check_user_exist(message: Message):
     user = get_user(message.from_user.id)
