@@ -1,0 +1,5 @@
+Сумма {amount}
+{typeCat} --> {category}
+из {source}
+c пометкой: {notes}
+id:{id}
