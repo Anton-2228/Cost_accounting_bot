@@ -43,6 +43,6 @@ class Transfer(Command):
         values = []
         source_value = await self.commandManager.getCommands()['sync'].sync_sour(spreadsheet)
         values.append(source_value)
-        self.spreadsheet.setValues(spreadsheet.spreadsheet_id, values)
+        self.spreadsheetWrapper.setValues(spreadsheet.spreadsheet_id, values)
 
         await message.answer("Перевод успешен")

@@ -89,7 +89,7 @@ async def timer():
             # today = datetime.datetime.now(tz=tz).date()
             today = datetime.date.today()
             if today == end_date:
-                spreadsheetWrapper = commandManager.getCommands()['help'].spreadsheet
+                spreadsheetWrapper = commandManager.getCommands()['help'].spreadsheetWrapper
                 update_start_date(i.id, end_date)
                 spreadsheet = get_spreadsheet_by_id(i.id)
                 response = spreadsheetWrapper.addNewOperationsSheet(spreadsheet.spreadsheet_id,

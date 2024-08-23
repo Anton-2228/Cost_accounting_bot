@@ -4,7 +4,7 @@ from init import createSheetService, createDriveService, getTemplateTitle, getTe
 from spreadsheet_wrapper.spreadsheet_set_styles import SpreadSheetSetStyler
 
 
-class Spreadsheet:
+class SpreadsheetWrapper:
     def __init__(self):
         self.sheetService = createSheetService()
         self.driveService = createDriveService()

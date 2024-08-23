@@ -58,12 +58,12 @@ class CreateTable(Command):
                     title = self.temp_data[message.from_user.id]['title']
                     gmail = self.temp_data[message.from_user.id]['gmail']
 
-                    spreadsheetID = self.spreadsheet.createTable(title, gmail)
-                    response = self.spreadsheet.addNewOperationsSheet(spreadsheetID,
-                                                                      start_date)
-                    response = self.spreadsheet.addNewStatisticsSheet(spreadsheetID,
-                                                                      start_date,
-                                                                      daysUntilNextMonth[start_date.month])
+                    spreadsheetID = self.spreadsheetWrapper.createTable(title, gmail)
+                    response = self.spreadsheetWrapper.addNewOperationsSheet(spreadsheetID,
+                                                                             start_date)
+                    response = self.spreadsheetWrapper.addNewStatisticsSheet(spreadsheetID,
+                                                                             start_date,
+                                                                             daysUntilNextMonth[start_date.month])
 
                     print(f"https://docs.google.com/spreadsheets/d/{spreadsheetID}/")
                     id = create(gmail=[gmail], spreadsheet_id=spreadsheetID, start_date=start_date)

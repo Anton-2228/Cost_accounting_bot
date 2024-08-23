@@ -37,19 +37,19 @@ class Synchronize(Command):
             values = []
             values.append(category_value)
             values += total_values
-            self.spreadsheet.cleanValues(spreadsheet.spreadsheet_id, 'Categories!A2:G100000')
-            self.spreadsheet.cleanValues(spreadsheet.spreadsheet_id,
+            self.spreadsheetWrapper.cleanValues(spreadsheet.spreadsheet_id, 'Categories!A2:G100000')
+            self.spreadsheetWrapper.cleanValues(spreadsheet.spreadsheet_id,
                                          f'{"Stat. " + str(spreadsheet.start_date)}!'
                                          f'A2:{alf[daysUntilNextMonth[spreadsheet.start_date.month]]}100000')
 
-            self.spreadsheet.setValues(spreadsheet.spreadsheet_id, values)
+            self.spreadsheetWrapper.setValues(spreadsheet.spreadsheet_id, values)
 
-            sheets = self.spreadsheet.getSheets(spreadsheet.spreadsheet_id)
-            self.spreadsheet.spreadSheetSetStyler.setStyleTotalLists(spreadsheet.spreadsheet_id,
-                                                                     sheets["Stat. " + str(spreadsheet.start_date)],
-                                                                     daysUntilNextMonth[spreadsheet.start_date.month],
-                                                                     total_values[0][-1],
-                                                                     total_values[1][-1])
+            sheets = self.spreadsheetWrapper.getSheets(spreadsheet.spreadsheet_id)
+            self.spreadsheetWrapper.spreadSheetSetStyler.setStyleTotalLists(spreadsheet.spreadsheet_id,
+                                                                            sheets["Stat. " + str(spreadsheet.start_date)],
+                                                                            daysUntilNextMonth[spreadsheet.start_date.month],
+                                                                            total_values[0][-1],
+                                                                            total_values[1][-1])
 
         if isinstance(source_value, str):
             await message.answer(source_value)
@@ -58,15 +58,15 @@ class Synchronize(Command):
         else:
             values = []
             values.append(source_value)
-            self.spreadsheet.cleanValues(spreadsheet.spreadsheet_id, 'Bills!A2:F100000')
-            self.spreadsheet.setValues(spreadsheet.spreadsheet_id, values)
+            self.spreadsheetWrapper.cleanValues(spreadsheet.spreadsheet_id, 'Bills!A2:F100000')
+            self.spreadsheetWrapper.setValues(spreadsheet.spreadsheet_id, values)
 
         if success:
             await state.clear()
             await message.answer("Синхронизация успешна")
 
     async def sync_cat(self, spreadsheet):
-        resultSyncCat = synchronizeCategories(spreadsheet, "Categories!A2:G100000", self.spreadsheet)
+        resultSyncCat = synchronizeCategories(spreadsheet, "Categories!A2:G100000", self.spreadsheetWrapper)
         if resultSyncCat is not None:
             if resultSyncCat['result'] == 'error':
                 return resultSyncCat['message']
@@ -75,7 +75,7 @@ class Synchronize(Command):
         return 'Добавьте хотя бы одну категорию'
 
     async def sync_sour(self, spreadsheet):
-        resultSyncSour = synchronizeSources(spreadsheet, "Bills!A2:F100000", self.spreadsheet)
+        resultSyncSour = synchronizeSources(spreadsheet, "Bills!A2:F100000", self.spreadsheetWrapper)
         if resultSyncSour is not None:
             if resultSyncSour['result'] == 'error':
                 return resultSyncSour['message']

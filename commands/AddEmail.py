@@ -28,6 +28,6 @@ class AddEmail(Command):
                 gmail = message.text
                 add_gmail(message.from_user.id, gmail)
                 spreadsheetid = get_spreadsheetid(message.from_user.id)
-                self.spreadsheet.issueRights(spreadsheetid, "user", "writer", gmail)
+                self.spreadsheetWrapper.issueRights(spreadsheetid, "user", "writer", gmail)
                 await state.clear()
                 await message.answer("Права добавлены")
