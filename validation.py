@@ -61,29 +61,6 @@ def validate_sources_row(spreadsheets_sources):
     if len(set(associations)) != len(associations):
         return f"В источниках один association используется несколько раз"
 
-def validate_records_row(row, categories:list[CategoriesOrm], sources:list[SourcesOrm] = None):
-    args = row.split()
-    if len(args) < 3:
-        return "Какой-то странный ввод"
-
-    amount = args[0]
-    category = args[1].lower()
-    source = args[2].lower()
-    notes = ' '.join(args[3:])
-
-    try:
-        float(amount)
-    except:
-        return "Сумма должна быть числом"
-
-    categories_associations = [association.lower() for category in categories for association in category.associations]
-    if category not in categories_associations:
-        return "Такой категории нет, либо она выключена"
-
-    sources_associations = [association.lower() for source in sources for association in source.associations]
-    if source not in sources_associations:
-        return "Такого источника нет, либо он выключен"
-
 def validate_delete_command_args(args):
     try:
         delete_id = int(args)
@@ -126,22 +103,5 @@ def validate_types_input(row, records):
             for id in ids:
                 if id not in records:
                     return "Указан несуществующий id"
-    except:
-        return "Странный ввод"
-
-def validate_categories_input(row, records, categories):
-    categories_associations = [association.lower() for category in categories for association in category.associations]
-    try:
-        for line in row.split("\n"):
-            ids, category_row = line.split("-")
-            ids = ids.strip()
-            category_row = category_row.strip().lower()
-            ids = [int(i.strip()) for i in ids.split(',')]
-            for id in ids:
-                if id not in records:
-                    return "Указан несуществующий id"
-                else:
-                    if category_row not in categories_associations:
-                        return "Указана категория, которой нет, либо она выключена"
     except:
         return "Странный ввод"
