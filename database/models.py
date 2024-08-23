@@ -1,6 +1,5 @@
 import datetime
 from enum import Enum
-from typing import List
 
 from sqlalchemy import MetaData, Column, Table, Integer, String, ForeignKey, text, BigInteger
 from sqlalchemy.orm import Mapped, mapped_column, relationship
@@ -78,12 +77,3 @@ class RecordsOrm(Base):
     source: Mapped[int] = mapped_column(ForeignKey("sources.id", ondelete="SET NULL"))
     product_name: Mapped[str] = mapped_column(nullable=True)
     check_json: Mapped[str] = mapped_column(nullable=True)
-
-# metadata = MetaData()
-
-# workers_table = Table(
-#     "workers",
-#     metadata,
-#     Column("id", Integer, primary_key=True),
-#     Column("username", String)
-# )
