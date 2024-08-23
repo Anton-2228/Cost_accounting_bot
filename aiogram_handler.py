@@ -22,7 +22,7 @@ commandManager.addCommands(get_commands(commandManager))
 # globTimer = GlobalVariables.globTimer
 # counter = GlobalVariables.counter
 
-@router.message(Command('start'))
+@router.message(Command('start'), StateFilter(None))
 @router.message(States.COMFIRM_CHANGE_DATE_RESET)
 @router.message(States.CHOICE_TABLE_NAME)
 @router.message(States.SET_EMAIL)
