@@ -170,6 +170,7 @@ class AddCheck(Command):
 
         input = create_first_input(check_data=check_data, categories=categories)
         answer = await self.ai_wrapper.first_invoke_check(input)
+        print(answer)
         for id in answer:
             if answer[id]["type"] is not None:
                 answer[id]["type"] = answer[id]["type"].lower()
@@ -177,7 +178,6 @@ class AddCheck(Command):
                 answer[id]["new_type"] = answer[id]["new_type"].lower()
         self.temp_data[user_id]['check_data'] = answer
         check_data = self.temp_data[user_id]['check_data']
-        print(check_data)
 
         output = create_output_for_types(check_data)
         await message.answer(output)
@@ -190,6 +190,7 @@ class AddCheck(Command):
 
         input = create_second_input(check_data, categories)
         answer = await self.ai_wrapper.second_invoke_check(input)
+        print(answer)
         for id in check_data:
             if id in answer:
                 check_data[id]['category'] = None
@@ -197,8 +198,6 @@ class AddCheck(Command):
             else:
                 check_data[id]['category'] = get_category_by_product_type(type=check_data[id]['type'],
                                                                           categories=categories)
-
-        print(check_data)
 
         output = create_output_for_categories(check_data)
         await message.answer(output)
