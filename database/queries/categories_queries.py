@@ -26,11 +26,16 @@ def set_status(id: int, status: StatusTypes):
 
 def get_categories_by_spreadsheet(spreadsheet_id):
     with session_factory() as session:
-        categories: CategoriesOrm = session.scalars(select(CategoriesOrm)
+        categories: list[CategoriesOrm] = session.scalars(select(CategoriesOrm)
                                                    .where(CategoriesOrm.spreadsheet_id == spreadsheet_id,
                                                           CategoriesOrm.status == StatusTypes.ACTIVE)).all()
         return categories
 
+def add_product_type_by_category_title(category_title: str, type: str):
+    with session_factory() as session:
+        category: CategoriesOrm = session.scalar(select(CategoriesOrm).where(CategoriesOrm.title == category_title))
+        category.product_types.append(type)
+        session.commit()
 
 def synchronizeCategories(spreadsheet, scope, spreadsheetWrapper):
     with session_factory() as session:

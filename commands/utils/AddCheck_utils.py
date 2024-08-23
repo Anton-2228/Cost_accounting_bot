@@ -1,4 +1,8 @@
-from database.models import CategoriesOrm, CategoriesTypes
+import json
+
+from commands.utils.utils import category_by_association, source_by_association
+from database.models import CategoriesOrm, CategoriesTypes, SourcesOrm
+from database.queries.categories_queries import add_product_type_by_category_title
 
 
 def create_first_input(check_data: dict, categories: list[CategoriesOrm]) -> dict:
@@ -124,8 +128,22 @@ def create_output_for_categories(check_data: dict):
                 output += f'    <b>{record['unconfirmed_category']}</b>\n'
     return output
 
-async def add_types():
-    pass
+async def add_types(check_data: dict):
+    for id in check_data:
+        record = check_data[id]
+        if record["new_type"] is not None:
+            add_product_type_by_category_title(record["unconfirmed_category"], record["new_type"])
 
-async def add_record():
-    pass
+async def get_values_to_add_record(check_data: dict, check_json: dict, categories: list[CategoriesOrm], sources: list[SourcesOrm]):
+    values = []
+    for id in check_data:
+        record = check_data[id]
+        value = {}
+        value["amount"] = float(record["sum"])
+        value["category"] = category_by_association(record['category'], categories)
+        value["source"] = source_by_association(record['source'], sources)
+        value["notes"] = record["type"]
+        value["name"] = record["name"]
+        value["check_json"] = json.dumps(check_json)
+        values.append(value)
+    return values

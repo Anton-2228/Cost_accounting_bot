@@ -7,7 +7,8 @@ from check_wrapper.utils import get_check_data, get_important_check_data
 from commands.Command import Command
 from commands.utils.AddCheck_utils import create_first_input, create_output_for_types, parse_types_input, \
     get_product_types, create_second_input, get_category_by_product_type, create_output_for_categories, \
-    parse_categories_input
+    parse_categories_input, add_types, get_values_to_add_record
+from commands.utils.AddRecord_utils import add_record
 from database.models import CategoriesOrm, SourcesOrm
 from database.queries.categories_queries import get_categories_by_spreadsheet
 from database.queries.sources_queries import get_sources_by_spreadsheet
@@ -15,7 +16,7 @@ from database.queries.spreadsheets_queries import get_spreadsheet
 from database.queries.users_queries import get_user
 from datafiles import FIRST_STAGE_ADD_CHECK_MESSAGE, SECOND_STAGE_ADD_CHECK_MESSAGE, FINISH_STAGE_ADD_CHECK_MESSAGE
 from init import States
-from validation import validate_types_input, validate_check_enter
+from validation import validate_check_enter
 
 
 class AddCheck(Command):
@@ -51,8 +52,7 @@ class AddCheck(Command):
                 else:
                     await self.second_stage(message)
         elif cur_state == States.FINISH_CHECK:
-            await self.third_stage(message)
-            await state.clear()
+            await self.third_stage(message, state)
 
 
     async def zero_stage(self, message: Message, state: FSMContext):
@@ -118,24 +118,49 @@ class AddCheck(Command):
         await message.answer(output)
         await message.answer(SECOND_STAGE_ADD_CHECK_MESSAGE)
 
-    async def third_stage(self, message: Message):
+    async def third_stage(self, message: Message, state: FSMContext):
         user_id = message.from_user.id
         spreadsheet = get_spreadsheet(user_id)
         record_source = message.text.lower()
+        categories: list[CategoriesOrm] = get_categories_by_spreadsheet(spreadsheet.id)
         sources: list[SourcesOrm] = get_sources_by_spreadsheet(spreadsheet.id)
         check_data = self.temp_data[user_id]["check_data"]
+        check_json = self.temp_data[user_id]['all_check_data']
 
         err_message = validate_check_enter(record_source, sources)
         if err_message != None:
             await message.answer(err_message)
             return
 
-        # for id in check_data:
-        #     record = records[id]
-        #     add_record = f"{record[1]} {record[4]} {record_source} {record[2]}"
-        #     await self.commandManager.getCommands()['addRecord'].add_record(message.from_user.id, add_record)
+        for id in check_data:
+            check_data[id]['source'] = record_source
+
+        await add_types(check_data)
+
+        print(check_data)
+
+        for id in check_data:
+            record = check_data[id]
+            if record["new_type"] is not None:
+                check_data[id]['type'] = check_data[id]['new_type']
+                check_data[id]['category'] = check_data[id]['unconfirmed_category']
+        records = await get_values_to_add_record(check_data=check_data,
+                                                 categories=categories,
+                                                 check_json=check_json,
+                                                 sources=sources)
+        for record in records:
+            print(record)
+            await add_record(record, spreadsheet, self.commandManager, self.spreadsheetWrapper)
+
+        values = []
+        source_value = await self.commandManager.getCommands()['sync'].sync_cat(spreadsheet)
+        records_value = await self.commandManager.getCommands()['sync'].sync_records(spreadsheet)
+        values.append(source_value)
+        values.append(records_value)
+        self.spreadsheetWrapper.setValues(spreadsheet.spreadsheet_id, values)
 
         await message.answer("Траты успешно добавлены")
+        await state.clear()
 
     async def preparing_first_stage(self, message: Message):
         user_id = message.from_user.id
