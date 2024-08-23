@@ -1,25 +1,18 @@
-import json
 import os
 
 import httplib2
 import googleapiclient.discovery
 from aiogram.client.default import DefaultBotProperties
 from aiogram.enums import ParseMode
-from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import StatesGroup, State
-from aiogram.fsm.storage.base import StorageKey
 from aiogram.fsm.storage.memory import MemoryStorage
 from aiogram.types import BotCommand
 from dotenv import load_dotenv
 from oauth2client.service_account import ServiceAccountCredentials
 
 from aiogram import Bot, Dispatcher, Router
-# from aiogram.contrib.fsm_storage.memory import MemoryStorage
-# from aiogram.contrib.middlewares.logging import LoggingMiddleware
 
 from check_wrapper.telethon_bot import TelethonBot
-
-# from Timer import Timer
 
 dotenv_path = os.path.join(os.path.dirname(__file__), '.env')
 load_dotenv(dotenv_path)
@@ -35,16 +28,12 @@ bot = Bot(token=os.getenv('API_TOKEN'),
           default=DefaultBotProperties(
               parse_mode=ParseMode.HTML
           ))
-
 dp = Dispatcher(storage=storage)
-
 router = Router()
 
 telethon_bot = TelethonBot()
 
 class States(StatesGroup):
-    # mode = HelperMode.snake_case
-
     CHOICE_TABLE_NAME = State()
     SET_EMAIL = State()
     CORRECT_TABLE = State()
@@ -67,24 +56,11 @@ COMMANDS = [
     BotCommand(command="add", description="Добавление новой записи в таблицу")
 ]
 
-async def get_user_state(user_id: int):
-    storage_key = StorageKey(bot_id=bot.id, chat_id=user_id, user_id=user_id)
-    context = FSMContext(storage=dp.storage, key=storage_key)
-    state = await context.get_state()
-    return state
-
-# def createBot(token):
-#     # bot = Bot(token=Settings.API_TOKEN)
-#     bot = Bot(token=token)
-#     return bot
-
-# def createDispatcher():
-#     dp = Dispatcher(storage=storage)
-#     return dp
-
-# def createRouter():
-#     router = Router()
-#     return router
+# async def get_user_state(user_id: int):
+#     storage_key = StorageKey(bot_id=bot.id, chat_id=user_id, user_id=user_id)
+#     context = FSMContext(storage=dp.storage, key=storage_key)
+#     state = await context.get_state()
+#     return state
 
 def createSheetService():
     sheetService = googleapiclient.discovery.build('sheets', 'v4', http=httpAuth)
@@ -93,39 +69,6 @@ def createSheetService():
 def createDriveService():
     driveService = googleapiclient.discovery.build('drive', 'v3', http=httpAuth)
     return driveService
-
-def getTemplateTitle():
-    with open('datafiles/templateTitle.json', 'r') as file:
-        titles = json.load(file)
-    return titles
-
-def getTemplateOperations():
-    with open('datafiles/templateOperations.json', 'r') as file:
-        templateOperatios = json.load(file)
-    return templateOperatios
-
-def getTemplateStatistics():
-    with open('datafiles/templateStatistics.json', 'r') as file:
-        templateStatistics = json.load(file)
-    return templateStatistics
-
-def getFirstPrompt():
-    with open('datafiles/prompts/get_TYPES_for_check_SYSTEM_prompt.txt', 'r') as file:
-        prompt = file.read()
-    return prompt
-
-def getSecondPrompt():
-    with open('datafiles/prompts/get_CATEGORIES_for_check_SYSTEM_prompt.txt', 'r') as file:
-        prompt = file.read()
-    return prompt
-
-def getCredentialsCheckPrompt():
-    with open('datafiles/prompts/get_credentials_check_prompt.txt', 'r') as file:
-        prompt = file.read()
-    return prompt
-
-# def createTimer():
-#     return Timer()
 
 daysUntilNextMonth = {1: 31,
                       2: 28,
