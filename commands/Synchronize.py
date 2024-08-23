@@ -89,9 +89,9 @@ class Synchronize(Command):
         for i in records:
             category = get_category(i.category)
             source = get_source(i.source)
-            value.append([i.id, str(i.added_at), i.amount, category.title, i.notes, source.title])
+            value.append([i.id, str(i.added_at), i.amount, category.title, i.notes, source.title, i.product_name, i.check_json,])
 
-        return [str(spreadsheet.start_date), 'ROWS', f'A2:F{len(value) + 1}', value]
+        return [str(spreadsheet.start_date), 'ROWS', f'A2:H{len(value) + 1}', value]
 
     async def sync_total(self, spreadsheet: SpreadSheetsOrm):
         dates = []
