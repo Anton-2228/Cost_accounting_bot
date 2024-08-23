@@ -10,8 +10,8 @@ class SpreadsheetWrapper:
         self.sheetService = createSheetService()
         self.driveService = createDriveService()
         self.templateTitle = TEMPLATETITLE
-        self.templateOperation = TEMPLATESTATISTICS
-        self.templateStatistics = TEMPLATEOPERATIONS
+        self.templateOperation = TEMPLATEOPERATIONS
+        self.templateStatistics = TEMPLATESTATISTICS
         self.spreadSheetSetStyler = SpreadSheetSetStyler(self.sheetService,
                                                          self.driveService,
                                                          self.templateTitle,
