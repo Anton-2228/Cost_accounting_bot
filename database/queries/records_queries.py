@@ -13,7 +13,9 @@ def create_record(spreadsheet_id, amount, category_id, source_id, notes, name=No
                             amount=amount,
                             category=category_id,
                             source=source_id,
-                            notes=notes)
+                            notes=notes,
+                            product_name=name,
+                            check_json=check_json)
         session.add_all([record])
         session.commit()
         record: RecordsOrm = session.get(RecordsOrm, record.id)
