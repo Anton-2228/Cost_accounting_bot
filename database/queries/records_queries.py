@@ -7,7 +7,7 @@ from database.models import RecordsOrm
 from init import daysUntilNextMonth
 
 
-def create_record(spreadsheet_id, amount, category_id, source_id, notes):
+def create_record(spreadsheet_id, amount, category_id, source_id, notes, name=None, check_json=None):
     with session_factory() as session:
         record = RecordsOrm(spreadsheet_id=spreadsheet_id,
                             amount=amount,
