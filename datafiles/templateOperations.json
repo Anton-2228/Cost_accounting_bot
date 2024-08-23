@@ -1,10 +1,12 @@
 {
   "template": [[
     "ID",
+    "Check",
     "Date",
     "Amount",
     "Category",
     "Notes",
-    "Source"
-  ],[50,130,100,200,300,150]]
+    "Source",
+    "Name"
+  ],[50,50,130,100,200,300,150,400]]
 }
