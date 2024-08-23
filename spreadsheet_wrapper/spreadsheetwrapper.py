@@ -1,6 +1,7 @@
 import datetime
 
-from init import createSheetService, createDriveService, getTemplateTitle, getTemplateOperations, getTemplateStatistics
+from datafiles import TEMPLATETITLE, TEMPLATESTATISTICS, TEMPLATEOPERATIONS
+from init import createSheetService, createDriveService
 from spreadsheet_wrapper.spreadsheet_set_styles import SpreadSheetSetStyler
 
 
@@ -8,9 +9,9 @@ class SpreadsheetWrapper:
     def __init__(self):
         self.sheetService = createSheetService()
         self.driveService = createDriveService()
-        self.templateTitle = getTemplateTitle()
-        self.templateOperation = getTemplateOperations()
-        self.templateStatistics = getTemplateStatistics()
+        self.templateTitle = TEMPLATETITLE
+        self.templateOperation = TEMPLATESTATISTICS
+        self.templateStatistics = TEMPLATEOPERATIONS
         self.spreadSheetSetStyler = SpreadSheetSetStyler(self.sheetService,
                                                          self.driveService,
                                                          self.templateTitle,
