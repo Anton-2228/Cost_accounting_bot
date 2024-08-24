@@ -3,6 +3,8 @@ from aiogram.fsm.context import FSMContext
 from aiogram.types import Message
 
 from commands.Command import Command
+from commands.utils.Synchronize_utils import sync_records_from_db_to_table, sync_sour_from_table_to_db, \
+    sync_total_from_db_to_table
 from database.models import RecordsOrm
 from database.queries.categories_queries import get_category
 from database.queries.records_queries import get_records_by_current_month, remove_record
@@ -43,9 +45,9 @@ class DeleteRecord(Command):
         update_current_balance(delete_record.source, -delete_record.amount)
 
         values = []
-        value_record = await self.commandManager.getCommands()['sync'].sync_records(spreadsheet)
-        source_value = await self.commandManager.getCommands()['sync'].sync_sour(spreadsheet)
-        total_values = await self.commandManager.getCommands()['sync'].sync_total(spreadsheet)
+        value_record = await sync_records_from_db_to_table(spreadsheet)
+        source_value = await sync_sour_from_table_to_db(spreadsheet, self.spreadsheetWrapper)
+        total_values = await sync_total_from_db_to_table(spreadsheet)
         values.append(value_record)
         values.append(source_value)
         values += total_values

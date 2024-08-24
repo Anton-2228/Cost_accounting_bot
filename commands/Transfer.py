@@ -3,6 +3,7 @@ from aiogram.fsm.context import FSMContext
 from aiogram.types import Message
 
 from commands.Command import Command
+from commands.utils.Synchronize_utils import sync_sour_from_table_to_db
 from database.models import SourcesOrm
 from database.queries.sources_queries import get_sources_by_spreadsheet, update_current_balance
 from database.queries.spreadsheets_queries import get_spreadsheet
@@ -41,7 +42,7 @@ class Transfer(Command):
         update_current_balance(to_source.id, amount)
 
         values = []
-        source_value = await self.commandManager.getCommands()['sync'].sync_sour(spreadsheet)
+        source_value = await sync_sour_from_table_to_db(spreadsheet, self.spreadsheetWrapper)
         values.append(source_value)
         self.spreadsheetWrapper.setValues(spreadsheet.spreadsheet_id, values)
 

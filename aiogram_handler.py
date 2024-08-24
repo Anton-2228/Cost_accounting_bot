@@ -7,6 +7,7 @@ from aiogram.types import Message
 
 from command_manager import CommandManager
 from commands import get_commands
+from commands.utils.Synchronize_utils import sync_total_from_db_to_table
 from database.core import create_tables
 from database.queries.spreadsheets_queries import get_all_spreadsheets, update_start_date, get_spreadsheet_by_id
 from init import States, daysUntilNextMonth, bot, telethon_bot, dp, router, COMMANDS
@@ -97,7 +98,7 @@ async def timer():
                 response = spreadsheetWrapper.addNewStatisticsSheet(spreadsheet.spreadsheet_id,
                                                                     end_date,
                                                                     daysUntilNextMonth[end_date.month])
-                total_values = await commandManager.getCommands()['sync'].sync_total(spreadsheet)
+                total_values = sync_total_from_db_to_table(spreadsheet)
                 values = []
                 values += total_values
 

@@ -9,6 +9,7 @@ from commands.utils.AddCheck_utils import create_first_input, create_output_for_
     get_product_types, create_second_input, get_category_by_product_type, create_output_for_categories, \
     parse_categories_input, add_types, get_values_to_add_record
 from commands.utils.AddRecord_utils import add_record
+from commands.utils.Synchronize_utils import sync_cat_from_table_to_db, sync_records_from_db_to_table
 from database.models import CategoriesOrm, SourcesOrm
 from database.queries.categories_queries import get_categories_by_spreadsheet
 from database.queries.sources_queries import get_sources_by_spreadsheet
@@ -153,8 +154,8 @@ class AddCheck(Command):
             await add_record(record, spreadsheet, self.commandManager, self.spreadsheetWrapper)
 
         values = []
-        source_value = await self.commandManager.getCommands()['sync'].sync_cat(spreadsheet)
-        records_value = await self.commandManager.getCommands()['sync'].sync_records(spreadsheet)
+        source_value = await sync_cat_from_table_to_db(spreadsheet, self.spreadsheetWrapper)
+        records_value = await sync_records_from_db_to_table(spreadsheet)
         values.append(source_value)
         values.append(records_value)
         self.spreadsheetWrapper.setValues(spreadsheet.spreadsheet_id, values)

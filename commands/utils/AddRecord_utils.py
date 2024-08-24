@@ -1,4 +1,5 @@
 from command_manager import CommandManager
+from commands.utils.Synchronize_utils import sync_sour_from_table_to_db, sync_total_from_db_to_table
 from commands.utils.utils import category_by_association, source_by_association
 from database.models import CategoriesOrm, SourcesOrm, CategoriesTypes, SpreadSheetsOrm
 from database.queries.records_queries import create_record, get_records_by_current_month
@@ -84,8 +85,8 @@ async def add_record(data: dict, spreadsheet: SpreadSheetsOrm, commandManager: C
     count = len(records) + 1
     values.append([str(spreadsheet.start_date), "ROWS", f"A{count}:F{count}", value])
 
-    source_value = await commandManager.getCommands()['sync'].sync_sour(spreadsheet)
-    total_values = await commandManager.getCommands()['sync'].sync_total(spreadsheet)
+    source_value = await sync_sour_from_table_to_db(spreadsheet, spreadsheetWrapper)
+    total_values = await sync_total_from_db_to_table(spreadsheet)
     values.append(source_value)
     values += total_values
 
