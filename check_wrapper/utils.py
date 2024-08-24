@@ -32,8 +32,8 @@ def get_check_json(check_credentials: dict) -> dict:
 def get_important_check_data(check_data: dict) -> dict:
     important_data = {}
     for id, product in enumerate(check_data['data']['json']['items']):
-        important_data[str(id)] = {}
-        important_data[str(id)]["name"] = product["name"]
-        important_data[str(id)]["sum"] = product["sum"]/100
+        important_data[str(id+1)] = {}
+        important_data[str(id+1)]["name"] = product["name"]
+        important_data[str(id+1)]["sum"] = product["sum"]/100
     return important_data
 
