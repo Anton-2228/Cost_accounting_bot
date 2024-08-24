@@ -116,7 +116,7 @@ def synchronizeCategories(spreadsheet, scope, spreadsheetWrapper):
                     session.flush()
                     add_categories.append(category)
                     categories.append([category.id, row[1], row[2], row[3], row[4], ' '.join(associations), ', '.join(product_types)])
-            categories.sort(key=lambda x: (x[0], x[3]))
+            categories.sort(key=lambda x: (x[3], x[0]))
             result['categories'] = categories
             session.commit()
             return result

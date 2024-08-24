@@ -62,7 +62,7 @@ async def sync_cat_from_db_to_table(spreadsheet: SpreadSheetsOrm):
 
         values.append(value)
 
-    values.sort(key=lambda x: (x[0], x[3]))
+    values.sort(key=lambda x: (x[3], x[0]))
     return ['Categories', 'ROWS', f'A2:H{len(values) + 1}', values]
 
 
