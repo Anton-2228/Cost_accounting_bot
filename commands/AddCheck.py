@@ -9,9 +9,10 @@ from commands.utils.AddCheck_utils import create_first_input, create_output_for_
     get_product_types, create_second_input, get_category_by_product_type, create_output_for_categories, \
     parse_categories_input, add_types, get_values_to_add_record
 from commands.utils.AddRecord_utils import add_record
-from commands.utils.Synchronize_utils import sync_cat_from_table_to_db, sync_records_from_db_to_table
+from commands.utils.Synchronize_utils import sync_cat_from_table_to_db, sync_records_from_db_to_table, \
+    sync_cat_from_db_to_table
 from database.models import CategoriesOrm, SourcesOrm
-from database.queries.categories_queries import get_categories_by_spreadsheet
+from database.queries.categories_queries import get_active_categories_by_spreadsheet
 from database.queries.sources_queries import get_sources_by_spreadsheet
 from database.queries.spreadsheets_queries import get_spreadsheet
 from database.queries.users_queries import get_user
@@ -74,7 +75,7 @@ class AddCheck(Command):
     async def first_stage(self, message: Message):
         user_id = message.from_user.id
         spreadsheet = get_spreadsheet(user_id)
-        categories: list[CategoriesOrm] = get_categories_by_spreadsheet(spreadsheet.id)
+        categories: list[CategoriesOrm] = get_active_categories_by_spreadsheet(spreadsheet.id)
         row = message.text
         check_data = self.temp_data[user_id]['check_data']
 
@@ -102,7 +103,7 @@ class AddCheck(Command):
         user_id = message.from_user.id
         spreadsheet = get_spreadsheet(message.from_user.id)
         row = message.text
-        categories: list[CategoriesOrm] = get_categories_by_spreadsheet(spreadsheet.id)
+        categories: list[CategoriesOrm] = get_active_categories_by_spreadsheet(spreadsheet.id)
         check_data = self.temp_data[user_id]['check_data']
 
         response = parse_categories_input(check_data=check_data, categories=categories, row=row)
@@ -123,7 +124,7 @@ class AddCheck(Command):
         user_id = message.from_user.id
         spreadsheet = get_spreadsheet(user_id)
         record_source = message.text.lower()
-        categories: list[CategoriesOrm] = get_categories_by_spreadsheet(spreadsheet.id)
+        categories: list[CategoriesOrm] = get_active_categories_by_spreadsheet(spreadsheet.id)
         sources: list[SourcesOrm] = get_sources_by_spreadsheet(spreadsheet.id)
         check_data = self.temp_data[user_id]["check_data"]
         check_json = self.temp_data[user_id]['all_check_data']
@@ -154,9 +155,9 @@ class AddCheck(Command):
             await add_record(record, spreadsheet, self.commandManager, self.spreadsheetWrapper)
 
         values = []
-        source_value = await sync_cat_from_table_to_db(spreadsheet, self.spreadsheetWrapper)
+        category_value = await sync_cat_from_db_to_table(spreadsheet)
         records_value = await sync_records_from_db_to_table(spreadsheet)
-        values.append(source_value)
+        values.append(category_value)
         values.append(records_value)
         self.spreadsheetWrapper.setValues(spreadsheet.spreadsheet_id, values)
 
@@ -166,7 +167,7 @@ class AddCheck(Command):
     async def preparing_first_stage(self, message: Message):
         user_id = message.from_user.id
         spreadsheet = get_spreadsheet(user_id)
-        categories: list[CategoriesOrm] = get_categories_by_spreadsheet(spreadsheet.id)
+        categories: list[CategoriesOrm] = get_active_categories_by_spreadsheet(spreadsheet.id)
         check_data = self.temp_data[user_id]['check_data']
 
         input = create_first_input(check_data=check_data, categories=categories)
@@ -187,7 +188,7 @@ class AddCheck(Command):
         user_id = message.from_user.id
         spreadsheet = get_spreadsheet(user_id)
         check_data = self.temp_data[user_id]["check_data"]
-        categories: list[CategoriesOrm] = get_categories_by_spreadsheet(spreadsheet.id)
+        categories: list[CategoriesOrm] = get_active_categories_by_spreadsheet(spreadsheet.id)
 
         input = create_second_input(check_data, categories)
         answer = await self.ai_wrapper.second_invoke_check(input)

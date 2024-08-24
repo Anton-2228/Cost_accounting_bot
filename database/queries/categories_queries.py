@@ -24,11 +24,19 @@ def set_status(id: int, status: StatusTypes):
         category.status = status
         session.commit()
 
-def get_categories_by_spreadsheet(spreadsheet_id):
+def get_active_categories_by_spreadsheet(spreadsheet_id):
     with session_factory() as session:
         categories: list[CategoriesOrm] = session.scalars(select(CategoriesOrm)
-                                                   .where(CategoriesOrm.spreadsheet_id == spreadsheet_id,
-                                                          CategoriesOrm.status == StatusTypes.ACTIVE)).all()
+                                                   .where((CategoriesOrm.spreadsheet_id == spreadsheet_id) &
+                                                          (CategoriesOrm.status == StatusTypes.ACTIVE))).all()
+        return categories
+
+def get_active_ans_inactive_categories_by_spreadsheet(spreadsheet_id):
+    with session_factory() as session:
+        categories: list[CategoriesOrm] = session.scalars(select(CategoriesOrm)
+                                                   .where((CategoriesOrm.spreadsheet_id == spreadsheet_id) &
+                                                          ((CategoriesOrm.status == StatusTypes.ACTIVE) |
+                                                           (CategoriesOrm.status == StatusTypes.INACTIVE)))).all()
         return categories
 
 def add_product_type_by_category_title(category_title: str, type: str):

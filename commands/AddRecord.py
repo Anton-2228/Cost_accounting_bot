@@ -5,7 +5,7 @@ from aiogram.types import Message
 from commands.Command import Command
 from commands.utils.AddRecord_utils import parse_records_row, add_record, create_add_message
 from database.models import CategoriesOrm, SourcesOrm
-from database.queries.categories_queries import get_categories_by_spreadsheet
+from database.queries.categories_queries import get_active_categories_by_spreadsheet
 from database.queries.sources_queries import get_sources_by_spreadsheet
 from database.queries.spreadsheets_queries import get_spreadsheet
 from database.queries.users_queries import get_user
@@ -21,7 +21,7 @@ class AddRecord(Command):
         row_line = command.args
         user_id = message.from_user.id
         spreadsheet = get_spreadsheet(user_id)
-        categories: list[CategoriesOrm] = get_categories_by_spreadsheet(spreadsheet.id)
+        categories: list[CategoriesOrm] = get_active_categories_by_spreadsheet(spreadsheet.id)
         sources: list[SourcesOrm] = get_sources_by_spreadsheet(spreadsheet.id)
 
         response = parse_records_row(row_line, categories, sources)

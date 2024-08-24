@@ -1,7 +1,8 @@
 import datetime
 
-from database.models import RecordsOrm, SpreadSheetsOrm, CategoriesOrm, CategoriesTypes
-from database.queries.categories_queries import synchronizeCategories, get_category, get_categories_by_spreadsheet
+from database.models import RecordsOrm, SpreadSheetsOrm, CategoriesOrm, CategoriesTypes, StatusTypes
+from database.queries.categories_queries import synchronizeCategories, get_category, \
+    get_active_categories_by_spreadsheet, get_active_ans_inactive_categories_by_spreadsheet
 from database.queries.records_queries import get_records_by_current_month, get_records_by_current_month_by_category
 from database.queries.sources_queries import synchronizeSources, get_source
 from init import daysUntilNextMonth, alf
@@ -36,10 +37,32 @@ async def sync_records_from_db_to_table(spreadsheet):
 
     return [str(spreadsheet.start_date), 'ROWS', f'A2:H{len(value) + 1}', value]
 
-# async def sync_cat_from_db_to_table(spreadsheet: SpreadSheetsOrm):
-#     categories: list[CategoriesOrm] = get_categories_by_spreadsheet(spreadsheet.id)
-#     value = []
-#     for i in categories:
+async def sync_cat_from_db_to_table(spreadsheet: SpreadSheetsOrm):
+    categories: list[CategoriesOrm] = get_active_ans_inactive_categories_by_spreadsheet(spreadsheet.id)
+    values = []
+    for category in categories:
+        value = []
+        value.append(category.id)
+
+        if category.status == StatusTypes.ACTIVE:
+            value.append('1')
+        elif category.status == StatusTypes.INACTIVE:
+            value.append('0')
+
+        if category.type == CategoriesTypes.INCOME:
+            value.append('1')
+            value.append('0')
+        elif category.type == CategoriesTypes.COST:
+            value.append('0')
+            value.append('1')
+
+        value.append(category.title)
+        value.append(' '.join(category.associations))
+        value.append(', '.join(category.product_types))
+
+        values.append(value)
+
+    return ['Categories', 'ROWS', f'A2:H{len(values) + 1}', values]
 
 
 async def sync_total_from_db_to_table(spreadsheet: SpreadSheetsOrm):
@@ -49,7 +72,7 @@ async def sync_total_from_db_to_table(spreadsheet: SpreadSheetsOrm):
         dates.append(date)
         date += datetime.timedelta(days=1)
 
-    categories: list[CategoriesOrm] = get_categories_by_spreadsheet(spreadsheet.id)
+    categories: list[CategoriesOrm] = get_active_categories_by_spreadsheet(spreadsheet.id)
     income_categories = {i: [] for i in categories if i.type == CategoriesTypes.INCOME}
     cost_categories = {i: [] for i in categories if i.type == CategoriesTypes.COST}
 
