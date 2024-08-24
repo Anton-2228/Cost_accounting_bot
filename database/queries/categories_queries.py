@@ -41,8 +41,9 @@ def get_active_ans_inactive_categories_by_spreadsheet(spreadsheet_id):
 
 def add_product_type_by_category_title(category_title: str, type: str):
     with session_factory() as session:
-        category: CategoriesOrm = session.scalar(select(CategoriesOrm).where(CategoriesOrm.title == category_title))
-        category.product_types.append(type)
+        category: CategoriesOrm = session.scalar(select(CategoriesOrm).filter(CategoriesOrm.title == category_title))
+        if type not in category.product_types:
+            category.product_types = category.product_types + [type]
         session.commit()
 
 def synchronizeCategories(spreadsheet, scope, spreadsheetWrapper):
