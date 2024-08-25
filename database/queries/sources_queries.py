@@ -98,8 +98,8 @@ def synchronizeSources(spreadsheet, scope, spreadsheetWrapper):
                     session.add(source)
                     session.flush()
                     add_sources.append(source)
-                    sources.append([source.id, row[1], row[2], ' '.join(source.associations), row[4], source.current_balance])
-            sources.sort(key=lambda x: x[0])
+                    sources.append([str(source.id), row[1], row[2], ' '.join(source.associations), row[4], source.current_balance])
+            sources.sort(key=lambda x: int(x[0]))
             result['sources'] = sources
             session.commit()
             return result
