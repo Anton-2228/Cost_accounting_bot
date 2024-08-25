@@ -7,6 +7,19 @@ from database.models import StatusTypes, CategoriesOrm, CategoriesTypes
 from database.queries.spreadsheets_queries import get_spreadsheet
 from validation import validate_category_row
 
+def add_category(spreadsheet_id: int, status: StatusTypes, type: CategoriesTypes, title: str, associations: list[str], product_types: list[str]):
+    with session_factory() as session:
+        category = CategoriesOrm(spreadsheet_id=spreadsheet_id,
+                                 status=status,
+                                 type=type,
+                                 title=title,
+                                 associations=associations,
+                                 product_types=product_types)
+        session.add_all([category])
+        session.commit()
+        category: CategoriesOrm = session.get(CategoriesOrm, category.id)
+        return category
+
 def get_category(id):
     with session_factory() as session:
         category: CategoriesOrm = session.get(CategoriesOrm, id)
@@ -115,7 +128,7 @@ def synchronizeCategories(spreadsheet, scope, spreadsheetWrapper):
                     session.add(category)
                     session.flush()
                     add_categories.append(category)
-                    categories.append([category.id, row[1], row[2], row[3], row[4], ' '.join(associations), ', '.join(product_types)])
+                    categories.append([str(category.id), row[1], row[2], row[3], row[4], ' '.join(associations), ', '.join(product_types)])
             categories.sort(key=lambda x: (x[3], x[0]))
             result['categories'] = categories
             session.commit()

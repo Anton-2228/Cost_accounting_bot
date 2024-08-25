@@ -6,8 +6,11 @@ from aiogram.fsm.context import FSMContext
 from aiogram.types import Message
 
 from commands.Command import Command
+from commands.utils.Synchronize_utils import sync_cat_from_db_to_table
 from commands.utils.utils import check_spreadsheet_exist
-from database.queries.spreadsheets_queries import create, get_spreadsheet
+from database.models import StatusTypes, CategoriesTypes
+from database.queries.categories_queries import add_category
+from database.queries.spreadsheets_queries import create, get_spreadsheet, get_spreadsheet_by_id
 from database.queries.users_queries import create_user
 from init import States, daysUntilNextMonth
 
@@ -68,6 +71,25 @@ class CreateTable(Command):
                     print(f"https://docs.google.com/spreadsheets/d/{spreadsheetID}/")
                     id = create(gmail=[gmail], spreadsheet_id=spreadsheetID, start_date=start_date)
                     create_user(telegram_id=message.from_user.id, spreadsheet_id=id)
+
+                    add_category(spreadsheet_id=str(id),
+                                 status=StatusTypes.ACTIVE,
+                                 type=CategoriesTypes.INCOME,
+                                 title="НеопределенныйДоход",
+                                 associations=["неопределенныйдоход"],
+                                 product_types=[])
+
+                    add_category(spreadsheet_id=str(id),
+                                 status=StatusTypes.ACTIVE,
+                                 type=CategoriesTypes.COST,
+                                 title="НеопределенныеТраты",
+                                 associations=["неопределенныетраты"],
+                                 product_types=[])
+
+                    spreadsheet = get_spreadsheet_by_id(id)
+                    result_sync = await sync_cat_from_db_to_table(spreadsheet)
+                    values = [result_sync]
+                    self.spreadsheetWrapper.setValues(spreadsheet.spreadsheet_id, values)
 
                     del self.temp_data[message.from_user.id]
 
