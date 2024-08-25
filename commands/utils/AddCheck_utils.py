@@ -131,7 +131,7 @@ def create_output_for_categories(check_data: dict):
 async def add_types(check_data: dict):
     for id in check_data:
         record = check_data[id]
-        if record["new_type"] is not None:
+        if record["new_type"] is not None and record["unconfirmed_category"] != "НеопределенныеТраты":
             add_product_type_by_category_title(record["unconfirmed_category"], record["new_type"])
 
 async def get_values_to_add_record(check_data: dict, check_json: dict, categories: list[CategoriesOrm], sources: list[SourcesOrm]):
