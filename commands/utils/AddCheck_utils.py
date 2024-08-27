@@ -142,7 +142,7 @@ def create_output_for_categories(check_data: dict):
     for id in check_data:
         record = check_data[str(id)]
         if record["category"] is not None:
-            output += f"{record["name"]}\n" f"   <b>{record['category']}</b>\n"
+            output += f"{record['name']}\n" f"   <b>{record['category']}</b>\n"
     output += "\n"
     for id in check_data:
         record = check_data[str(id)]
