@@ -12,7 +12,7 @@ from oauth2client.service_account import ServiceAccountCredentials
 
 from aiogram import Bot, Dispatcher, Router
 
-from check_wrapper.telethon_bot import TelethonBot
+from check_wrapper import TelethonBot
 
 dotenv_path = os.path.join(os.path.dirname(__file__), '.env')
 load_dotenv(dotenv_path)

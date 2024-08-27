@@ -4,7 +4,7 @@ from os import getenv
 
 import requests
 
-from ai_wrapper.ai_wrapper import AiWrapper
+from ai_wrapper import AiWrapper
 
 
 async def get_check_data(ai_wrapper: AiWrapper, check_text: str) -> dict:

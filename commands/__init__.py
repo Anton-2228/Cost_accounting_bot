@@ -9,15 +9,15 @@ from commands.GetTable import GetTable
 from commands.Synchronize import Synchronize
 from commands.Transfer import Transfer
 
-def get_commands(command_manager):
-    commands = {"start": CreateTable(command_manager),
-                "table": GetTable(command_manager),
-                "addEmail": AddEmail(command_manager),
-                "help": GetHelp(command_manager),
-                "deleteTable": DeleteTable(command_manager),
-                "sync": Synchronize(command_manager),
-                "del": DeleteRecord(command_manager),
-                "transfer": Transfer(command_manager),
-                "addRecord": AddRecord(command_manager),
-                "addCheck": AddCheck(command_manager)}
+def get_commands(command_manager, postgres_wrapper):
+    commands = {"start": CreateTable(command_manager, postgres_wrapper),
+                "table": GetTable(command_manager, postgres_wrapper),
+                "addEmail": AddEmail(command_manager, postgres_wrapper),
+                "help": GetHelp(command_manager, postgres_wrapper),
+                "deleteTable": DeleteTable(command_manager, postgres_wrapper),
+                "sync": Synchronize(command_manager, postgres_wrapper),
+                "del": DeleteRecord(command_manager, postgres_wrapper),
+                "transfer": Transfer(command_manager, postgres_wrapper),
+                "addRecord": AddRecord(command_manager, postgres_wrapper),
+                "addCheck": AddCheck(command_manager, postgres_wrapper)}
     return commands

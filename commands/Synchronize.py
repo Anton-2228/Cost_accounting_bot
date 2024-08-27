@@ -8,8 +8,6 @@ from aiogram.types import Message
 from commands.Command import Command
 from commands.utils.Synchronize_utils import sync_cat_from_table_to_db, sync_sour_from_table_to_db, \
     sync_total_from_db_to_table
-from database.queries.spreadsheets_queries import get_spreadsheet
-from database.queries.users_queries import get_user
 from init import daysUntilNextMonth, alf, States
 
 
@@ -17,15 +15,15 @@ class Synchronize(Command):
     async def execute(self, message: Message, state: FSMContext, command: CommandObject):
         success = True
 
-        user = get_user(message.from_user.id)
+        user = self.postgres_wrapper.users_wrapper.get_user(message.from_user.id)
         if user == None:
             await message.answer('Сначала создайте таблицу')
             return
 
-        spreadsheet = get_spreadsheet(message.from_user.id)
-        category_value = await sync_cat_from_table_to_db(spreadsheet, self.spreadsheetWrapper)
-        source_value = await sync_sour_from_table_to_db(spreadsheet, self.spreadsheetWrapper)
-        total_values = await sync_total_from_db_to_table(spreadsheet)
+        spreadsheet = self.postgres_wrapper.spreadsheets_wrapper.get_spreadsheet(message.from_user.id)
+        category_value = await sync_cat_from_table_to_db(spreadsheet, self.spreadsheetWrapper, self.postgres_wrapper)
+        source_value = await sync_sour_from_table_to_db(spreadsheet, self.spreadsheetWrapper, self.postgres_wrapper)
+        total_values = await sync_total_from_db_to_table(spreadsheet, self.postgres_wrapper)
 
         if isinstance(category_value, str):
             await message.answer(category_value)

@@ -7,17 +7,13 @@ from aiogram.types import Message
 
 from commands.Command import Command
 from commands.utils.Synchronize_utils import sync_cat_from_db_to_table
-from commands.utils.utils import check_spreadsheet_exist
-from database.models import StatusTypes, CategoriesTypes
-from database.queries.categories_queries import add_category
-from database.queries.spreadsheets_queries import create, get_spreadsheet, get_spreadsheet_by_id
-from database.queries.users_queries import create_user
+from database import StatusTypes, CategoriesTypes
 from init import States, daysUntilNextMonth
 
 
 class CreateTable(Command):
-    def __init__(self, command_manager):
-        super().__init__(command_manager)
+    def __init__(self, command_manager, postgres_wrapper):
+        super().__init__(command_manager, postgres_wrapper)
         self.temp_data = {}
 
     async def execute(self, message: Message, state: FSMContext, command: CommandObject):
@@ -69,25 +65,25 @@ class CreateTable(Command):
                                                                              daysUntilNextMonth[start_date.month])
 
                     print(f"https://docs.google.com/spreadsheets/d/{spreadsheetID}/")
-                    id = create(gmail=[gmail], spreadsheet_id=spreadsheetID, start_date=start_date)
-                    create_user(telegram_id=message.from_user.id, spreadsheet_id=id)
+                    id = self.postgres_wrapper.spreadsheets_wrapper.create(gmail=[gmail], spreadsheet_id=spreadsheetID, start_date=start_date)
+                    self.postgres_wrapper.users_wrapper.create_user(telegram_id=message.from_user.id, spreadsheet_id=id)
 
-                    add_category(spreadsheet_id=str(id),
+                    self.postgres_wrapper.categories_wrapper.add_category(spreadsheet_id=str(id),
                                  status=StatusTypes.ACTIVE,
                                  type=CategoriesTypes.INCOME,
                                  title="НеопределенныйДоход",
                                  associations=["неопределенныйдоход"],
                                  product_types=[])
 
-                    add_category(spreadsheet_id=str(id),
+                    self.postgres_wrapper.categories_wrapper.add_category(spreadsheet_id=str(id),
                                  status=StatusTypes.ACTIVE,
                                  type=CategoriesTypes.COST,
                                  title="НеопределенныеТраты",
                                  associations=["неопределенныетраты"],
                                  product_types=[])
 
-                    spreadsheet = get_spreadsheet_by_id(id)
-                    result_sync = await sync_cat_from_db_to_table(spreadsheet)
+                    spreadsheet = self.postgres_wrapper.spreadsheets_wrapper.get_spreadsheet_by_id(id)
+                    result_sync = await sync_cat_from_db_to_table(spreadsheet, self.postgres_wrapper)
                     values = [result_sync]
                     self.spreadsheetWrapper.setValues(spreadsheet.spreadsheet_id, values)
 

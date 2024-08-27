@@ -5,19 +5,20 @@ from aiogram.filters import Command, StateFilter, CommandObject
 from aiogram.fsm.context import FSMContext
 from aiogram.types import Message
 
+from commands.utils.Synchronize_utils import sync_total_from_db_to_table
+from database import PostgresWrapper
+from init import States, daysUntilNextMonth, bot, telethon_bot, dp, router, COMMANDS
 from command_manager import CommandManager
 from commands import get_commands
-from commands.utils.Synchronize_utils import sync_total_from_db_to_table
-from database.core import create_tables
-from database.queries.spreadsheets_queries import get_all_spreadsheets, update_start_date, get_spreadsheet_by_id
-from init import States, daysUntilNextMonth, bot, telethon_bot, dp, router, COMMANDS
+from database import create_tables
 
 # bot = createBot(os.getenv('API_TOKEN'))
 # telethon_bot = TelethonBot()
 # dp = createDispatcher()
 # router = createRouter() = createRouter()
+postgres_wrapper = PostgresWrapper()
 commandManager = CommandManager()
-commandManager.addCommands(get_commands(commandManager))
+commandManager.addCommands(get_commands(commandManager, postgres_wrapper))
 
 # data = GlobalVariables.data
 # globTimer = GlobalVariables.globTimer
@@ -83,7 +84,7 @@ async def start_polling():
 
 async def timer():
     while True:
-        spreadsheets = get_all_spreadsheets()
+        spreadsheets = postgres_wrapper.spreadsheets_wrapper.get_all_spreadsheets()
         for i in spreadsheets:
             end_date = i.start_date + datetime.timedelta(days=daysUntilNextMonth[i.start_date.month])
             # tz = datetime.timezone(datetime.timedelta(hours=2, minutes=50))
@@ -91,14 +92,14 @@ async def timer():
             today = datetime.date.today()
             if today == end_date:
                 spreadsheetWrapper = commandManager.getCommands()['help'].spreadsheetWrapper
-                update_start_date(i.id, end_date)
-                spreadsheet = get_spreadsheet_by_id(i.id)
+                postgres_wrapper.spreadsheets_wrapper.update_start_date(i.id, end_date)
+                spreadsheet = postgres_wrapper.sources_wrapper.get_spreadsheet_by_id(i.id)
                 response = spreadsheetWrapper.addNewOperationsSheet(spreadsheet.spreadsheet_id,
                                                                     end_date)
                 response = spreadsheetWrapper.addNewStatisticsSheet(spreadsheet.spreadsheet_id,
                                                                     end_date,
                                                                     daysUntilNextMonth[end_date.month])
-                total_values = sync_total_from_db_to_table(spreadsheet)
+                total_values = sync_total_from_db_to_table(spreadsheet, postgres_wrapper)
                 values = []
                 values += total_values
 

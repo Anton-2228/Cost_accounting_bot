@@ -7,8 +7,8 @@ from datafiles import HELP_MESSAGE
 
 
 class GetHelp(Command):
-    def __init__(self, command_manager):
-        super().__init__(command_manager)
+    def __init__(self, command_manager, postgres_wrapper):
+        super().__init__(command_manager, postgres_wrapper)
         self.help = HELP_MESSAGE
 
     async def execute(self, message: Message, state: FSMContext, command: CommandObject):

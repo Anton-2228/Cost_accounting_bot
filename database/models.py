@@ -77,4 +77,12 @@ class RecordsOrm(Base):
     source: Mapped[int] = mapped_column(ForeignKey("sources.id", ondelete="SET NULL"))
     product_name: Mapped[str] = mapped_column(nullable=True)
     check_json: Mapped[str] = mapped_column(nullable=True)
-    type: Mapped[str] = mapped_column(nullable=True)
+    # type: Mapped[str] = mapped_column(nullable=True)
+
+class CashedRecordsOrm(Base):
+    __tablename__ = "cashed_records"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    spreadsheet_id: Mapped[int] = mapped_column(ForeignKey("spreadsheets.id", ondelete="CASCADE"))
+    product_name: Mapped[str] = mapped_column(unique=True)
+    type: Mapped[str]

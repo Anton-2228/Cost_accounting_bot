@@ -1,15 +1,12 @@
 import datetime
 
-from database.models import RecordsOrm, SpreadSheetsOrm, CategoriesOrm, CategoriesTypes, StatusTypes
-from database.queries.categories_queries import synchronizeCategories, get_category, \
-    get_active_categories_by_spreadsheet, get_active_ans_inactive_categories_by_spreadsheet
-from database.queries.records_queries import get_records_by_current_month, get_records_by_current_month_by_category
-from database.queries.sources_queries import synchronizeSources, get_source
+from database import RecordsOrm, SpreadSheetsOrm, CategoriesOrm, CategoriesTypes, StatusTypes
+from database import PostgresWrapper
 from init import daysUntilNextMonth, alf
 
 
-async def sync_cat_from_table_to_db(spreadsheet, spreadsheetWrapper):
-    resultSyncCat = synchronizeCategories(spreadsheet, "Categories!A2:G100000", spreadsheetWrapper)
+async def sync_cat_from_table_to_db(spreadsheet, spreadsheetWrapper, postgres_wrapper: PostgresWrapper):
+    resultSyncCat = postgres_wrapper.categories_wrapper.synchronizeCategories(spreadsheet, "Categories!A2:G100000", spreadsheetWrapper)
     if resultSyncCat is not None:
         if resultSyncCat['result'] == 'error':
             return resultSyncCat['message']
@@ -18,8 +15,8 @@ async def sync_cat_from_table_to_db(spreadsheet, spreadsheetWrapper):
     return 'Добавьте хотя бы одну категорию'
 
 
-async def sync_sour_from_table_to_db(spreadsheet, spreadsheetWrapper):
-    resultSyncSour = synchronizeSources(spreadsheet, "Bills!A2:F100000", spreadsheetWrapper)
+async def sync_sour_from_table_to_db(spreadsheet, spreadsheetWrapper, postgres_wrapper: PostgresWrapper):
+    resultSyncSour = postgres_wrapper.sources_wrapper.synchronizeSources(spreadsheet, "Bills!A2:F100000", spreadsheetWrapper)
     if resultSyncSour is not None:
         if resultSyncSour['result'] == 'error':
             return resultSyncSour['message']
@@ -27,18 +24,18 @@ async def sync_sour_from_table_to_db(spreadsheet, spreadsheetWrapper):
         return ["Bills", "ROWS", f'A2:F{len(sources) + 2}', sources]
     return 'Добавьте хотя бы один источник'
 
-async def sync_records_from_db_to_table(spreadsheet):
-    records: list[RecordsOrm] = get_records_by_current_month(spreadsheet.id, spreadsheet.start_date)
+async def sync_records_from_db_to_table(spreadsheet, postgres_wrapper: PostgresWrapper):
+    records: list[RecordsOrm] = postgres_wrapper.records_wrapper.get_records_by_current_month(spreadsheet.id, spreadsheet.start_date)
     value = []
     for i in records:
-        category = get_category(i.category)
-        source = get_source(i.source)
+        category = postgres_wrapper.categories_wrapper.get_category(i.category)
+        source = postgres_wrapper.sources_wrapper.get_source(i.source)
         value.append([i.id, str(i.added_at), i.amount, category.title, i.notes, source.title, i.product_name, i.check_json,])
 
     return [str(spreadsheet.start_date), 'ROWS', f'A2:H{len(value) + 1}', value]
 
-async def sync_cat_from_db_to_table(spreadsheet: SpreadSheetsOrm):
-    categories: list[CategoriesOrm] = get_active_ans_inactive_categories_by_spreadsheet(spreadsheet.id)
+async def sync_cat_from_db_to_table(spreadsheet: SpreadSheetsOrm, postgres_wrapper: PostgresWrapper):
+    categories: list[CategoriesOrm] = postgres_wrapper.categories_wrapper.get_active_ans_inactive_categories_by_spreadsheet(spreadsheet.id)
     values = []
     for category in categories:
         value = []
@@ -66,20 +63,20 @@ async def sync_cat_from_db_to_table(spreadsheet: SpreadSheetsOrm):
     return ['Categories', 'ROWS', f'A2:H{len(values) + 1}', values]
 
 
-async def sync_total_from_db_to_table(spreadsheet: SpreadSheetsOrm):
+async def sync_total_from_db_to_table(spreadsheet: SpreadSheetsOrm, postgres_wrapper: PostgresWrapper):
     dates = []
     date = spreadsheet.start_date
     for i in range(daysUntilNextMonth[spreadsheet.start_date.month]):
         dates.append(date)
         date += datetime.timedelta(days=1)
 
-    categories: list[CategoriesOrm] = get_active_categories_by_spreadsheet(spreadsheet.id)
+    categories: list[CategoriesOrm] = postgres_wrapper.categories_wrapper.get_active_categories_by_spreadsheet(spreadsheet.id)
     income_categories = {i: [] for i in categories if i.type == CategoriesTypes.INCOME}
     cost_categories = {i: [] for i in categories if i.type == CategoriesTypes.COST}
 
     total_income = [0 for _ in range(daysUntilNextMonth[spreadsheet.start_date.month]+1)]
     for i in income_categories:
-        records: list[RecordsOrm] = get_records_by_current_month_by_category(spreadsheet.id, spreadsheet.start_date, i.id)
+        records: list[RecordsOrm] = postgres_wrapper.records_wrapper.get_records_by_current_month_by_category(spreadsheet.id, spreadsheet.start_date, i.id)
         records = sorted(records, key=lambda x: x.added_at)
         income_categories[i].append(0)
         for x, z in enumerate(dates):
@@ -94,7 +91,7 @@ async def sync_total_from_db_to_table(spreadsheet: SpreadSheetsOrm):
 
     total_cost = [0 for _ in range(daysUntilNextMonth[spreadsheet.start_date.month] + 1)]
     for i in cost_categories:
-        records: list[RecordsOrm] = get_records_by_current_month_by_category(spreadsheet.id, spreadsheet.start_date, i.id)
+        records: list[RecordsOrm] = postgres_wrapper.records_wrapper.get_records_by_current_month_by_category(spreadsheet.id, spreadsheet.start_date, i.id)
         records = sorted(records, key=lambda x: x.added_at)
         cost_categories[i].append(0)
         for x, z in enumerate(dates):

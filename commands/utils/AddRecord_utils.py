@@ -1,11 +1,10 @@
 from command_manager import CommandManager
 from commands.utils.Synchronize_utils import sync_sour_from_table_to_db, sync_total_from_db_to_table
 from commands.utils.utils import category_by_association, source_by_association
-from database.models import CategoriesOrm, SourcesOrm, CategoriesTypes, SpreadSheetsOrm
-from database.queries.records_queries import create_record, get_records_by_current_month
-from database.queries.sources_queries import update_current_balance
+from database import CategoriesOrm, SourcesOrm, CategoriesTypes, SpreadSheetsOrm
+from database import PostgresWrapper
 from datafiles import ADD_RECORD_MESSAGE
-from spreadsheet_wrapper.spreadsheetwrapper import SpreadsheetWrapper
+from spreadsheet_wrapper import SpreadsheetWrapper
 
 
 def parse_records_row(row, categories:list[CategoriesOrm], sources:list[SourcesOrm] = None) -> dict:
@@ -51,7 +50,7 @@ def parse_records_row(row, categories:list[CategoriesOrm], sources:list[SourcesO
 
     return response
 
-async def add_record(data: dict, spreadsheet: SpreadSheetsOrm, commandManager: CommandManager, spreadsheetWrapper: SpreadsheetWrapper) -> int:
+async def add_record(data: dict, spreadsheet: SpreadSheetsOrm, commandManager: CommandManager, spreadsheetWrapper: SpreadsheetWrapper, postgres_wrapper: PostgresWrapper) -> int:
     amount: float = data['amount']
     category: CategoriesOrm = data['category']
     source: SourcesOrm = data['source']
@@ -60,8 +59,8 @@ async def add_record(data: dict, spreadsheet: SpreadSheetsOrm, commandManager: C
     check_json: str = data['check_json']
 
     if category.type == CategoriesTypes.INCOME:
-        update_current_balance(source.id, amount)
-        record = create_record(spreadsheet_id=spreadsheet.id,
+        postgres_wrapper.sources_wrapper.update_current_balance(source.id, amount)
+        record = postgres_wrapper.records_wrapper.create_record(spreadsheet_id=spreadsheet.id,
                                amount=amount,
                                category_id=category.id,
                                source_id=source.id,
@@ -69,8 +68,8 @@ async def add_record(data: dict, spreadsheet: SpreadSheetsOrm, commandManager: C
                                name=name,
                                check_json=check_json)
     elif category.type == CategoriesTypes.COST:
-        update_current_balance(source.id, -amount)
-        record = create_record(spreadsheet_id=spreadsheet.id,
+        postgres_wrapper.sources_wrapper.update_current_balance(source.id, -amount)
+        record = postgres_wrapper.records_wrapper.create_record(spreadsheet_id=spreadsheet.id,
                                amount=-amount,
                                category_id=category.id,
                                source_id=source.id,
@@ -81,12 +80,12 @@ async def add_record(data: dict, spreadsheet: SpreadSheetsOrm, commandManager: C
     values = []
 
     value = [[record.id, str(record.added_at), amount, category.title, notes, source.title]]
-    records = get_records_by_current_month(spreadsheet.id, spreadsheet.start_date)
+    records = postgres_wrapper.records_wrapper.get_records_by_current_month(spreadsheet.id, spreadsheet.start_date)
     count = len(records) + 1
     values.append([str(spreadsheet.start_date), "ROWS", f"A{count}:F{count}", value])
 
-    source_value = await sync_sour_from_table_to_db(spreadsheet, spreadsheetWrapper)
-    total_values = await sync_total_from_db_to_table(spreadsheet)
+    source_value = await sync_sour_from_table_to_db(spreadsheet, spreadsheetWrapper, postgres_wrapper)
+    total_values = await sync_total_from_db_to_table(spreadsheet, postgres_wrapper)
     values.append(source_value)
     values += total_values
 

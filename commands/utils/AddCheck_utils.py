@@ -1,15 +1,21 @@
 import json
 
 from commands.utils.utils import category_by_association, source_by_association
-from database.models import CategoriesOrm, CategoriesTypes, SourcesOrm
-from database.queries.categories_queries import add_product_type_by_category_title
+from database import CategoriesOrm, CategoriesTypes, SourcesOrm, RecordsOrm
+from database import PostgresWrapper
 
 
-def create_first_input(check_data: dict, categories: list[CategoriesOrm]) -> dict:
+def create_first_input(check_data: dict, categories: list[CategoriesOrm], cashed_records: dict) -> dict:
     input = {}
 
+    model_records = {}
+    for id in check_data:
+        record = check_data[str(id)]
+        if record["name"] not in cashed_records:
+            model_records[id] = record
+
     input["types"] = get_product_types(categories)
-    input["check"] = check_data
+    input["check"] = model_records
 
     return input
 
@@ -19,7 +25,7 @@ def create_second_input(check_data: dict, categories: list[CategoriesOrm]) -> di
     model_records = {}
     for id in check_data:
         record = check_data[str(id)]
-        if record['type'] is None:
+        if record['type'] is None and record["confirmed_type"] is None:
             model_records[str(id)] = {}
             model_records[str(id)]['name'] = record['name']
             model_records[str(id)]['type'] = record['new_type']
@@ -103,11 +109,18 @@ def create_output_for_types(check_data: dict) -> str:
     output = ""
     for id in check_data:
         product = check_data[str(id)]
-        output += f'{id}) {product['name']}\n'
-        if product['type'] is not None:
-            output += f'    <b>{product['type']}</b>\n'
-        else:
-            output += f'    <b>{product['new_type'].upper()}</b>\n'
+        if product["confirmed_type"] is not None:
+            output += (f"{product['name']}\n"
+                       f"    <b>{product['confirmed_type']}</b>\n")
+    output += '\n'
+    for id in check_data:
+        product = check_data[str(id)]
+        if product["confirmed_type"] is None:
+            output += f'{id}) {product['name']}\n'
+            if product['type'] is not None:
+                output += f'    <b>{product['type']}</b>\n'
+            else:
+                output += f'    <b>{product['new_type'].upper()}</b>\n'
     return output
 
 def create_output_for_categories(check_data: dict):
@@ -128,11 +141,11 @@ def create_output_for_categories(check_data: dict):
                 output += f'    <b>{record['unconfirmed_category']}</b>\n'
     return output
 
-async def add_types(check_data: dict):
+async def add_types(check_data: dict, postgres_wrapper: PostgresWrapper):
     for id in check_data:
         record = check_data[id]
         if record["new_type"] is not None and record["unconfirmed_category"] != "НеопределенныеТраты":
-            add_product_type_by_category_title(record["unconfirmed_category"], record["new_type"])
+            postgres_wrapper.categories_wrapper.add_product_type_by_category_title(record["unconfirmed_category"], record["new_type"])
 
 async def get_values_to_add_record(check_data: dict, check_json: dict, categories: list[CategoriesOrm], sources: list[SourcesOrm]):
     values = []
@@ -145,5 +158,6 @@ async def get_values_to_add_record(check_data: dict, check_json: dict, categorie
         value["notes"] = record["type"]
         value["name"] = record["name"]
         value["check_json"] = json.dumps(check_json)
+        value["type"] = record["type"]
         values.append(value)
     return values

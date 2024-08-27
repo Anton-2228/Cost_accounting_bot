@@ -1,11 +1,12 @@
 import re
 
-from database.models import CategoriesOrm, SourcesOrm
+from database import CategoriesOrm, SourcesOrm
 
 
 def validate_category_row(spreadsheets_categories):
     names = []
     associations = []
+    product_types = []
     for z, row in enumerate(spreadsheets_categories["values"]):
         if len(row) == 0:
             continue
@@ -28,11 +29,17 @@ def validate_category_row(spreadsheets_categories):
         names.append(row[4])
         cur_associations = [x.lower() for x in row[5].split()]
         associations += list(set(cur_associations + [row[4].lower()]))
+        if row[6].strip() != '':
+            cur_product_types = [x.lower().strip() for x in row[6].split(',')]
+            product_types += cur_product_types
 
     if len(set(names)) != len(names):
         return f"В категориях один name используется несколько раз"
     if len(set(associations)) != len(associations):
         return f"В категориях один association используется несколько раз"
+
+    if len(set(product_types)) != len(product_types):
+        return f"В категориях один product type используется несколько раз"
 
 def validate_sources_row(spreadsheets_sources):
     names = []

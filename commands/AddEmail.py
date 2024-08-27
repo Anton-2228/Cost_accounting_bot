@@ -5,14 +5,12 @@ from aiogram.fsm.context import FSMContext
 from aiogram.types import Message
 
 from commands.Command import Command
-from database.queries.spreadsheets_queries import add_gmail, get_spreadsheetid
-from database.queries.users_queries import get_user
 from init import States
 
 
 class AddEmail(Command):
     async def execute(self, message: Message, state: FSMContext, command: CommandObject):
-        user = get_user(message.from_user.id)
+        user = self.postgres_wrapper.users_wrapper.get_user(message.from_user.id)
         if user == None:
             await message.answer('Сначала создайте таблицу')
             return
@@ -26,8 +24,8 @@ class AddEmail(Command):
                 await message.answer("Мне почта не нравится, давай другую")
             else:
                 gmail = message.text
-                add_gmail(message.from_user.id, gmail)
-                spreadsheetid = get_spreadsheetid(message.from_user.id)
+                self.postgres_wrapper.spreadsheets_wrapper.add_gmail(message.from_user.id, gmail)
+                spreadsheetid = self.postgres_wrapper.spreadsheets_wrapper.get_spreadsheetid(message.from_user.id)
                 self.spreadsheetWrapper.issueRights(spreadsheetid, "user", "writer", gmail)
                 await state.clear()
                 await message.answer("Права добавлены")
