@@ -63,28 +63,37 @@ async def add_record(data: dict, spreadsheet: SpreadSheetsOrm, commandManager: C
     if category.type == CategoriesTypes.INCOME:
         postgres_wrapper.sources_wrapper.update_current_balance(source.id, amount)
         record = postgres_wrapper.records_wrapper.create_record(spreadsheet_id=spreadsheet.id,
-                               amount=amount,
-                               category_id=category.id,
-                               source_id=source.id,
-                               notes=notes,
-                               name=name,
-                               check_json=check_json)
+                                                                amount=amount,
+                                                                category_id=category.id,
+                                                                source_id=source.id,
+                                                                notes=notes,
+                                                                name=name,
+                                                                check_json=check_json,
+                                                                type=type)
+        value = [[record.id, str(record.added_at), amount, record.product_name, category.title, record.type, notes,
+                  source.title, record.check_json]]
+
+
     elif category.type == CategoriesTypes.COST:
         postgres_wrapper.sources_wrapper.update_current_balance(source.id, -amount)
         record = postgres_wrapper.records_wrapper.create_record(spreadsheet_id=spreadsheet.id,
-                               amount=-amount,
-                               category_id=category.id,
-                               source_id=source.id,
-                               notes=notes,
-                               name=name,
-                               check_json=check_json)
+                                                                amount=-amount,
+                                                                category_id=category.id,
+                                                                source_id=source.id,
+                                                                notes=notes,
+                                                                name=name,
+                                                                check_json=check_json,
+                                                                type=type)
+        value = [[record.id, str(record.added_at), -amount, record.product_name, category.title, record.type, notes,
+                  source.title, record.check_json]]
 
     values = []
 
-    value = [[record.id, str(record.added_at), amount, category.title, notes, source.title]]
+    # value = [[record.id, str(record.added_at), amount, record.product_name, record.type, category.title, notes, source.title, record.check_json]]
     records = postgres_wrapper.records_wrapper.get_records_by_current_month(spreadsheet.id, spreadsheet.start_date)
     count = len(records) + 1
-    values.append([str(spreadsheet.start_date), "ROWS", f"A{count}:F{count}", value])
+    # values.append([str(spreadsheet.start_date), "ROWS", f"A{count}:F{count}", value])
+    values.append([str(spreadsheet.start_date), "ROWS", f"A{count}:I{count}", value])
 
     source_value = await sync_sour_from_table_to_db(spreadsheet, spreadsheetWrapper, postgres_wrapper)
     total_values = await sync_total_from_db_to_table(spreadsheet, postgres_wrapper)
