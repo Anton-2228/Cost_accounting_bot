@@ -7,7 +7,7 @@ from database.models import RecordsOrm
 from init import daysUntilNextMonth
 
 class RecordsOrmWrapper:
-    def create_record(self, spreadsheet_id, amount, category_id, source_id, notes, name=None, check_json=None):
+    def create_record(self, spreadsheet_id, amount, category_id, source_id, notes, name=None, check_json=None, type=None):
         with session_factory() as session:
             record = RecordsOrm(spreadsheet_id=spreadsheet_id,
                                 amount=amount,
@@ -15,7 +15,8 @@ class RecordsOrmWrapper:
                                 source=source_id,
                                 notes=notes,
                                 product_name=name,
-                                check_json=check_json)
+                                check_json=check_json,
+                                type=type)
             session.add_all([record])
             session.commit()
             record: RecordsOrm = session.get(RecordsOrm, record.id)

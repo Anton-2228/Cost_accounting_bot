@@ -158,9 +158,9 @@ class AddCheck(Command):
 
         values = []
         category_value = await sync_cat_from_db_to_table(spreadsheet, self.postgres_wrapper)
-        records_value = await sync_records_from_db_to_table(spreadsheet, self.postgres_wrapper)
+        # records_value = await sync_records_from_db_to_table(spreadsheet, self.postgres_wrapper)
         values.append(category_value)
-        values.append(records_value)
+        # values.append(records_value)
         self.spreadsheetWrapper.setValues(spreadsheet.spreadsheet_id, values)
 
         await message.answer("Траты успешно добавлены")

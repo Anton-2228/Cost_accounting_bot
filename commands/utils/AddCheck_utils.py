@@ -155,7 +155,8 @@ async def get_values_to_add_record(check_data: dict, check_json: dict, categorie
         value["amount"] = float(record["sum"])
         value["category"] = category_by_association(record['category'], categories)
         value["source"] = source_by_association(record['source'], sources)
-        value["notes"] = record["type"]
+        # value["notes"] = record["type"]
+        value["notes"] = ""
         value["name"] = record["name"]
         value["check_json"] = json.dumps(check_json)
         value["type"] = record["type"]

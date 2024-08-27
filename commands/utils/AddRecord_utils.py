@@ -44,6 +44,7 @@ def parse_records_row(row, categories:list[CategoriesOrm], sources:list[SourcesO
     value["notes"] = row_notes
     value["name"] = None
     value["check_json"] = None
+    value["type"] = None
 
     response["status"] = 'success'
     response["value"] = value
@@ -57,6 +58,7 @@ async def add_record(data: dict, spreadsheet: SpreadSheetsOrm, commandManager: C
     notes: str = data['notes']
     name: str = data['name']
     check_json: str = data['check_json']
+    type: str = data["type"]
 
     if category.type == CategoriesTypes.INCOME:
         postgres_wrapper.sources_wrapper.update_current_balance(source.id, amount)
