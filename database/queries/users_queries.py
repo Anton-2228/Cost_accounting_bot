@@ -14,7 +14,9 @@ class UsersOrmWrapper:
 
     def get_user(self, user_telegram_id: int):
         with session_factory() as session:
-            user: UsersOrm = session.scalar(select(UsersOrm).where(UsersOrm.telegram_id == user_telegram_id))
+            user: UsersOrm = session.scalar(
+                select(UsersOrm).where(UsersOrm.telegram_id == user_telegram_id)
+            )
             return user
 
     def remove_user(self, id: int):

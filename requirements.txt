@@ -1,15 +1,15 @@
-python-dotenv
+python - dotenv
 asyncpg
 psycopg
-psycopg-binary
+psycopg - binary
 sqlalchemy
 alembic
-pydantic-settings
+pydantic - settings
 aiogram
 httplib2
 googleAPI
 asyncio
 telethon
 langchain
-langchain-openai
+langchain - openai
 redis

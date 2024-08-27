@@ -2,15 +2,15 @@ import datetime
 
 from sqlalchemy import select
 
-from database import session_factory, CategoriesOrm
-from database import CashedRecordsOrm
+from database import CashedRecordsOrm, CategoriesOrm, session_factory
+
 
 class CashedRecordsOrmWrapper:
     def add_cashed_record(self, spreadsheet_id, name=None, type=None):
         with session_factory() as session:
-            record = CashedRecordsOrm(spreadsheet_id=spreadsheet_id,
-                                      product_name=name,
-                                      type=type)
+            record = CashedRecordsOrm(
+                spreadsheet_id=spreadsheet_id, product_name=name, type=type
+            )
             session.add_all([record])
             session.commit()
             record: CashedRecordsOrm = session.get(CashedRecordsOrm, record.id)
@@ -18,8 +18,11 @@ class CashedRecordsOrmWrapper:
 
     def get_cashed_records(self, spreadsheet_id):
         with session_factory() as session:
-            records: list[CashedRecordsOrm] = session.scalars(select(CashedRecordsOrm)
-                                                        .where(CashedRecordsOrm.spreadsheet_id == spreadsheet_id)).all()
+            records: list[CashedRecordsOrm] = session.scalars(
+                select(CashedRecordsOrm).where(
+                    CashedRecordsOrm.spreadsheet_id == spreadsheet_id
+                )
+            ).all()
             return records
 
     def remove_cashed_record(self, id: int):
@@ -27,7 +30,6 @@ class CashedRecordsOrmWrapper:
             record: CashedRecordsOrm = session.get(CashedRecordsOrm, id)
             session.delete(record)
             session.commit()
-
 
     # def remove_cashed_records_by_type(self, type: str):
     #     with session_factory() as session:

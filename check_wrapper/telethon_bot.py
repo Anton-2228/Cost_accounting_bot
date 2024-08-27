@@ -1,14 +1,17 @@
 from os import getenv
-import redis
 
+import redis
 from telethon import TelegramClient, events
+
 
 class TelethonBot:
     def __init__(self):
         api_id = getenv("TELEGRAM_API_ID")
         api_hash = getenv("TELEGRAM_API_HASH")
         # self.target_chat = "@Cheki_FNS_bot"
-        self.client = TelegramClient(session="CheckAnalysis", api_id=int(api_id), api_hash=api_hash)
+        self.client = TelegramClient(
+            session="CheckAnalysis", api_id=int(api_id), api_hash=api_hash
+        )
 
     async def start(self):
         async with self.client:

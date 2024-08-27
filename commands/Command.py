@@ -12,5 +12,7 @@ class Command:
         self.commandManager: CommandManager = command_manager
         self.postgres_wrapper = postgres_wrapper
 
-    async def execute(self, message: Message, state: FSMContext, command: CommandObject):
+    async def execute(
+        self, message: Message, state: FSMContext, command: CommandObject
+    ):
         pass

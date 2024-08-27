@@ -11,5 +11,7 @@ class GetHelp(Command):
         super().__init__(command_manager, postgres_wrapper)
         self.help = HELP_MESSAGE
 
-    async def execute(self, message: Message, state: FSMContext, command: CommandObject):
+    async def execute(
+        self, message: Message, state: FSMContext, command: CommandObject
+    ):
         await message.answer(self.help)

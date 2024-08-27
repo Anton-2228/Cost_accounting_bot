@@ -4,9 +4,12 @@ from typing import Iterable
 from openai import AsyncOpenAI
 from openai.types.chat import ChatCompletionMessageParam
 
-from ai_wrapper.utils import parsing_model_json_response, get_input_for_types_user_prompt, \
-    get_input_for_categories_user_prompt
-from datafiles import GET_CREDENTIALS_CHECK_PROMPT, GET_TYPES_FOR_CHECK_SYSTEM_PROMPT, GET_CATEGORIES_FOR_CHECK_SYSTEM_PROMPT
+from ai_wrapper.utils import (get_input_for_categories_user_prompt,
+                              get_input_for_types_user_prompt,
+                              parsing_model_json_response)
+from datafiles import (GET_CATEGORIES_FOR_CHECK_SYSTEM_PROMPT,
+                       GET_CREDENTIALS_CHECK_PROMPT,
+                       GET_TYPES_FOR_CHECK_SYSTEM_PROMPT)
 
 
 class AiWrapper:
@@ -38,8 +41,10 @@ class AiWrapper:
         system_content = [{"type": "text", "text": system_prompt}]
         user_content = [{"type": "text", "text": user_prompt}]
 
-        messages = [{"role": "system", "content": system_content},
-                    {"role": "user", "content": user_content}]
+        messages = [
+            {"role": "system", "content": system_content},
+            {"role": "user", "content": user_content},
+        ]
 
         return await self.create(messages)
 
@@ -47,19 +52,16 @@ class AiWrapper:
         system_prompt = GET_CREDENTIALS_CHECK_PROMPT
         user_prompt = input
 
-        return await self.invoke(system_prompt=system_prompt,
-                                 user_prompt=user_prompt)
+        return await self.invoke(system_prompt=system_prompt, user_prompt=user_prompt)
 
     async def first_invoke_check(self, input: dict):
         system_prompt = GET_TYPES_FOR_CHECK_SYSTEM_PROMPT
         user_prompt = get_input_for_types_user_prompt(input)
 
-        return await self.invoke(system_prompt=system_prompt,
-                                 user_prompt=user_prompt)
+        return await self.invoke(system_prompt=system_prompt, user_prompt=user_prompt)
 
     async def second_invoke_check(self, input: dict):
         system_prompt = GET_CATEGORIES_FOR_CHECK_SYSTEM_PROMPT
         user_prompt = get_input_for_categories_user_prompt(input)
 
-        return await self.invoke(system_prompt=system_prompt,
-                                 user_prompt=user_prompt)
+        return await self.invoke(system_prompt=system_prompt, user_prompt=user_prompt)

@@ -5,13 +5,22 @@ from aiogram.types import Message
 from ai_wrapper import AiWrapper
 from check_wrapper import get_check_data, get_important_check_data
 from commands.Command import Command
-from commands.utils.AddCheck_utils import parse_types_input, get_product_types, create_output_for_types, \
-    parse_categories_input, add_types, get_values_to_add_record, create_output_for_categories, create_first_input, \
-    create_second_input, get_category_by_product_type
+from commands.utils.AddCheck_utils import (add_types, create_first_input,
+                                           create_output_for_categories,
+                                           create_output_for_types,
+                                           create_second_input,
+                                           get_category_by_product_type,
+                                           get_product_types,
+                                           get_values_to_add_record,
+                                           parse_categories_input,
+                                           parse_types_input)
 from commands.utils.AddRecord_utils import add_record
-from commands.utils.Synchronize_utils import sync_cat_from_db_to_table, sync_records_from_db_to_table
-from database import CategoriesOrm, SourcesOrm, CashedRecordsOrm
-from datafiles import FIRST_STAGE_ADD_CHECK_MESSAGE, SECOND_STAGE_ADD_CHECK_MESSAGE, FINISH_STAGE_ADD_CHECK_MESSAGE
+from commands.utils.Synchronize_utils import (sync_cat_from_db_to_table,
+                                              sync_records_from_db_to_table)
+from database import CashedRecordsOrm, CategoriesOrm, SourcesOrm
+from datafiles import (FINISH_STAGE_ADD_CHECK_MESSAGE,
+                       FIRST_STAGE_ADD_CHECK_MESSAGE,
+                       SECOND_STAGE_ADD_CHECK_MESSAGE)
 from init import States
 from validation import validate_check_enter
 
@@ -22,10 +31,12 @@ class AddCheck(Command):
         self.ai_wrapper = AiWrapper()
         self.temp_data = {}
 
-    async def execute(self, message: Message, state: FSMContext, command: CommandObject):
+    async def execute(
+        self, message: Message, state: FSMContext, command: CommandObject
+    ):
         user = self.postgres_wrapper.users_wrapper.get_user(message.from_user.id)
         if user == None:
-            await message.answer('Сначала создайте таблицу')
+            await message.answer("Сначала создайте таблицу")
             return
 
         if message.text == "/cancel":
@@ -43,25 +54,26 @@ class AddCheck(Command):
             else:
                 await self.first_stage(message)
         elif cur_state == States.CONFIRM_CATEGORIES_CHECK:
-                if message.text.lower() == "да":
-                    await message.answer(FINISH_STAGE_ADD_CHECK_MESSAGE)
-                    await state.set_state(States.FINISH_CHECK)
-                else:
-                    await self.second_stage(message)
+            if message.text.lower() == "да":
+                await message.answer(FINISH_STAGE_ADD_CHECK_MESSAGE)
+                await state.set_state(States.FINISH_CHECK)
+            else:
+                await self.second_stage(message)
         elif cur_state == States.FINISH_CHECK:
             await self.third_stage(message, state)
-
 
     async def zero_stage(self, message: Message, state: FSMContext):
         user_id = message.from_user.id
         check_text = message.text
         self.temp_data[user_id] = {}
 
-        all_check_data = await get_check_data(ai_wrapper=self.ai_wrapper, check_text=check_text)
-        self.temp_data[user_id]['all_check_data'] = all_check_data
+        all_check_data = await get_check_data(
+            ai_wrapper=self.ai_wrapper, check_text=check_text
+        )
+        self.temp_data[user_id]["all_check_data"] = all_check_data
 
         check_data = get_important_check_data(all_check_data)
-        self.temp_data[user_id]['check_data'] = check_data
+        self.temp_data[user_id]["check_data"] = check_data
 
         await self.preparing_first_stage(message, state)
         await self.set_type_finish_state(message, state)
@@ -70,10 +82,16 @@ class AddCheck(Command):
 
     async def first_stage(self, message: Message):
         user_id = message.from_user.id
-        spreadsheet = self.postgres_wrapper.spreadsheets_wrapper.get_spreadsheet(user_id)
-        categories: list[CategoriesOrm] = self.postgres_wrapper.categories_wrapper.get_active_categories_by_spreadsheet(spreadsheet.id)
+        spreadsheet = self.postgres_wrapper.spreadsheets_wrapper.get_spreadsheet(
+            user_id
+        )
+        categories: list[CategoriesOrm] = (
+            self.postgres_wrapper.categories_wrapper.get_active_categories_by_spreadsheet(
+                spreadsheet.id
+            )
+        )
         row = message.text
-        check_data = self.temp_data[user_id]['check_data']
+        check_data = self.temp_data[user_id]["check_data"]
 
         response = parse_types_input(check_data, row)
         if response["status"] == "error":
@@ -97,18 +115,26 @@ class AddCheck(Command):
 
     async def second_stage(self, message: Message):
         user_id = message.from_user.id
-        spreadsheet = self.postgres_wrapper.spreadsheets_wrapper.get_spreadsheet(message.from_user.id)
+        spreadsheet = self.postgres_wrapper.spreadsheets_wrapper.get_spreadsheet(
+            message.from_user.id
+        )
         row = message.text
-        categories: list[CategoriesOrm] = self.postgres_wrapper.categories_wrapper.get_active_categories_by_spreadsheet(spreadsheet.id)
-        check_data = self.temp_data[user_id]['check_data']
+        categories: list[CategoriesOrm] = (
+            self.postgres_wrapper.categories_wrapper.get_active_categories_by_spreadsheet(
+                spreadsheet.id
+            )
+        )
+        check_data = self.temp_data[user_id]["check_data"]
 
-        response = parse_categories_input(check_data=check_data, categories=categories, row=row)
+        response = parse_categories_input(
+            check_data=check_data, categories=categories, row=row
+        )
         if response["status"] == "error":
             await message.answer(response["message"])
             return
 
         for id in response["value"]:
-            check_data[id]['unconfirmed_category'] = response["value"][id]
+            check_data[id]["unconfirmed_category"] = response["value"][id]
 
         # print(check_data)
 
@@ -118,12 +144,22 @@ class AddCheck(Command):
 
     async def third_stage(self, message: Message, state: FSMContext):
         user_id = message.from_user.id
-        spreadsheet = self.postgres_wrapper.spreadsheets_wrapper.get_spreadsheet(user_id)
+        spreadsheet = self.postgres_wrapper.spreadsheets_wrapper.get_spreadsheet(
+            user_id
+        )
         record_source = message.text.lower()
-        categories: list[CategoriesOrm] = self.postgres_wrapper.categories_wrapper.get_active_categories_by_spreadsheet(spreadsheet.id)
-        sources: list[SourcesOrm] = self.postgres_wrapper.sources_wrapper.get_sources_by_spreadsheet(spreadsheet.id)
+        categories: list[CategoriesOrm] = (
+            self.postgres_wrapper.categories_wrapper.get_active_categories_by_spreadsheet(
+                spreadsheet.id
+            )
+        )
+        sources: list[SourcesOrm] = (
+            self.postgres_wrapper.sources_wrapper.get_sources_by_spreadsheet(
+                spreadsheet.id
+            )
+        )
         check_data = self.temp_data[user_id]["check_data"]
-        check_json = self.temp_data[user_id]['all_check_data']
+        check_json = self.temp_data[user_id]["all_check_data"]
 
         err_message = validate_check_enter(record_source, sources)
         if err_message != None:
@@ -131,7 +167,7 @@ class AddCheck(Command):
             return
 
         for id in check_data:
-            check_data[id]['source'] = record_source
+            check_data[id]["source"] = record_source
 
         await add_types(check_data, self.postgres_wrapper)
 
@@ -140,23 +176,41 @@ class AddCheck(Command):
         for id in check_data:
             record = check_data[id]
             if record["confirmed_type"] is not None:
-                check_data[id]['type'] = check_data[id]['confirmed_type']
+                check_data[id]["type"] = check_data[id]["confirmed_type"]
             if record["new_type"] is not None:
-                check_data[id]['type'] = check_data[id]['new_type']
-                check_data[id]['category'] = check_data[id]['unconfirmed_category']
-        records = await get_values_to_add_record(check_data=check_data,
-                                                 categories=categories,
-                                                 check_json=check_json,
-                                                 sources=sources)
-        cashed_records: list[CashedRecordsOrm] = self.postgres_wrapper.cashed_records_wrapper.get_cashed_records(spreadsheet.id)
+                check_data[id]["type"] = check_data[id]["new_type"]
+                check_data[id]["category"] = check_data[id]["unconfirmed_category"]
+        records = await get_values_to_add_record(
+            check_data=check_data,
+            categories=categories,
+            check_json=check_json,
+            sources=sources,
+        )
+        cashed_records: list[CashedRecordsOrm] = (
+            self.postgres_wrapper.cashed_records_wrapper.get_cashed_records(
+                spreadsheet.id
+            )
+        )
         cashed_names = [x.product_name for x in cashed_records]
         for record in records:
             if record["name"] not in cashed_names:
-                self.postgres_wrapper.cashed_records_wrapper.add_cashed_record(spreadsheet_id=spreadsheet.id, name=record["name"], type=record["type"])
-            await add_record(record, spreadsheet, self.commandManager, self.spreadsheetWrapper, self.postgres_wrapper)
+                self.postgres_wrapper.cashed_records_wrapper.add_cashed_record(
+                    spreadsheet_id=spreadsheet.id,
+                    name=record["name"],
+                    type=record["type"],
+                )
+            await add_record(
+                record,
+                spreadsheet,
+                self.commandManager,
+                self.spreadsheetWrapper,
+                self.postgres_wrapper,
+            )
 
         values = []
-        category_value = await sync_cat_from_db_to_table(spreadsheet, self.postgres_wrapper)
+        category_value = await sync_cat_from_db_to_table(
+            spreadsheet, self.postgres_wrapper
+        )
         # records_value = await sync_records_from_db_to_table(spreadsheet, self.postgres_wrapper)
         values.append(category_value)
         # values.append(records_value)
@@ -167,10 +221,20 @@ class AddCheck(Command):
 
     async def preparing_first_stage(self, message: Message, state: FSMContext):
         user_id = message.from_user.id
-        spreadsheet = self.postgres_wrapper.spreadsheets_wrapper.get_spreadsheet(user_id)
-        categories: list[CategoriesOrm] = self.postgres_wrapper.categories_wrapper.get_active_categories_by_spreadsheet(spreadsheet.id)
-        records: list[CashedRecordsOrm] = self.postgres_wrapper.cashed_records_wrapper.get_cashed_records(spreadsheet_id=spreadsheet.id)
-        check_data = self.temp_data[user_id]['check_data']
+        spreadsheet = self.postgres_wrapper.spreadsheets_wrapper.get_spreadsheet(
+            user_id
+        )
+        categories: list[CategoriesOrm] = (
+            self.postgres_wrapper.categories_wrapper.get_active_categories_by_spreadsheet(
+                spreadsheet.id
+            )
+        )
+        records: list[CashedRecordsOrm] = (
+            self.postgres_wrapper.cashed_records_wrapper.get_cashed_records(
+                spreadsheet_id=spreadsheet.id
+            )
+        )
+        check_data = self.temp_data[user_id]["check_data"]
 
         cashed_records = {}
         for record in records:
@@ -178,7 +242,9 @@ class AddCheck(Command):
         # print(records)
         # print(cashed_records)
 
-        input = create_first_input(check_data=check_data, categories=categories, cashed_records=cashed_records)
+        input = create_first_input(
+            check_data=check_data, categories=categories, cashed_records=cashed_records
+        )
         if input["check"] != {}:
             answer = await self.ai_wrapper.first_invoke_check(input)
 
@@ -210,9 +276,15 @@ class AddCheck(Command):
 
     async def preparing_second_stage(self, message: Message):
         user_id = message.from_user.id
-        spreadsheet = self.postgres_wrapper.spreadsheets_wrapper.get_spreadsheet(user_id)
+        spreadsheet = self.postgres_wrapper.spreadsheets_wrapper.get_spreadsheet(
+            user_id
+        )
         check_data = self.temp_data[user_id]["check_data"]
-        categories: list[CategoriesOrm] = self.postgres_wrapper.categories_wrapper.get_active_categories_by_spreadsheet(spreadsheet.id)
+        categories: list[CategoriesOrm] = (
+            self.postgres_wrapper.categories_wrapper.get_active_categories_by_spreadsheet(
+                spreadsheet.id
+            )
+        )
 
         input = create_second_input(check_data, categories)
         answer = await self.ai_wrapper.second_invoke_check(input)
@@ -220,23 +292,25 @@ class AddCheck(Command):
         for id in check_data:
             record = check_data[id]
             if id in answer:
-                record['category'] = None
-                record['unconfirmed_category'] = record['category']
+                record["category"] = None
+                record["unconfirmed_category"] = record["category"]
             else:
-                if record['confirmed_type'] is None:
-                    check_data[id]['category'] = get_category_by_product_type(type=record['type'],
-                                                                              categories=categories)
+                if record["confirmed_type"] is None:
+                    check_data[id]["category"] = get_category_by_product_type(
+                        type=record["type"], categories=categories
+                    )
                 else:
-                    check_data[id]['category'] = get_category_by_product_type(type=record['confirmed_type'],
-                                                                              categories=categories)
+                    check_data[id]["category"] = get_category_by_product_type(
+                        type=record["confirmed_type"], categories=categories
+                    )
 
         output = create_output_for_categories(check_data)
         await message.answer(output)
 
     async def set_type_finish_state(self, message: Message, state: FSMContext):
-        check_data = self.temp_data[message.from_user.id]['check_data']
+        check_data = self.temp_data[message.from_user.id]["check_data"]
         for id in check_data:
-            if check_data[id]['confirmed_type'] is None:
+            if check_data[id]["confirmed_type"] is None:
                 await message.answer(FIRST_STAGE_ADD_CHECK_MESSAGE)
                 await state.set_state(States.CONFIRM_TYPES_CHECK)
                 return
@@ -245,9 +319,9 @@ class AddCheck(Command):
         await self.set_category_finish_state(message, state)
 
     async def set_category_finish_state(self, message: Message, state: FSMContext):
-        check_data = self.temp_data[message.from_user.id]['check_data']
+        check_data = self.temp_data[message.from_user.id]["check_data"]
         for id in check_data:
-            if check_data[id]['category'] is None:
+            if check_data[id]["category"] is None:
                 await message.answer(SECOND_STAGE_ADD_CHECK_MESSAGE)
                 await state.set_state(States.CONFIRM_CATEGORIES_CHECK)
                 return
