@@ -30,9 +30,9 @@ async def sync_records_from_db_to_table(spreadsheet, postgres_wrapper: PostgresW
     for i in records:
         category = postgres_wrapper.categories_wrapper.get_category(i.category)
         source = postgres_wrapper.sources_wrapper.get_source(i.source)
-        value.append([i.id, str(i.added_at), i.amount, category.title, i.notes, source.title, i.product_name, i.check_json,])
+        value.append([i.id, str(i.added_at), i.amount, i.product_name, category.title, i.type, i.notes, source.title, i.check_json])
 
-    return [str(spreadsheet.start_date), 'ROWS', f'A2:H{len(value) + 1}', value]
+    return [str(spreadsheet.start_date), 'ROWS', f'A2:I{len(value) + 1}', value]
 
 async def sync_cat_from_db_to_table(spreadsheet: SpreadSheetsOrm, postgres_wrapper: PostgresWrapper):
     categories: list[CategoriesOrm] = postgres_wrapper.categories_wrapper.get_active_ans_inactive_categories_by_spreadsheet(spreadsheet.id)
