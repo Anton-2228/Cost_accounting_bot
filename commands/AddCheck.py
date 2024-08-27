@@ -89,7 +89,7 @@ class AddCheck(Command):
                 check_data[str(id)]["type"] = None
                 check_data[str(id)]["new_type"] = response["value"][str(id)]
 
-        print(check_data)
+        # print(check_data)
 
         output = create_output_for_types(check_data)
         await message.answer(output)
@@ -110,7 +110,7 @@ class AddCheck(Command):
         for id in response["value"]:
             check_data[id]['unconfirmed_category'] = response["value"][id]
 
-        print(check_data)
+        # print(check_data)
 
         output = create_output_for_categories(check_data)
         await message.answer(output)
@@ -135,7 +135,7 @@ class AddCheck(Command):
 
         await add_types(check_data, self.postgres_wrapper)
 
-        print(check_data)
+        # print(check_data)
 
         for id in check_data:
             record = check_data[id]
@@ -151,7 +151,6 @@ class AddCheck(Command):
         cashed_records: list[CashedRecordsOrm] = self.postgres_wrapper.cashed_records_wrapper.get_cashed_records(spreadsheet.id)
         cashed_names = [x.product_name for x in cashed_records]
         for record in records:
-            print(record)
             if record["name"] not in cashed_names:
                 self.postgres_wrapper.cashed_records_wrapper.add_cashed_record(spreadsheet_id=spreadsheet.id, name=record["name"], type=record["type"])
             await add_record(record, spreadsheet, self.commandManager, self.spreadsheetWrapper, self.postgres_wrapper)
@@ -176,8 +175,8 @@ class AddCheck(Command):
         cashed_records = {}
         for record in records:
             cashed_records[record.product_name] = record.type
-        print(records)
-        print(cashed_records)
+        # print(records)
+        # print(cashed_records)
 
         input = create_first_input(check_data=check_data, categories=categories, cashed_records=cashed_records)
         if input["check"] != {}:
@@ -204,7 +203,7 @@ class AddCheck(Command):
                 record["type"] = None
                 record["new_type"] = None
 
-        print(check_data)
+        # print(check_data)
 
         output = create_output_for_types(check_data)
         await message.answer(output)
@@ -217,7 +216,7 @@ class AddCheck(Command):
 
         input = create_second_input(check_data, categories)
         answer = await self.ai_wrapper.second_invoke_check(input)
-        print(answer)
+        # print(answer)
         for id in check_data:
             record = check_data[id]
             if id in answer:

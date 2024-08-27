@@ -18,7 +18,6 @@ class DeleteRecord(Command):
 
         spreadsheet = self.postgres_wrapper.spreadsheets_wrapper.get_spreadsheet(message.from_user.id)
         delete_id = command.args
-        print(delete_id)
         records: list[RecordsOrm] = self.postgres_wrapper.records_wrapper.get_records_by_current_month(spreadsheet.id, spreadsheet.start_date)
         delete_record = None
         if delete_id == None:

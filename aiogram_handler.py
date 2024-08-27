@@ -106,7 +106,6 @@ async def timer():
                 spreadsheetWrapper.setValues(spreadsheet.spreadsheet_id, values)
 
                 sheets = spreadsheetWrapper.getSheets(spreadsheet.spreadsheet_id)
-                print(sheets)
                 spreadsheetWrapper.spreadSheetSetStyler.setStyleTotalLists(spreadsheet.spreadsheet_id,
                                                                          sheets["Stat. " + str(spreadsheet.start_date)],
                                                                          daysUntilNextMonth[
