@@ -19,7 +19,7 @@ class TelethonBot:
             print(me.username)
 
             self.target_chat = await self.client.get_entity("@Cheki_FNS_bot")
-            self.send_chat = await self.client.get_entity("@fcktbbot")
+            self.send_chat = await self.client.get_entity("@wheremymoney_bot")
 
             self.client.add_event_handler(self.handle_new_message, events.NewMessage)
 
