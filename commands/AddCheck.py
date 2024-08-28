@@ -293,7 +293,7 @@ class AddCheck(Command):
             record = check_data[id]
             if id in answer:
                 record["category"] = None
-                record["unconfirmed_category"] = record["category"]
+                record["unconfirmed_category"] = answer[id]["category"]
             else:
                 if record["confirmed_type"] is None:
                     check_data[id]["category"] = get_category_by_product_type(
