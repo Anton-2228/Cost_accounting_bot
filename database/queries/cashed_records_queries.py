@@ -6,7 +6,7 @@ from database import CashedRecordsOrm, CategoriesOrm, session_factory
 
 
 class CashedRecordsOrmWrapper:
-    def add_cashed_record(self, spreadsheet_id, name=None, type=None):
+    def add_cashed_record(self, spreadsheet_id, name=None, type=None) -> CashedRecordsOrm:
         with session_factory() as session:
             record = CashedRecordsOrm(
                 spreadsheet_id=spreadsheet_id, product_name=name, type=type

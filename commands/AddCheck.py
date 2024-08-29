@@ -194,11 +194,12 @@ class AddCheck(Command):
         cashed_names = [x.product_name for x in cashed_records]
         for record in records:
             if record["name"] not in cashed_names:
-                self.postgres_wrapper.cashed_records_wrapper.add_cashed_record(
+                new_cashed_record: CashedRecordsOrm = self.postgres_wrapper.cashed_records_wrapper.add_cashed_record(
                     spreadsheet_id=spreadsheet.id,
                     name=record["name"],
                     type=record["type"],
                 )
+                cashed_names.append(new_cashed_record.product_name)
             await add_record(
                 record,
                 spreadsheet,
