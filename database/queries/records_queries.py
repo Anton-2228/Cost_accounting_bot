@@ -3,7 +3,7 @@ import datetime
 from sqlalchemy import select
 
 from database.database import session_factory
-from database.models import RecordsOrm
+from database.models import RecordsOrm, CashedRecordsOrm
 from init import daysUntilNextMonth
 
 
@@ -71,8 +71,17 @@ class RecordsOrmWrapper:
     def remove_record(self, id: int):
         with session_factory() as session:
             record: RecordsOrm = session.get(RecordsOrm, id)
+            self.delete_cashed_name_by_deleted_record(record.product_name, session)
             session.delete(record)
             session.commit()
+
+    def delete_cashed_name_by_deleted_record(self, record_product_name, session):
+        record: CashedRecordsOrm = session.scalar(
+            select(CashedRecordsOrm).filter(CashedRecordsOrm.product_name == record_product_name)
+        )
+        if record is not None:
+            session.delete(record)
+        session.commit()
 
     # def get_records_by_spreadsheet(spreadsheet_id):
     #     with session_factory() as session:

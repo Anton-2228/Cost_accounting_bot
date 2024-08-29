@@ -2,7 +2,7 @@ import datetime
 
 from sqlalchemy import select
 
-from database import CashedRecordsOrm, CategoriesOrm, session_factory
+from database import CashedRecordsOrm, session_factory
 
 
 class CashedRecordsOrmWrapper:

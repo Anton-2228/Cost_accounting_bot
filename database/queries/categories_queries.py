@@ -209,8 +209,9 @@ class CategoriesOrmWrapper:
         records: list[CashedRecordsOrm] = session.scalars(
             select(CashedRecordsOrm).filter(CashedRecordsOrm.type.in_(deleted_types))
         ).all()
-        for record in records:
-            session.delete(record)
+        if records:
+            for record in records:
+                session.delete(record)
         session.commit()
 
     def delete_cashed_names_by_deleted_product_types(
@@ -220,6 +221,7 @@ class CategoriesOrmWrapper:
         records: list[CashedRecordsOrm] = session.scalars(
             select(CashedRecordsOrm).filter(CashedRecordsOrm.type.in_(deleted_types))
         ).all()
-        for record in records:
-            session.delete(record)
+        if records:
+            for record in records:
+                session.delete(record)
         session.commit()
