@@ -120,7 +120,7 @@ async def timer():
                     "help"
                 ].spreadsheetWrapper
                 postgres_wrapper.spreadsheets_wrapper.update_start_date(i.id, end_date)
-                spreadsheet = postgres_wrapper.sources_wrapper.get_spreadsheet_by_id(
+                spreadsheet = postgres_wrapper.spreadsheets_wrapper.get_spreadsheet_by_id(
                     i.id
                 )
                 response = spreadsheetWrapper.addNewOperationsSheet(
