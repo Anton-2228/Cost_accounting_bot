@@ -17,7 +17,7 @@ from init import (COMMANDS, States, bot, daysUntilNextMonth, dp, router,
 # dp = createDispatcher()
 # router = createRouter() = createRouter()
 postgres_wrapper = PostgresWrapper()
-commandManager = CommandManager()
+commandManager = CommandManager(router=router, bot=bot)
 commandManager.addCommands(get_commands(commandManager, postgres_wrapper))
 
 # data = GlobalVariables.data

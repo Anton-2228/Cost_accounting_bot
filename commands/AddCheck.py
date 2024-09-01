@@ -1,6 +1,7 @@
+from aiogram import F
 from aiogram.filters import CommandObject
 from aiogram.fsm.context import FSMContext
-from aiogram.types import Message
+from aiogram.types import Message, CallbackQuery
 
 from ai_wrapper import AiWrapper
 from check_wrapper import get_check_data, get_important_check_data
@@ -13,7 +14,8 @@ from commands.utils.AddCheck_utils import (add_types, create_first_input,
                                            get_product_types,
                                            get_values_to_add_record,
                                            parse_categories_input,
-                                           parse_types_input)
+                                           parse_types_input, send_first_stage_message_with_button,
+                                           send_second_stage_message_with_button)
 from commands.utils.AddRecord_utils import add_record
 from commands.utils.Synchronize_utils import (sync_cat_from_db_to_table,
                                               sync_records_from_db_to_table)
@@ -30,11 +32,13 @@ class AddCheck(Command):
         super().__init__(command_manager, postgres_wrapper)
         self.ai_wrapper = AiWrapper()
         self.temp_data = {}
+        command_manager.router.callback_query.register(self.confirm_select_types, F.data == "confirm_select_types")
+        command_manager.router.callback_query.register(self.confirm_select_categories, F.data == "confirm_select_categories")
 
     async def execute(
         self, message: Message, state: FSMContext, command: CommandObject
     ):
-        user = self.postgres_wrapper.users_wrapper.get_user(message.from_user.id)
+        user = self.postgres_wrapper.users_wrapper.get_user(message.chat.id)
         if user == None:
             await message.answer("Сначала создайте таблицу")
             return
@@ -48,22 +52,14 @@ class AddCheck(Command):
         if cur_state == None:
             await self.zero_stage(message, state)
         elif cur_state == States.CONFIRM_TYPES_CHECK:
-            if message.text.lower() == "да":
-                await self.preparing_second_stage(message)
-                await self.set_category_finish_state(message, state)
-            else:
-                await self.first_stage(message)
+            await self.first_stage(message, state)
         elif cur_state == States.CONFIRM_CATEGORIES_CHECK:
-            if message.text.lower() == "да":
-                await message.answer(FINISH_STAGE_ADD_CHECK_MESSAGE)
-                await state.set_state(States.FINISH_CHECK)
-            else:
-                await self.second_stage(message)
+            await self.second_stage(message, state)
         elif cur_state == States.FINISH_CHECK:
             await self.third_stage(message, state)
 
     async def zero_stage(self, message: Message, state: FSMContext):
-        user_id = message.from_user.id
+        user_id = message.chat.id
         check_text = message.text
         self.temp_data[user_id] = {}
 
@@ -77,11 +73,11 @@ class AddCheck(Command):
 
         await self.preparing_first_stage(message, state)
         await self.set_type_finish_state(message, state)
-        # await message.answer(FIRST_STAGE_ADD_CHECK_MESSAGE)
-        # await state.set_state(States.CONFIRM_TYPES_CHECK)
 
-    async def first_stage(self, message: Message):
-        user_id = message.from_user.id
+    async def first_stage(self, message: Message, state: FSMContext):
+        await self.process_delete_confirm_select_types_button(message, state)
+
+        user_id = message.chat.id
         spreadsheet = self.postgres_wrapper.spreadsheets_wrapper.get_spreadsheet(
             user_id
         )
@@ -107,16 +103,16 @@ class AddCheck(Command):
                 check_data[str(id)]["type"] = None
                 check_data[str(id)]["new_type"] = response["value"][str(id)]
 
-        # print(check_data)
-
         output = create_output_for_types(check_data)
         await message.answer(output)
-        await message.answer(FIRST_STAGE_ADD_CHECK_MESSAGE)
+        await send_first_stage_message_with_button(FIRST_STAGE_ADD_CHECK_MESSAGE, message, state)
 
-    async def second_stage(self, message: Message):
-        user_id = message.from_user.id
+    async def second_stage(self, message: Message, state: FSMContext):
+        await self.process_delete_confirm_select_categories_button(message, state)
+
+        user_id = message.chat.id
         spreadsheet = self.postgres_wrapper.spreadsheets_wrapper.get_spreadsheet(
-            message.from_user.id
+            message.chat.id
         )
         row = message.text
         categories: list[CategoriesOrm] = (
@@ -136,14 +132,12 @@ class AddCheck(Command):
         for id in response["value"]:
             check_data[id]["unconfirmed_category"] = response["value"][id]
 
-        # print(check_data)
-
         output = create_output_for_categories(check_data)
         await message.answer(output)
-        await message.answer(SECOND_STAGE_ADD_CHECK_MESSAGE)
+        await send_second_stage_message_with_button(SECOND_STAGE_ADD_CHECK_MESSAGE, message, state)
 
     async def third_stage(self, message: Message, state: FSMContext):
-        user_id = message.from_user.id
+        user_id = message.chat.id
         spreadsheet = self.postgres_wrapper.spreadsheets_wrapper.get_spreadsheet(
             user_id
         )
@@ -170,8 +164,6 @@ class AddCheck(Command):
             check_data[id]["source"] = record_source
 
         await add_types(check_data, self.postgres_wrapper)
-
-        # print(check_data)
 
         for id in check_data:
             record = check_data[id]
@@ -221,7 +213,7 @@ class AddCheck(Command):
         await state.clear()
 
     async def preparing_first_stage(self, message: Message, state: FSMContext):
-        user_id = message.from_user.id
+        user_id = message.chat.id
         spreadsheet = self.postgres_wrapper.spreadsheets_wrapper.get_spreadsheet(
             user_id
         )
@@ -240,8 +232,6 @@ class AddCheck(Command):
         cashed_records = {}
         for record in records:
             cashed_records[record.product_name] = record.type
-        # print(records)
-        # print(cashed_records)
 
         input = create_first_input(
             check_data=check_data, categories=categories, cashed_records=cashed_records
@@ -259,8 +249,6 @@ class AddCheck(Command):
                 else:
                     check_data[id]["type"] = cashed_records[check_data[id]["name"]]
                     check_data[id]["new_type"] = None
-                # self.temp_data[user_id]['check_data'] = answer
-                # check_data = self.temp_data[user_id]['check_data']
 
         for id in check_data:
             record = check_data[str(id)]
@@ -270,13 +258,11 @@ class AddCheck(Command):
                 record["type"] = None
                 record["new_type"] = None
 
-        # print(check_data)
-
         output = create_output_for_types(check_data)
         await message.answer(output)
 
     async def preparing_second_stage(self, message: Message):
-        user_id = message.from_user.id
+        user_id = message.chat.id
         spreadsheet = self.postgres_wrapper.spreadsheets_wrapper.get_spreadsheet(
             user_id
         )
@@ -289,7 +275,6 @@ class AddCheck(Command):
 
         input = create_second_input(check_data, categories)
         answer = await self.ai_wrapper.second_invoke_check(input)
-        # print(answer)
         for id in check_data:
             record = check_data[id]
             if id in answer:
@@ -309,10 +294,10 @@ class AddCheck(Command):
         await message.answer(output)
 
     async def set_type_finish_state(self, message: Message, state: FSMContext):
-        check_data = self.temp_data[message.from_user.id]["check_data"]
+        check_data = self.temp_data[message.chat.id]["check_data"]
         for id in check_data:
             if check_data[id]["confirmed_type"] is None:
-                await message.answer(FIRST_STAGE_ADD_CHECK_MESSAGE)
+                await send_first_stage_message_with_button(FIRST_STAGE_ADD_CHECK_MESSAGE, message, state)
                 await state.set_state(States.CONFIRM_TYPES_CHECK)
                 return
         await state.set_state(States.CONFIRM_CATEGORIES_CHECK)
@@ -320,11 +305,45 @@ class AddCheck(Command):
         await self.set_category_finish_state(message, state)
 
     async def set_category_finish_state(self, message: Message, state: FSMContext):
-        check_data = self.temp_data[message.from_user.id]["check_data"]
+        check_data = self.temp_data[message.chat.id]["check_data"]
         for id in check_data:
             if check_data[id]["category"] is None:
-                await message.answer(SECOND_STAGE_ADD_CHECK_MESSAGE)
+                await send_second_stage_message_with_button(SECOND_STAGE_ADD_CHECK_MESSAGE, message, state)
                 await state.set_state(States.CONFIRM_CATEGORIES_CHECK)
                 return
         await message.answer(FINISH_STAGE_ADD_CHECK_MESSAGE)
         await state.set_state(States.FINISH_CHECK)
+
+    async def confirm_select_types(self, callback: CallbackQuery, state: FSMContext):
+        await callback.answer()
+        await self.commandManager.bot.edit_message_reply_markup(
+            chat_id=callback.from_user.id, message_id=callback.message.message_id, reply_markup=None
+        )
+        await state.update_data(confirm_select_types_messages=None)
+        await self.preparing_second_stage(callback.message)
+        await self.set_category_finish_state(callback.message, state)
+
+    async def process_delete_confirm_select_types_button(self, message: Message, state: FSMContext) -> None:
+        confirm_select_types_messages = (await state.get_data())["confirm_select_types_messages"]
+        if confirm_select_types_messages:
+            await self.commandManager.bot.edit_message_reply_markup(
+                chat_id=message.chat.id, message_id=confirm_select_types_messages, reply_markup=None
+            )
+            await state.update_data(confirm_select_types_messages=None)
+
+    async def confirm_select_categories(self, callback: CallbackQuery, state: FSMContext):
+        await callback.answer()
+        await self.commandManager.bot.edit_message_reply_markup(
+            chat_id=callback.from_user.id, message_id=callback.message.message_id, reply_markup=None
+        )
+        await state.update_data(confirm_select_categories_messages=None)
+        await callback.message.answer(FINISH_STAGE_ADD_CHECK_MESSAGE)
+        await state.set_state(States.FINISH_CHECK)
+
+    async def process_delete_confirm_select_categories_button(self, message: Message, state: FSMContext) -> None:
+        confirm_select_categories_messages = (await state.get_data())["confirm_select_categories_messages"]
+        if confirm_select_categories_messages:
+            await self.commandManager.bot.edit_message_reply_markup(
+                chat_id=message.chat.id, message_id=confirm_select_categories_messages, reply_markup=None
+            )
+            await state.update_data(confirm_select_categories_messages=None)

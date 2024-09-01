@@ -1,6 +1,11 @@
+from aiogram import Router, Bot
+
+
 class CommandManager:
-    def __init__(self):
+    def __init__(self, router: Router, bot: Bot):
         self.commands = {}
+        self.router = router
+        self.bot = bot
 
     def getCommands(self):
         return self.commands

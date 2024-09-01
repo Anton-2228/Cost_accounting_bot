@@ -1,5 +1,9 @@
 import json
 
+from aiogram.fsm.context import FSMContext
+from aiogram.types import Message, InlineKeyboardButton
+from aiogram.utils.keyboard import InlineKeyboardBuilder
+
 from commands.utils.utils import category_by_association, source_by_association
 from database import (CategoriesOrm, CategoriesTypes, PostgresWrapper,
                       RecordsOrm, SourcesOrm)
@@ -187,3 +191,15 @@ async def get_values_to_add_record(
         value["type"] = record["type"]
         values.append(value)
     return values
+
+async def send_first_stage_message_with_button(text_message: str, message: Message, state: FSMContext):
+    builder = InlineKeyboardBuilder()
+    builder.add(InlineKeyboardButton(text="ок", callback_data="confirm_select_types"))
+    sent_message = await message.answer(text_message, reply_markup=builder.as_markup())
+    await state.update_data(confirm_select_types_messages=sent_message.message_id)
+
+async def send_second_stage_message_with_button(text_message: str, message: Message, state: FSMContext):
+    builder = InlineKeyboardBuilder()
+    builder.add(InlineKeyboardButton(text="ок", callback_data="confirm_select_categories"))
+    sent_message = await message.answer(text_message, reply_markup=builder.as_markup())
+    await state.update_data(confirm_select_categories_messages=sent_message.message_id)
