@@ -12,6 +12,7 @@ from dotenv import load_dotenv
 from oauth2client.service_account import ServiceAccountCredentials
 
 from check_wrapper import TelethonBot
+from database.queries.postgres_wrapper import PostgresWrapper
 
 dotenv_path = os.path.join(os.path.dirname(__file__), ".env")
 load_dotenv(dotenv_path)
@@ -34,7 +35,9 @@ bot = Bot(
 dp = Dispatcher(storage=storage)
 router = Router()
 
-telethon_bot = TelethonBot()
+postgres_wrapper = PostgresWrapper()
+
+telethon_bot = TelethonBot(bot, postgres_wrapper)
 
 
 class States(StatesGroup):

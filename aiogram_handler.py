@@ -10,20 +10,10 @@ from commands import get_commands
 from commands.utils.Synchronize_utils import sync_total_from_db_to_table
 from database import PostgresWrapper, create_tables
 from init import (COMMANDS, States, bot, daysUntilNextMonth, dp, router,
-                  telethon_bot)
+                  telethon_bot, postgres_wrapper)
 
-# bot = createBot(os.getenv('API_TOKEN'))
-# telethon_bot = TelethonBot()
-# dp = createDispatcher()
-# router = createRouter() = createRouter()
-postgres_wrapper = PostgresWrapper()
 commandManager = CommandManager(router=router, bot=bot)
 commandManager.addCommands(get_commands(commandManager, postgres_wrapper))
-
-# data = GlobalVariables.data
-# globTimer = GlobalVariables.globTimer
-# counter = GlobalVariables.counter
-
 
 @router.message(Command("start"), StateFilter(None))
 @router.message(States.COMFIRM_CHANGE_DATE_RESET)
@@ -152,11 +142,6 @@ async def timer():
 
 
 async def start():
-    # await asyncio.gather(telethon_bot.start())
-    # async with telethon_bot:
-    # await telethon_bot.client.get_me()
-    # await telethon_bot.start()
-    # telethon_bot.client.loop.run_until_complete(telethon_bot.start())
     await asyncio.gather(start_polling(), timer(), telethon_bot.start())
 
 

@@ -1,5 +1,6 @@
 from database.queries.cashed_records_queries import CashedRecordsOrmWrapper
 from database.queries.categories_queries import CategoriesOrmWrapper
+from database.queries.checks_queue_wrapper import ChecksQueueWrapper
 from database.queries.records_queries import RecordsOrmWrapper
 from database.queries.sources_queries import SourcesOrmWrapper
 from database.queries.spreadsheets_queries import SpreadsheetsOrmWrapper
@@ -14,3 +15,4 @@ class PostgresWrapper:
         self.spreadsheets_wrapper = SpreadsheetsOrmWrapper()
         self.users_wrapper = UsersOrmWrapper()
         self.cashed_records_wrapper = CashedRecordsOrmWrapper()
+        self.checks_queue_wrapper = ChecksQueueWrapper()

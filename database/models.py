@@ -115,3 +115,12 @@ class CashedRecordsOrm(Base):
     )
     product_name: Mapped[str] = mapped_column(unique=True)
     type: Mapped[str]
+
+class ChecksQueueOrm(Base):
+    __tablename__ = "checks_queue"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    spreadsheet_id: Mapped[int] = mapped_column(
+        ForeignKey("spreadsheets.id", ondelete="CASCADE")
+    )
+    check_text: Mapped[str]
