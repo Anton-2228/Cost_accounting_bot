@@ -101,7 +101,7 @@ async def timer():
         spreadsheets = postgres_wrapper.spreadsheets_wrapper.get_all_spreadsheets()
         for i in spreadsheets:
             end_date = i.start_date + datetime.timedelta(
-                days=DAYSUNTILNEXTMONTH[i.start_date.month]
+                days=DAYSUNTILNEXTMONTH[str(i.start_date.month)]
             )
             # tz = datetime.timezone(datetime.timedelta(hours=2, minutes=50))
             # today = datetime.datetime.now(tz=tz).date()
@@ -120,7 +120,7 @@ async def timer():
                 response = spreadsheetWrapper.addNewStatisticsSheet(
                     spreadsheet.spreadsheet_id,
                     end_date,
-                    DAYSUNTILNEXTMONTH[end_date.month],
+                    DAYSUNTILNEXTMONTH[str(end_date.month)],
                 )
                 total_values = sync_total_from_db_to_table(
                     spreadsheet, postgres_wrapper
@@ -134,7 +134,7 @@ async def timer():
                 spreadsheetWrapper.spreadSheetSetStyler.setStyleTotalLists(
                     spreadsheet.spreadsheet_id,
                     sheets["Stat. " + str(spreadsheet.start_date)],
-                    DAYSUNTILNEXTMONTH[spreadsheet.start_date.month],
+                    DAYSUNTILNEXTMONTH[str(spreadsheet.start_date.month)],
                     total_values[0][-1],
                     total_values[1][-1],
                 )

@@ -44,7 +44,7 @@ class SpreadsheetsOrmWrapper:
             )
             return spreadsheet.spreadsheet_id
 
-    def get_spreadsheet(self, user_telegram_id: int):
+    def get_spreadsheet(self, user_telegram_id: int) -> SpreadSheetsOrm:
         with session_factory() as session:
             user: UsersOrm = session.scalar(
                 select(UsersOrm).where(UsersOrm.telegram_id == user_telegram_id)

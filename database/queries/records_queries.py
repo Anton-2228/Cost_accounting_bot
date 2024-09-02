@@ -37,7 +37,7 @@ class RecordsOrmWrapper:
 
     def get_records_by_current_month(self, spreadsheet_id, start_date: datetime.date):
         end_date = start_date + datetime.timedelta(
-            days=DAYSUNTILNEXTMONTH[start_date.month]
+            days=DAYSUNTILNEXTMONTH[str(start_date.month)]
         )
         with session_factory() as session:
             records: RecordsOrm = session.scalars(
@@ -54,7 +54,7 @@ class RecordsOrmWrapper:
         self, spreadsheet_id, start_date: datetime.date, category_id
     ):
         end_date = start_date + datetime.timedelta(
-            days=DAYSUNTILNEXTMONTH[start_date.month]
+            days=DAYSUNTILNEXTMONTH[str(start_date.month)]
         )
         with session_factory() as session:
             records: list[RecordsOrm] = session.scalars(

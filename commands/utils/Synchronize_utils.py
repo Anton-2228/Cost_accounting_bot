@@ -100,7 +100,7 @@ async def sync_total_from_db_to_table(
 ):
     dates = []
     date = spreadsheet.start_date
-    for i in range(DAYSUNTILNEXTMONTH[spreadsheet.start_date.month]):
+    for i in range(DAYSUNTILNEXTMONTH[str(spreadsheet.start_date.month)]):
         dates.append(date)
         date += datetime.timedelta(days=1)
 
@@ -113,7 +113,7 @@ async def sync_total_from_db_to_table(
     cost_categories = {i: [] for i in categories if i.type == CategoriesTypes.COST}
 
     total_income = [
-        0 for _ in range(DAYSUNTILNEXTMONTH[spreadsheet.start_date.month] + 1)
+        0 for _ in range(DAYSUNTILNEXTMONTH[str(spreadsheet.start_date.month)] + 1)
     ]
     for i in income_categories:
         records: list[RecordsOrm] = (
@@ -134,7 +134,7 @@ async def sync_total_from_db_to_table(
     # total_income[0] = int(total_income[0])
 
     total_cost = [
-        0 for _ in range(DAYSUNTILNEXTMONTH[spreadsheet.start_date.month] + 1)
+        0 for _ in range(DAYSUNTILNEXTMONTH[str(spreadsheet.start_date.month)] + 1)
     ]
     for i in cost_categories:
         records: list[RecordsOrm] = (
@@ -165,7 +165,7 @@ async def sync_total_from_db_to_table(
         [
             "Stat. " + str(spreadsheet.start_date),
             "ROWS",
-            f"A2:{ALF[DAYSUNTILNEXTMONTH[spreadsheet.start_date.month]]}{len(income_value)+2}",
+            f"A2:{ALF[str(DAYSUNTILNEXTMONTH[str(spreadsheet.start_date.month)])]}{len(income_value)+2}",
             income_value,
         ]
     )
@@ -180,7 +180,7 @@ async def sync_total_from_db_to_table(
         [
             "Stat. " + str(spreadsheet.start_date),
             "ROWS",
-            f"A{len(income_value) + 2 + 1}:{ALF[DAYSUNTILNEXTMONTH[spreadsheet.start_date.month]]}{len(income_value) + len(cost_value) + 2 + 1}",
+            f"A{len(income_value) + 2 + 1}:{ALF[str(DAYSUNTILNEXTMONTH[str(spreadsheet.start_date.month)])]}{len(income_value) + len(cost_value) + 2 + 1}",
             cost_value,
         ]
     )

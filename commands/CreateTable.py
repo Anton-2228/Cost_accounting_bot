@@ -56,7 +56,7 @@ class CreateTable(Command):
                         start_date = (
                             today
                             - datetime.timedelta(
-                                days=DAYSUNTILNEXTMONTH[today.month - 1]
+                                days=DAYSUNTILNEXTMONTH[str(today.month - 1)]
                             )
                             + datetime.timedelta(days=new_day - today.day)
                         )
@@ -74,7 +74,7 @@ class CreateTable(Command):
                         spreadsheetID, start_date
                     )
                     response = self.spreadsheetWrapper.addNewStatisticsSheet(
-                        spreadsheetID, start_date, DAYSUNTILNEXTMONTH[start_date.month]
+                        spreadsheetID, start_date, DAYSUNTILNEXTMONTH[str(start_date.month)]
                     )
 
                     print(f"https://docs.google.com/spreadsheets/d/{spreadsheetID}/")
@@ -127,5 +127,4 @@ class CreateTable(Command):
                 else:
                     await message.answer("Число должно быть > 0 и < 29")
             except Exception as e:
-                print(e)
                 await message.answer("Странное число")
