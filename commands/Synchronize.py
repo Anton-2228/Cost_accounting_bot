@@ -27,13 +27,13 @@ class Synchronize(Command):
         spreadsheet = self.postgres_wrapper.spreadsheets_wrapper.get_spreadsheet(
             message.from_user.id
         )
-        category_value = await sync_cat_from_table_to_db(
+        category_value = sync_cat_from_table_to_db(
             spreadsheet, self.spreadsheetWrapper, self.postgres_wrapper
         )
-        source_value = await sync_sour_from_table_to_db(
+        source_value = sync_sour_from_table_to_db(
             spreadsheet, self.spreadsheetWrapper, self.postgres_wrapper
         )
-        total_values = await sync_total_from_db_to_table(
+        total_values = sync_total_from_db_to_table(
             spreadsheet, self.postgres_wrapper
         )
 

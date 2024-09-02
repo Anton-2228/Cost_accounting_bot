@@ -51,7 +51,7 @@ class Transfer(Command):
         )
 
         values = []
-        source_value = await sync_sour_from_table_to_db(
+        source_value = sync_sour_from_table_to_db(
             spreadsheet, self.spreadsheetWrapper, self.postgres_wrapper
         )
         values.append(source_value)

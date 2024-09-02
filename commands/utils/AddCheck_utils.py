@@ -78,7 +78,7 @@ def parse_types_input(check_data: dict, row: str) -> dict:
                 else:
                     response["message"] = "Указан несуществующий id"
                     return response
-    except:
+    except Exception as e:
         response["message"] = "Странный ввод"
         return response
     response["status"] = "success"

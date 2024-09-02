@@ -132,10 +132,10 @@ async def add_record(
     # values.append([str(spreadsheet.start_date), "ROWS", f"A{count}:F{count}", value])
     values.append([str(spreadsheet.start_date), "ROWS", f"A{count}:I{count}", value])
 
-    source_value = await sync_sour_from_table_to_db(
+    source_value = sync_sour_from_table_to_db(
         spreadsheet, spreadsheetWrapper, postgres_wrapper
     )
-    total_values = await sync_total_from_db_to_table(spreadsheet, postgres_wrapper)
+    total_values = sync_total_from_db_to_table(spreadsheet, postgres_wrapper)
     values.append(source_value)
     values += total_values
 

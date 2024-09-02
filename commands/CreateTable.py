@@ -108,7 +108,7 @@ class CreateTable(Command):
                     spreadsheet = self.postgres_wrapper.spreadsheets_wrapper.get_spreadsheet_by_id(
                         id
                     )
-                    result_sync = await sync_cat_from_db_to_table(
+                    result_sync = sync_cat_from_db_to_table(
                         spreadsheet, self.postgres_wrapper
                     )
                     values = [result_sync]

@@ -48,6 +48,12 @@ class AddCheck(Command):
             await message.answer("Отмена успешна")
             await state.clear()
             return
+        elif message.text == "/skip":
+            user_id = message.chat.id
+            checks: list[ChecksQueueOrm] = self.temp_data[user_id]["checks"]
+            await self.processing_new_check(checks, message, state)
+            return
+
 
         cur_state = await state.get_state()
         if cur_state == None:
@@ -58,6 +64,7 @@ class AddCheck(Command):
             if len(unprocessed_checks) != 0:
                 current_check = unprocessed_checks[0]
                 self.temp_data[user_id]["checks"] = unprocessed_checks
+                await state.clear()
                 await self.zero_stage(current_check, message, state)
             else:
                 await message.answer("Необработанных чеков нет")
@@ -68,6 +75,15 @@ class AddCheck(Command):
             await self.second_stage(message, state)
         elif cur_state == States.FINISH_CHECK:
             await self.third_stage(message, state)
+
+    async def processing_new_check(self, checks: list[ChecksQueueOrm], message: Message, state: FSMContext):
+        checks.pop(0)
+        if len(checks) != 0:
+            current_check = checks[0]
+            await state.clear()
+            await self.zero_stage(current_check, message, state)
+        else:
+            await state.clear()
 
     async def zero_stage(self, check: ChecksQueueOrm, message: Message, state: FSMContext):
         user_id = message.chat.id
@@ -211,7 +227,7 @@ class AddCheck(Command):
             )
 
         values = []
-        category_value = await sync_cat_from_db_to_table(
+        category_value = sync_cat_from_db_to_table(
             spreadsheet, self.postgres_wrapper
         )
         # records_value = await sync_records_from_db_to_table(spreadsheet, self.postgres_wrapper)
@@ -223,11 +239,7 @@ class AddCheck(Command):
 
         checks: list[ChecksQueueOrm] = self.temp_data[user_id]["checks"]
         self.postgres_wrapper.checks_queue_wrapper.remove_check(checks[0].id)
-        checks.pop(0)
-        if len(checks) != 0:
-            current_check = checks[0]
-            await self.zero_stage(current_check, message, state)
-        await state.clear()
+        await self.processing_new_check(checks, message, state)
 
     async def preparing_first_stage(self, message: Message, state: FSMContext):
         user_id = message.chat.id

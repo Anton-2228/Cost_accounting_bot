@@ -5,7 +5,7 @@ from database import (CategoriesOrm, CategoriesTypes, PostgresWrapper,
 from datafiles import ALF, DAYSUNTILNEXTMONTH
 
 
-async def sync_cat_from_table_to_db(
+def sync_cat_from_table_to_db(
     spreadsheet, spreadsheetWrapper, postgres_wrapper: PostgresWrapper
 ):
     resultSyncCat = postgres_wrapper.categories_wrapper.synchronizeCategories(
@@ -19,7 +19,7 @@ async def sync_cat_from_table_to_db(
     return "Добавьте хотя бы одну категорию"
 
 
-async def sync_sour_from_table_to_db(
+def sync_sour_from_table_to_db(
     spreadsheet, spreadsheetWrapper, postgres_wrapper: PostgresWrapper
 ):
     resultSyncSour = postgres_wrapper.sources_wrapper.synchronizeSources(
@@ -33,7 +33,7 @@ async def sync_sour_from_table_to_db(
     return "Добавьте хотя бы один источник"
 
 
-async def sync_records_from_db_to_table(spreadsheet, postgres_wrapper: PostgresWrapper):
+def sync_records_from_db_to_table(spreadsheet, postgres_wrapper: PostgresWrapper):
     records: list[RecordsOrm] = (
         postgres_wrapper.records_wrapper.get_records_by_current_month(
             spreadsheet.id, spreadsheet.start_date
@@ -60,7 +60,7 @@ async def sync_records_from_db_to_table(spreadsheet, postgres_wrapper: PostgresW
     return [str(spreadsheet.start_date), "ROWS", f"A2:I{len(value) + 1}", value]
 
 
-async def sync_cat_from_db_to_table(
+def sync_cat_from_db_to_table(
     spreadsheet: SpreadSheetsOrm, postgres_wrapper: PostgresWrapper
 ):
     categories: list[CategoriesOrm] = (
@@ -95,7 +95,7 @@ async def sync_cat_from_db_to_table(
     return ["Categories", "ROWS", f"A2:H{len(values) + 1}", values]
 
 
-async def sync_total_from_db_to_table(
+def sync_total_from_db_to_table(
     spreadsheet: SpreadSheetsOrm, postgres_wrapper: PostgresWrapper
 ):
     dates = []
