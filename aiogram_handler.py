@@ -82,12 +82,16 @@ async def newRecord(message: Message, state: FSMContext, command: CommandObject 
     response = await commandManager.launchCommand("addRecord", message, state, command)
 
 
-@router.message(StateFilter(None))
+@router.message(Command("check"), StateFilter(None))
 @router.message(States.CONFIRM_TYPES_CHECK)
 @router.message(States.CONFIRM_CATEGORIES_CHECK)
 @router.message(States.FINISH_CHECK)
 async def newCheck(message: Message, state: FSMContext, command: CommandObject = None):
     response = await commandManager.launchCommand("addCheck", message, state, command)
+
+@router.message(StateFilter(None))
+async def unclear_input(message: Message, state: FSMContext, command: CommandObject = None):
+    await message.answer("Не понимаю о чем речь")
 
 
 async def start_polling():

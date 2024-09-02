@@ -124,3 +124,4 @@ class ChecksQueueOrm(Base):
         ForeignKey("spreadsheets.id", ondelete="CASCADE")
     )
     check_text: Mapped[str]
+    added_datetime: Mapped[datetime.datetime] = mapped_column(server_default=text("TIMEZONE('utc-3', now())"))

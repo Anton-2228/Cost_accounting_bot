@@ -62,6 +62,9 @@ COMMANDS = [
     BotCommand(command="start", description="Создание новой таблицы"),
     BotCommand(command="transfer", description="Перевод денег со счета на счет"),
     BotCommand(command="add", description="Добавление новой записи в таблицу"),
+    BotCommand(command="check", description="Начать добавление новых чеков в базу"),
+    BotCommand(command="cancel", description="Отмена текущей операции"),
+    BotCommand(command="skip", description="Пропуск текущего чека")
 ]
 
 # async def get_user_state(user_id: int):

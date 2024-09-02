@@ -20,6 +20,7 @@ from commands.utils.AddRecord_utils import add_record
 from commands.utils.Synchronize_utils import (sync_cat_from_db_to_table,
                                               sync_records_from_db_to_table)
 from database import CashedRecordsOrm, CategoriesOrm, SourcesOrm
+from database.models import ChecksQueueOrm
 from datafiles import (FINISH_STAGE_ADD_CHECK_MESSAGE,
                        FIRST_STAGE_ADD_CHECK_MESSAGE,
                        SECOND_STAGE_ADD_CHECK_MESSAGE)
@@ -50,7 +51,17 @@ class AddCheck(Command):
 
         cur_state = await state.get_state()
         if cur_state == None:
-            await self.zero_stage(message, state)
+            user_id = message.chat.id
+            self.temp_data[user_id] = {}
+            spreadsheet = self.postgres_wrapper.spreadsheets_wrapper.get_spreadsheet(message.chat.id)
+            unprocessed_checks: list[ChecksQueueOrm] = self.postgres_wrapper.checks_queue_wrapper.get_checks_by_spreadsheet(spreadsheet.id)
+            if len(unprocessed_checks) != 0:
+                current_check = unprocessed_checks[0]
+                self.temp_data[user_id]["checks"] = unprocessed_checks
+                await self.zero_stage(current_check, message, state)
+            else:
+                await message.answer("Необработанных чеков нет")
+                await state.clear()
         elif cur_state == States.CONFIRM_TYPES_CHECK:
             await self.first_stage(message, state)
         elif cur_state == States.CONFIRM_CATEGORIES_CHECK:
@@ -58,10 +69,9 @@ class AddCheck(Command):
         elif cur_state == States.FINISH_CHECK:
             await self.third_stage(message, state)
 
-    async def zero_stage(self, message: Message, state: FSMContext):
+    async def zero_stage(self, check: ChecksQueueOrm, message: Message, state: FSMContext):
         user_id = message.chat.id
-        check_text = message.text
-        self.temp_data[user_id] = {}
+        check_text = check.check_text
 
         all_check_data = await get_check_data(
             ai_wrapper=self.ai_wrapper, check_text=check_text
@@ -210,6 +220,13 @@ class AddCheck(Command):
         self.spreadsheetWrapper.setValues(spreadsheet.spreadsheet_id, values)
 
         await message.answer("Траты успешно добавлены")
+
+        checks: list[ChecksQueueOrm] = self.temp_data[user_id]["checks"]
+        self.postgres_wrapper.checks_queue_wrapper.remove_check(checks[0].id)
+        checks.pop(0)
+        if len(checks) != 0:
+            current_check = checks[0]
+            await self.zero_stage(current_check, message, state)
         await state.clear()
 
     async def preparing_first_stage(self, message: Message, state: FSMContext):
