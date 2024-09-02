@@ -9,7 +9,8 @@ from commands.Command import Command
 from commands.utils.Synchronize_utils import (sync_cat_from_table_to_db,
                                               sync_sour_from_table_to_db,
                                               sync_total_from_db_to_table)
-from init import States, alf, daysUntilNextMonth
+from datafiles import ALF, DAYSUNTILNEXTMONTH
+from init import States
 
 
 class Synchronize(Command):
@@ -50,7 +51,7 @@ class Synchronize(Command):
             self.spreadsheetWrapper.cleanValues(
                 spreadsheet.spreadsheet_id,
                 f'{"Stat. " + str(spreadsheet.start_date)}!'
-                f"A2:{alf[daysUntilNextMonth[spreadsheet.start_date.month]]}100000",
+                f"A2:{ALF[DAYSUNTILNEXTMONTH[spreadsheet.start_date.month]]}100000",
             )
 
             self.spreadsheetWrapper.setValues(spreadsheet.spreadsheet_id, values)
@@ -59,7 +60,7 @@ class Synchronize(Command):
             self.spreadsheetWrapper.spreadSheetSetStyler.setStyleTotalLists(
                 spreadsheet.spreadsheet_id,
                 sheets["Stat. " + str(spreadsheet.start_date)],
-                daysUntilNextMonth[spreadsheet.start_date.month],
+                DAYSUNTILNEXTMONTH[spreadsheet.start_date.month],
                 total_values[0][-1],
                 total_values[1][-1],
             )

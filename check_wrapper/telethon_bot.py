@@ -3,11 +3,9 @@ from os import getenv
 from aiogram import Bot
 from telethon import TelegramClient, events
 
-from database.queries.postgres_wrapper import PostgresWrapper
-
 
 class TelethonBot:
-    def __init__(self, bot: Bot, postgres_wrapper: PostgresWrapper):
+    def __init__(self, bot: Bot, postgres_wrapper):
         api_id = getenv("TELEGRAM_API_ID")
         api_hash = getenv("TELEGRAM_API_HASH")
         self.client = TelegramClient(

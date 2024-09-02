@@ -8,8 +8,9 @@ from aiogram.types import Message
 from command_manager import CommandManager
 from commands import get_commands
 from commands.utils.Synchronize_utils import sync_total_from_db_to_table
-from database import PostgresWrapper, create_tables
-from init import (COMMANDS, States, bot, daysUntilNextMonth, dp, router,
+from database import create_tables
+from datafiles import DAYSUNTILNEXTMONTH
+from init import (COMMANDS, States, bot, dp, router,
                   telethon_bot, postgres_wrapper)
 
 commandManager = CommandManager(router=router, bot=bot)
@@ -100,7 +101,7 @@ async def timer():
         spreadsheets = postgres_wrapper.spreadsheets_wrapper.get_all_spreadsheets()
         for i in spreadsheets:
             end_date = i.start_date + datetime.timedelta(
-                days=daysUntilNextMonth[i.start_date.month]
+                days=DAYSUNTILNEXTMONTH[i.start_date.month]
             )
             # tz = datetime.timezone(datetime.timedelta(hours=2, minutes=50))
             # today = datetime.datetime.now(tz=tz).date()
@@ -119,7 +120,7 @@ async def timer():
                 response = spreadsheetWrapper.addNewStatisticsSheet(
                     spreadsheet.spreadsheet_id,
                     end_date,
-                    daysUntilNextMonth[end_date.month],
+                    DAYSUNTILNEXTMONTH[end_date.month],
                 )
                 total_values = sync_total_from_db_to_table(
                     spreadsheet, postgres_wrapper
@@ -133,7 +134,7 @@ async def timer():
                 spreadsheetWrapper.spreadSheetSetStyler.setStyleTotalLists(
                     spreadsheet.spreadsheet_id,
                     sheets["Stat. " + str(spreadsheet.start_date)],
-                    daysUntilNextMonth[spreadsheet.start_date.month],
+                    DAYSUNTILNEXTMONTH[spreadsheet.start_date.month],
                     total_values[0][-1],
                     total_values[1][-1],
                 )

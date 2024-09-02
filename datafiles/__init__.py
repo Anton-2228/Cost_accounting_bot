@@ -42,3 +42,5 @@ ADD_RECORD_MESSAGE = (
 TEMPLATETITLE = load_json(Path(__file__).parent / "templateTitle.json")
 TEMPLATESTATISTICS = load_json(Path(__file__).parent / "templateStatistics.json")
 TEMPLATEOPERATIONS = load_json(Path(__file__).parent / "templateOperations.json")
+ALF = load_json(Path(__file__).parent / "alf.json")
+DAYSUNTILNEXTMONTH = load_json(Path(__file__).parent / "daysUntilNextMonth.json")

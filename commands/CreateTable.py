@@ -8,7 +8,8 @@ from aiogram.types import Message
 from commands.Command import Command
 from commands.utils.Synchronize_utils import sync_cat_from_db_to_table
 from database import CategoriesTypes, StatusTypes
-from init import States, daysUntilNextMonth
+from datafiles import DAYSUNTILNEXTMONTH
+from init import States
 
 
 class CreateTable(Command):
@@ -55,7 +56,7 @@ class CreateTable(Command):
                         start_date = (
                             today
                             - datetime.timedelta(
-                                days=daysUntilNextMonth[today.month - 1]
+                                days=DAYSUNTILNEXTMONTH[today.month - 1]
                             )
                             + datetime.timedelta(days=new_day - today.day)
                         )
@@ -73,7 +74,7 @@ class CreateTable(Command):
                         spreadsheetID, start_date
                     )
                     response = self.spreadsheetWrapper.addNewStatisticsSheet(
-                        spreadsheetID, start_date, daysUntilNextMonth[start_date.month]
+                        spreadsheetID, start_date, DAYSUNTILNEXTMONTH[start_date.month]
                     )
 
                     print(f"https://docs.google.com/spreadsheets/d/{spreadsheetID}/")

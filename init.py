@@ -11,11 +11,11 @@ from aiogram.types import BotCommand
 from dotenv import load_dotenv
 from oauth2client.service_account import ServiceAccountCredentials
 
-from check_wrapper import TelethonBot
-from database.queries.postgres_wrapper import PostgresWrapper
-
 dotenv_path = os.path.join(os.path.dirname(__file__), ".env")
 load_dotenv(dotenv_path)
+
+from check_wrapper import TelethonBot
+from database.queries.postgres_wrapper import PostgresWrapper
 
 credentials = ServiceAccountCredentials.from_json_keyfile_name(
     os.getenv("credentials_google_api_service_account"),
@@ -79,54 +79,3 @@ def createSheetService():
 def createDriveService():
     driveService = googleapiclient.discovery.build("drive", "v3", http=httpAuth)
     return driveService
-
-
-daysUntilNextMonth = {
-    1: 31,
-    2: 28,
-    3: 31,
-    4: 30,
-    5: 31,
-    6: 30,
-    7: 31,
-    8: 31,
-    9: 30,
-    10: 31,
-    11: 30,
-    12: 31,
-}
-
-alf = {
-    0: "C",
-    1: "D",
-    2: "E",
-    3: "F",
-    4: "G",
-    5: "H",
-    6: "I",
-    7: "J",
-    8: "K",
-    9: "L",
-    10: "M",
-    11: "N",
-    12: "O",
-    13: "P",
-    14: "Q",
-    15: "R",
-    16: "S",
-    17: "T",
-    18: "U",
-    19: "V",
-    20: "W",
-    21: "X",
-    22: "Y",
-    23: "Z",
-    24: "AA",
-    25: "AB",
-    26: "AC",
-    27: "AD",
-    28: "AE",
-    29: "AF",
-    30: "AG",
-    31: "AH",
-}
