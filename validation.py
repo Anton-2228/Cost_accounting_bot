@@ -65,7 +65,11 @@ def validate_sources_row(spreadsheets_sources):
             return f"В источниках в {z + 1} строке Name пустой"
         if len(row[2].split()) > 1:
             return f"В источниках в {z + 1} строке Name записан не одним словом"
-        if re.fullmatch(r"-?\d+", row[4]) == None:
+        # if re.fullmatch(r"-?\d+", row[4]) == None:
+        #     return f"В источниках в {z + 1} строке Balance должен быть целым числом"
+        try:
+            float(row[4])
+        except:
             return f"В источниках в {z + 1} строке Balance должен быть целым числом"
         names.append(row[2])
         cur_associations = [x.lower() for x in row[3].split()]
