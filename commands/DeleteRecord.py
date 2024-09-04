@@ -64,7 +64,7 @@ class DeleteRecord(Command):
         values += total_values
 
         self.spreadsheetWrapper.cleanValues(
-            spreadsheet.spreadsheet_id, f"{str(spreadsheet.start_date)}!A2:F100000"
+            spreadsheet.spreadsheet_id, f"{str(spreadsheet.start_date)}!A2:I100000"
         )
         self.spreadsheetWrapper.setValues(spreadsheet.spreadsheet_id, values)
         await message.answer("Запить удалена")
