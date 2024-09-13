@@ -45,6 +45,8 @@ class AddCheck(Command):
             return
 
         if message.text == "/cancel":
+            await self.process_delete_confirm_select_types_button(message, state)
+            await self.process_delete_confirm_select_categories_button(message, state)
             await message.answer("Отмена успешна")
             await state.clear()
             return
@@ -58,6 +60,8 @@ class AddCheck(Command):
             await self.processing_new_check(checks, message, state)
             return
         elif message.text == "/skip":
+            await self.process_delete_confirm_select_types_button(message, state)
+            await self.process_delete_confirm_select_categories_button(message, state)
             user_id = message.chat.id
             checks: list[ChecksQueueOrm] = self.temp_data[user_id]["checks"]
             await self.processing_new_check(checks, message, state)
@@ -67,13 +71,14 @@ class AddCheck(Command):
         cur_state = await state.get_state()
         if cur_state == None:
             user_id = message.chat.id
+            await state.update_data(confirm_select_types_messages=None)
+            await state.update_data(confirm_select_categories_messages=None)
             self.temp_data[user_id] = {}
             spreadsheet = self.postgres_wrapper.spreadsheets_wrapper.get_spreadsheet(message.chat.id)
             unprocessed_checks: list[ChecksQueueOrm] = self.postgres_wrapper.checks_queue_wrapper.get_checks_by_spreadsheet(spreadsheet.id)
             if len(unprocessed_checks) != 0:
                 current_check = unprocessed_checks[0]
                 self.temp_data[user_id]["checks"] = unprocessed_checks
-                await state.clear()
                 await self.zero_stage(current_check, message, state)
             else:
                 await message.answer("Необработанных чеков нет")
@@ -89,9 +94,10 @@ class AddCheck(Command):
         checks.pop(0)
         if len(checks) != 0:
             current_check = checks[0]
-            await state.clear()
+            await state.set_state(None)
             await self.zero_stage(current_check, message, state)
         else:
+            await message.answer("Необработанные чеки закончились")
             await state.clear()
 
     async def zero_stage(self, check: ChecksQueueOrm, message: Message, state: FSMContext):
@@ -110,8 +116,6 @@ class AddCheck(Command):
         await self.set_type_finish_state(message, state)
 
     async def first_stage(self, message: Message, state: FSMContext):
-        await self.process_delete_confirm_select_types_button(message, state)
-
         user_id = message.chat.id
         spreadsheet = self.postgres_wrapper.spreadsheets_wrapper.get_spreadsheet(
             user_id
@@ -129,6 +133,8 @@ class AddCheck(Command):
             await message.answer(response["message"])
             return
 
+        await self.process_delete_confirm_select_types_button(message, state)
+
         types = get_product_types(categories=categories)
         for id in response["value"]:
             if response["value"][id] in types:
@@ -143,8 +149,6 @@ class AddCheck(Command):
         await send_first_stage_message_with_button(FIRST_STAGE_ADD_CHECK_MESSAGE, message, state)
 
     async def second_stage(self, message: Message, state: FSMContext):
-        await self.process_delete_confirm_select_categories_button(message, state)
-
         user_id = message.chat.id
         spreadsheet = self.postgres_wrapper.spreadsheets_wrapper.get_spreadsheet(
             message.chat.id
@@ -163,6 +167,8 @@ class AddCheck(Command):
         if response["status"] == "error":
             await message.answer(response["message"])
             return
+
+        await self.process_delete_confirm_select_categories_button(message, state)
 
         for id in response["value"]:
             check_data[id]["unconfirmed_category"] = response["value"][id]
