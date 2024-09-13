@@ -53,18 +53,19 @@ class States(StatesGroup):
 
 
 COMMANDS = [
-    BotCommand(command="del", description="Удаление указанной записи(либо последней)"),
-    BotCommand(command="sync", description="Синхронизация таблицы и бота"),
-    BotCommand(command="table", description="Получить ссылку на таблицу"),
-    BotCommand(command="addemail", description="Привязать новой почты"),
-    BotCommand(command="help", description="Вывести подсказку по боту"),
-    BotCommand(command="deletetable", description="Удаление таблицы"),
-    BotCommand(command="start", description="Создание новой таблицы"),
-    BotCommand(command="transfer", description="Перевод денег со счета на счет"),
-    BotCommand(command="add", description="Добавление новой записи в таблицу"),
     BotCommand(command="check", description="Начать добавление новых чеков в базу"),
-    BotCommand(command="cancel", description="Отмена текущей операции"),
-    BotCommand(command="skip", description="Пропуск текущего чека")
+    BotCommand(command="add", description="Добавление новой записи в таблицу"),
+    BotCommand(command="del", description="Удаление указанной записи(либо последней)"),
+    BotCommand(command="transfer", description="Перевод денег со счета на счет"),
+    BotCommand(command="cancel", description="Отмена обработки чеков"),
+    BotCommand(command="skip", description="Пропуск текущего чека"),
+    BotCommand(command="remove", description="Удаление текущего чека"),
+    BotCommand(command="table", description="Получить ссылку на таблицу"),
+    BotCommand(command="sync", description="Синхронизация таблицы и бота"),
+    BotCommand(command="help", description="Вывести подсказку по боту"),
+    BotCommand(command="start", description="Создание новой таблицы"),
+    BotCommand(command="addemail", description="Привязать новой почты"),
+    BotCommand(command="deletetable", description="Удаление таблицы"),
 ]
 
 # async def get_user_state(user_id: int):
