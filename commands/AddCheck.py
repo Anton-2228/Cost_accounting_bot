@@ -48,6 +48,15 @@ class AddCheck(Command):
             await message.answer("Отмена успешна")
             await state.clear()
             return
+        elif message.text == '/remove':
+            await self.process_delete_confirm_select_types_button(message, state)
+            await self.process_delete_confirm_select_categories_button(message, state)
+            user_id = message.chat.id
+            checks: list[ChecksQueueOrm] = self.temp_data[user_id]["checks"]
+            self.postgres_wrapper.checks_queue_wrapper.remove_check(checks[0].id)
+            await message.answer("Чек успешно удален")
+            await self.processing_new_check(checks, message, state)
+            return
         elif message.text == "/skip":
             user_id = message.chat.id
             checks: list[ChecksQueueOrm] = self.temp_data[user_id]["checks"]
