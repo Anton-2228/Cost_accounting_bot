@@ -9,7 +9,7 @@ from ai_wrapper.utils import (get_input_for_categories_user_prompt,
                               parsing_model_json_response)
 from datafiles import (GET_CATEGORIES_FOR_CHECK_SYSTEM_PROMPT,
                        GET_CREDENTIALS_CHECK_PROMPT,
-                       GET_TYPES_FOR_CHECK_SYSTEM_PROMPT)
+                       GET_TYPES_FOR_CHECK_SYSTEM_PROMPT, CHECK_VALIDITY_RECEIPT_SYSTEM, CHECK_VALIDITY_RECEIPT_USER)
 
 
 class AiWrapper:
@@ -47,6 +47,12 @@ class AiWrapper:
         ]
 
         return await self.create(messages)
+
+    async def validity_check_message(self, message: str):
+        system_prompt = CHECK_VALIDITY_RECEIPT_SYSTEM
+        user_prompt = CHECK_VALIDITY_RECEIPT_USER.format(message=message)
+
+        return await self.invoke(system_prompt=system_prompt, user_prompt=user_prompt)
 
     async def get_credentials_check(self, input: str):
         system_prompt = GET_CREDENTIALS_CHECK_PROMPT

@@ -3,6 +3,8 @@ from os import getenv
 from aiogram import Bot
 from telethon import TelegramClient, events
 
+from ai_wrapper import AiWrapper
+
 
 class TelethonBot:
     def __init__(self, bot: Bot, postgres_wrapper):
@@ -13,6 +15,7 @@ class TelethonBot:
         )
         self.bot = bot
         self.postgres_wrapper = postgres_wrapper
+        self.ai_wrapper = AiWrapper()
 
     async def start(self):
         async with self.client:
@@ -31,6 +34,10 @@ class TelethonBot:
         sender = await event.message.get_sender()
         if event.chat_id == self.target_chat.id and sender.id == self.target_chat.id:
             message_text = event.message.message
+            response = await self.ai_wrapper.validity_check_message(message_text)
+            if not response['is_check']:
+                return
+
             spreadsheet = self.postgres_wrapper.spreadsheets_wrapper.get_spreadsheet(me.id)
             self.postgres_wrapper.checks_queue_wrapper.create_check(spreadsheet_id=spreadsheet.id, check_text=message_text)
             await self.bot.send_message(chat_id=me.id, text="Чек добавлен")
