@@ -21,6 +21,7 @@ FIRST_STAGE_ADD_CHECK_MESSAGE = (Path(__file__).parent / "messages/first_stage_a
 SECOND_STAGE_ADD_CHECK_MESSAGE = (Path(__file__).parent / "messages/second_stage_add_check_message.txt").read_text()
 FINISH_STAGE_ADD_CHECK_MESSAGE = (Path(__file__).parent / "messages/finish_stage_add_check_message.txt").read_text()
 HELP_MESSAGE = (Path(__file__).parent / "messages/help_message.txt").read_text()
+HELP_COMMANDS = (Path(__file__).parent / "messages/help_commands.txt").read_text()
 ADD_RECORD_MESSAGE = (Path(__file__).parent / "messages/add_record_message.txt").read_text()
 
 TEMPLATETITLE = load_json(Path(__file__).parent / "templateTitle.json")

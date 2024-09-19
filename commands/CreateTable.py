@@ -123,7 +123,7 @@ class CreateTable(Command):
                     await self.commandManager.getCommands()["table"].execute(
                         message, state, command
                     )
-                    # await self.commandManager.getCommands()['help'].execute(message, state)
+                    await self.commandManager.getCommands()['help'].execute(message, state, command)
                 else:
                     await message.answer("Число должно быть > 0 и < 29")
             except Exception as e:
