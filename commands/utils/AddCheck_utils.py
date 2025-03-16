@@ -187,7 +187,7 @@ async def get_values_to_add_record(
         # value["notes"] = record["type"]
         value["notes"] = ""
         value["name"] = record["name"]
-        value["check_json"] = json.dumps(check_json)
+        value["check_json"] = json.dumps(check_json, ensure_ascii=False)
         value["type"] = record["type"]
         values.append(value)
     return values
