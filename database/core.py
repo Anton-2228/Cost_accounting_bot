@@ -8,6 +8,6 @@ class Database:
 
 
 def create_tables():
-    if getenv("DEBUG") == "True":
+    if getenv("DROP_DB") == "True":
         Base.metadata.drop_all(engine)
     Base.metadata.create_all(engine)

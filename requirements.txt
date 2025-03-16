@@ -5,7 +5,7 @@ psycopg-binary
 sqlalchemy
 alembic
 pydantic-settings 
-aiogram
+aiogram==3.11.0
 httplib2
 googleAPI
 asyncio

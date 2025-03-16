@@ -42,12 +42,15 @@ class AiWrapper:
         # content = response.choices[0].message.content
         # assert content is not None
         # return parsing_model_json_response(content)
-        answer = (self.client.create_chat_completion(
+        response = (self.client.create_chat_completion(
             response_format={
                 "type": "json_object"
             },
             messages=messages
         ))
+        content = response["choices"][0]["message"]["content"]
+        assert content is not None
+        return parsing_model_json_response(content)
 
     async def invoke(self, system_prompt: str, user_prompt: str):
         # system_content = [{"type": "text", "text": system_prompt}]
