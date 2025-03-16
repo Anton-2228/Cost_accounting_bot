@@ -3,7 +3,6 @@ from aiogram.filters import CommandObject
 from aiogram.fsm.context import FSMContext
 from aiogram.types import Message, CallbackQuery
 
-from ai_wrapper import AiWrapper
 from check_wrapper import get_check_data, get_important_check_data
 from commands.Command import Command
 from commands.utils.AddCheck_utils import (add_types, create_first_input,
@@ -29,9 +28,9 @@ from validation import validate_check_enter
 
 
 class AddCheck(Command):
-    def __init__(self, command_manager, postgres_wrapper):
+    def __init__(self, command_manager, postgres_wrapper, ai_wrapper):
         super().__init__(command_manager, postgres_wrapper)
-        self.ai_wrapper = AiWrapper()
+        self.ai_wrapper = ai_wrapper
         self.temp_data = {}
         command_manager.router.callback_query.register(self.confirm_select_types, F.data == "confirm_select_types")
         command_manager.router.callback_query.register(self.confirm_select_categories, F.data == "confirm_select_categories")

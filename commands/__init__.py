@@ -10,7 +10,7 @@ from commands.Synchronize import Synchronize
 from commands.Transfer import Transfer
 
 
-def get_commands(command_manager, postgres_wrapper):
+def get_commands(command_manager, postgres_wrapper, ai_wrapper):
     commands = {
         "start": CreateTable(command_manager, postgres_wrapper),
         "table": GetTable(command_manager, postgres_wrapper),
@@ -21,6 +21,6 @@ def get_commands(command_manager, postgres_wrapper):
         "del": DeleteRecord(command_manager, postgres_wrapper),
         "transfer": Transfer(command_manager, postgres_wrapper),
         "addRecord": AddRecord(command_manager, postgres_wrapper),
-        "addCheck": AddCheck(command_manager, postgres_wrapper),
+        "addCheck": AddCheck(command_manager, postgres_wrapper, ai_wrapper),
     }
     return commands

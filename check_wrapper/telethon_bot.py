@@ -3,11 +3,9 @@ from os import getenv
 from aiogram import Bot
 from telethon import TelegramClient, events
 
-from ai_wrapper import AiWrapper
-
 
 class TelethonBot:
-    def __init__(self, bot: Bot, postgres_wrapper):
+    def __init__(self, bot: Bot, postgres_wrapper, ai_wrapper):
         api_id = getenv("TELEGRAM_API_ID")
         api_hash = getenv("TELEGRAM_API_HASH")
         self.client = TelegramClient(
@@ -15,7 +13,7 @@ class TelethonBot:
         )
         self.bot = bot
         self.postgres_wrapper = postgres_wrapper
-        self.ai_wrapper = AiWrapper()
+        self.ai_wrapper = ai_wrapper
 
     async def start(self):
         async with self.client:

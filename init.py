@@ -11,6 +11,8 @@ from aiogram.types import BotCommand
 from dotenv import load_dotenv
 from oauth2client.service_account import ServiceAccountCredentials
 
+from ai_wrapper import AiWrapper
+
 dotenv_path = os.path.join(os.path.dirname(__file__), ".env")
 load_dotenv(dotenv_path)
 
@@ -36,8 +38,9 @@ dp = Dispatcher(storage=storage)
 router = Router()
 
 postgres_wrapper = PostgresWrapper()
+ai_wrapper = AiWrapper()
 
-telethon_bot = TelethonBot(bot, postgres_wrapper)
+telethon_bot = TelethonBot(bot, postgres_wrapper, ai_wrapper)
 
 
 class States(StatesGroup):
