@@ -26,11 +26,10 @@ class AiWrapper:
 
         # self.client = AsyncOpenAI(api_key=self.api_key, base_url=self.base_url)
 
-        # /home/user/Cost_accounting_bot_with_checks/ai_wrapper/models/nemo12b.gguf
         self.client = Llama(model_path="ai_wrapper/models/nemo12b.gguf", device="gpu",
                             n_gpu_layers=1111, n_ctx=1024, verbose=False)
 
-    async def create(self, messages: Iterable[ChatCompletionMessageParam]):
+    def create(self, messages: Iterable[ChatCompletionMessageParam]):
         # response = await self.client.chat.completions.create(
         #     messages=messages,
         #     model=self.model,
@@ -41,6 +40,7 @@ class AiWrapper:
         # )
         # content = response.choices[0].message.content
         # assert content is not None
+        # print(content)
         # return parsing_model_json_response(content)
         response = (self.client.create_chat_completion(
             response_format={
@@ -63,7 +63,7 @@ class AiWrapper:
             {"role": "user", "content": user_content},
         ]
 
-        return await self.create(messages)
+        return self.create(messages)
 
     async def validity_check_message(self, message: str):
         system_prompt = CHECK_VALIDITY_RECEIPT_SYSTEM
