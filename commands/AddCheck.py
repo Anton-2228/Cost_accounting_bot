@@ -1,3 +1,5 @@
+import copy
+
 from aiogram import F
 from aiogram.filters import CommandObject
 from aiogram.fsm.context import FSMContext
@@ -281,6 +283,15 @@ class AddCheck(Command):
         )
         if input["check"] != {}:
             answer = await self.ai_wrapper.first_invoke_check(input)
+            tmp = copy.deepcopy(input["check"])
+            for x, id in answer:
+                if answer[id] in input["types"]:
+                    tmp["type"] = answer[id]
+                    tmp["new_type"] = None
+                else:
+                    tmp["type"] = None
+                    tmp["new_type"] = answer[id]
+
 
             for id in check_data:
                 if id in answer:
