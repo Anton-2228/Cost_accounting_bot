@@ -32,8 +32,11 @@ class TelethonBot:
     async def handle_new_message(self, event):
         me = await self.client.get_me()
         sender = await event.message.get_sender()
-        if event.chat_id == self.target_chat.id and sender.id == self.target_chat.id:
-            # if event.chat_id == self.target_chat.id and sender.id == me.id:
+        if getenv("DEBUG") == "True":
+            checked_id = me.id
+        else:
+            checked_id = self.target_chat.id
+        if event.chat_id == self.target_chat.id and sender.id == checked_id:
             message_text = event.message.message
             response = await self.ai_wrapper.validity_check_message(message_text)
             if not response['is_check']:

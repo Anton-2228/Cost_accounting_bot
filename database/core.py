@@ -1,3 +1,5 @@
+from os import getenv
+
 from database.database import Base, engine
 
 
@@ -6,5 +8,6 @@ class Database:
 
 
 def create_tables():
-    # Base.metadata.drop_all(engine)
+    if getenv("DEBUG") == "True":
+        Base.metadata.drop_all(engine)
     Base.metadata.create_all(engine)
