@@ -11,10 +11,10 @@ from commands.utils.Synchronize_utils import sync_total_from_db_to_table
 from database import create_tables
 from datafiles import DAYSUNTILNEXTMONTH
 from init import (COMMANDS, States, bot, dp, router,
-                  telethon_bot, postgres_wrapper)
+                  telethon_bot, postgres_wrapper, ai_wrapper)
 
 commandManager = CommandManager(router=router, bot=bot)
-commandManager.addCommands(get_commands(commandManager, postgres_wrapper))
+commandManager.addCommands(get_commands(commandManager, postgres_wrapper, ai_wrapper))
 
 @router.message(Command("start"), StateFilter(None))
 @router.message(States.COMFIRM_CHANGE_DATE_RESET)
