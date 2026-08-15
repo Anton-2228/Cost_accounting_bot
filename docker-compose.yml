@@ -118,6 +118,51 @@ services:
       retries: 5
       start_period: 20s
 
+  checks-service:
+    build:
+      context: .
+      dockerfile: dockerfiles/checks_service.Dockerfile
+    restart: unless-stopped
+    env_file: env/checks_service.env
+    environment:
+      # Блок environment имеет приоритет над env_file.
+      API_BASE_URL: http://api:8000/api/v1
+      TZ: UTC
+    depends_on:
+      api:
+        condition: service_healthy
+    ports:
+      # Наружу публикует Caddy и только по HTTPS. Порт на 127.0.0.1 оставлен
+      # для проверок руками.
+      - "127.0.0.1:8012:8000"
+    healthcheck:
+      test: ["CMD-SHELL", "python -c \"import urllib.request; urllib.request.urlopen('http://localhost:8000/health', timeout=2)\""]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
+
+  caddy:
+    image: caddy:2-alpine
+    restart: unless-stopped
+    # Единственный контейнер, смотрящий в интернет. Он же получает и продлевает
+    # сертификат Let's Encrypt — для этого и нужен 80-й порт.
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - ./mini_app:/srv/mini_app:ro
+      # Сертификаты переживают пересоздание контейнера: Let's Encrypt ограничивает
+      # число выдач на домен, и терять их на каждом `up --build` нельзя.
+      - caddy_data:/data
+      - caddy_config:/config
+    depends_on:
+      checks-service:
+        condition: service_healthy
+
 volumes:
   pg_data:
   redis_data:
+  caddy_data:
+  caddy_config:

@@ -1,0 +1,47 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+    <title>Добавить чек</title>
+    <script src="https://telegram.org/js/telegram-web-app.js"></script>
+    <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+<main class="screen">
+    <h1 class="title">Добавить чек</h1>
+
+    <p id="hint" class="hint">Наведите камеру на QR-код в нижней части чека.</p>
+
+    <button id="scan" class="button button--primary" type="button">Сканировать чек</button>
+
+    <!-- Плашка распознанного чека. Показывается до расшифровки: пока
+         пользователь не подтвердил, платный внешний сервис не зовётся. -->
+    <section id="card" class="card" hidden>
+        <dl class="card__rows">
+            <div class="card__row">
+                <dt>Таблица</dt>
+                <dd id="card-table"></dd>
+            </div>
+            <div class="card__row" id="card-total-row" hidden>
+                <dt>Сумма</dt>
+                <dd id="card-total"></dd>
+            </div>
+            <div class="card__row" id="card-date-row" hidden>
+                <dt>Дата</dt>
+                <dd id="card-date"></dd>
+            </div>
+        </dl>
+        <div class="card__actions">
+            <button id="confirm" class="button button--primary" type="button">Добавить</button>
+            <button id="cancel" class="button" type="button">Отмена</button>
+        </div>
+    </section>
+
+    <p id="status" class="status" hidden></p>
+</main>
+
+<script src="config.js"></script>
+<script src="app.js"></script>
+</body>
+</html>

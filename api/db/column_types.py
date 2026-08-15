@@ -20,6 +20,7 @@ from api.db.base import Base
 from api.enums import (
     AccessRole,
     CategoryKind,
+    CheckKind,
     EntityStatus,
     NotificationKind,
     PeriodStatus,
@@ -39,6 +40,12 @@ ENTITY_STATUS = SAEnum(
 CATEGORY_KIND = SAEnum(
     CategoryKind,
     name="category_kind",
+    metadata=Base.metadata,
+)
+
+CHECK_KIND = SAEnum(
+    CheckKind,
+    name="check_kind",
     metadata=Base.metadata,
 )
 

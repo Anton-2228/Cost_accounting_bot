@@ -10,7 +10,7 @@ from api.orm.cashed_record import CashedRecordORM
 from api.orm.category import CategoryORM
 from api.orm.category_association import CategoryAssociationORM
 from api.orm.category_product_type import CategoryProductTypeORM
-from api.orm.check_queue_item import CheckQueueItemORM
+from api.orm.check import CheckORM
 from api.orm.period import PeriodORM
 from api.orm.record import RecordORM
 from api.orm.sheet_mapping import SheetMappingORM
@@ -28,7 +28,7 @@ __all__ = [
     "CategoryAssociationORM",
     "CategoryORM",
     "CategoryProductTypeORM",
-    "CheckQueueItemORM",
+    "CheckORM",
     "PeriodORM",
     "RecordORM",
     "SheetMappingORM",

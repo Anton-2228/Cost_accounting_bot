@@ -5,7 +5,7 @@ from __future__ import annotations
 from api.mappers.base import BaseMapper
 from api.mappers.cashed_record_mapper import CashedRecordMapper
 from api.mappers.category_mapper import CategoryMapper
-from api.mappers.check_queue_item_mapper import CheckQueueItemMapper
+from api.mappers.check_mapper import CheckMapper
 from api.mappers.period_mapper import PeriodMapper
 from api.mappers.record_mapper import RecordMapper
 from api.mappers.sheet_mapping_mapper import SheetMappingMapper
@@ -21,7 +21,7 @@ __all__ = [
     "BaseMapper",
     "CashedRecordMapper",
     "CategoryMapper",
-    "CheckQueueItemMapper",
+    "CheckMapper",
     "PeriodMapper",
     "RecordMapper",
     "SheetMappingMapper",

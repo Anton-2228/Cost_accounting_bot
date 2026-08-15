@@ -7,7 +7,7 @@
 
 from __future__ import annotations
 
-from datetime import date
+from datetime import UTC, date, datetime
 from decimal import Decimal
 
 import pytest
@@ -15,7 +15,7 @@ from sqlalchemy import text
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from api.enums import CategoryKind
+from api.enums import CategoryKind, CheckKind
 from api.orm.category import CategoryORM
 from api.orm.category_association import CategoryAssociationORM
 from api.orm.record import RecordORM
@@ -322,5 +322,33 @@ async def test_period_start_is_unique_per_spreadsheet(session: AsyncSession) -> 
             end_date=date(2026, 8, 15),
         )
     )
+    with pytest.raises(IntegrityError):
+        await session.commit()
+
+
+async def test_same_check_cannot_be_saved_twice(session: AsyncSession) -> None:
+    """Повторный скан того же чека не создаёт второй строки.
+
+    Уникальность стоит на `(spreadsheet_id, kind, external_key)`. Содержимое
+    ключа вычисляет парсер формата, поэтому БД не знает ни про ФН, ни про ФД,
+    ни про ФП — и всё же дубль в ней невыразим.
+    """
+    from api.orm.check import CheckORM
+
+    spreadsheet = await factories.create_spreadsheet(session)
+    await session.commit()
+
+    fetched_at = datetime(2026, 7, 25, 15, 7, tzinfo=UTC)
+    for _ in range(2):
+        session.add(
+            CheckORM(
+                spreadsheet_id=spreadsheet.id,
+                kind=CheckKind.RU_FNS,
+                qr_raw="t=20260725T1507&s=1214.95&fn=7384440901402798&i=145&fp=698610272&n=1",
+                external_key="7384440901402798:145:698610272",
+                raw_payload={"code": 1},
+                fetched_at=fetched_at,
+            )
+        )
     with pytest.raises(IntegrityError):
         await session.commit()

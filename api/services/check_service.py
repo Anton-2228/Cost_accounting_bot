@@ -1,23 +1,26 @@
-"""Очередь чеков, кэш «товар → тип» и запись разобранного чека."""
+"""Сохранение чеков, кэш «товар → тип» и запись разобранного чека."""
 
 from __future__ import annotations
 
 from collections.abc import Mapping, Sequence
+from datetime import datetime
+from typing import Any
 
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from api.core import constants
 from api.core.logging import get_logger
 from api.domain.cashed_record import CashedRecord
 from api.domain.category import Category
+from api.domain.check import Check
 from api.domain.check_item import CheckItem, ProductTypeAssignment
-from api.domain.check_queue_item import CheckQueueItem
 from api.domain.record import Record
-from api.enums import CategoryKind, SheetTarget, SyncTaskKind
-from api.exceptions.base import NotFoundError
+from api.enums import CategoryKind, CheckKind, SheetTarget, SyncTaskKind
+from api.exceptions.base import ConflictError, NotFoundError
 from api.repositories.cashed_record_repository import CashedRecordRepository
 from api.repositories.category_repository import CategoryRepository
-from api.repositories.check_queue_repository import CheckQueueRepository
+from api.repositories.check_repository import CheckRepository
 from api.repositories.period_repository import PeriodRepository
 from api.repositories.record_repository import RecordRepository
 from api.repositories.sheet_sync_task_repository import SheetSyncTaskRepository, TaskKey
@@ -28,15 +31,23 @@ from api.services.base import BaseSpreadsheetService
 
 logger = get_logger(__name__)
 
+#: Причина конфликта: этот чек в документе уже есть. Отдаётся отдельно от общего
+#: «нарушено ограничение целостности», потому что для сканирующего это не
+#: ошибка, а осмысленный ответ «уже добавлен».
+ALREADY_SAVED_REASON = "check_already_saved"
+
 
 class CheckService(BaseSpreadsheetService):
-    """Разбор чека доводится ботом, а api записывает готовый результат.
+    """Хранение сырья чека и запись уже разобранного чека.
 
-    Модель, стадии диалога и подтверждения пользователя остаются в боте: они
-    перемежаются вопросами и живут в его состоянии. Сюда приезжает уже
-    разложенный чек, и весь он записывается **одной транзакцией** — иначе
-    прерывание на середине оставило бы половину чека в реестре, а половину
-    потеряло.
+    Две половины одного пути, разнесённые во времени. Сначала `save`: чек
+    приезжает от Mini App расшифрованным, и в БД ложится только сырьё —
+    QR-строка, вид формата и ответ внешнего сервиса целиком. Затем разбор,
+    который доводится вне api (модель, стадии диалога, подтверждения
+    пользователя перемежаются вопросами и живут в состоянии клиента), а сюда
+    приезжает готовый результат `commit_check` — и записывается **одной
+    транзакцией**, иначе прерывание на середине оставило бы половину чека в
+    реестре, а половину потеряло.
     """
 
     def __init__(
@@ -49,7 +60,7 @@ class CheckService(BaseSpreadsheetService):
         sources: SourceRepository,
         records: RecordRepository,
         cashed_records: CashedRecordRepository,
-        queue: CheckQueueRepository,
+        checks: CheckRepository,
         tasks: SheetSyncTaskRepository,
     ) -> None:
         super().__init__(session, spreadsheets)
@@ -58,36 +69,64 @@ class CheckService(BaseSpreadsheetService):
         self._sources = sources
         self._records = records
         self._cashed_records = cashed_records
-        self._queue = queue
+        self._checks = checks
         self._tasks = tasks
 
-    # --- очередь ---
+    # --- сохранение ---
 
-    async def list_queue(self, spreadsheet_id: int) -> list[CheckQueueItem]:
-        """Чеки, ожидающие разбора."""
-        await self._get_ready(spreadsheet_id)
-        return await self._queue.list_by_spreadsheet(spreadsheet_id)
+    async def list_checks(self, spreadsheet_id: int) -> list[Check]:
+        """Сохранённые чеки документа в порядке поступления."""
+        await self._get(spreadsheet_id)
+        return await self._checks.list_by_spreadsheet(spreadsheet_id)
 
-    async def enqueue(self, spreadsheet_id: int, check_text: str) -> CheckQueueItem:
-        """Кладёт сырой чек в очередь.
+    async def save(
+        self,
+        spreadsheet_id: int,
+        *,
+        kind: CheckKind,
+        qr_raw: str,
+        external_key: str,
+        raw_payload: dict[str, Any],
+        fetched_at: datetime,
+    ) -> Check:
+        """Сохраняет расшифрованный чек целиком.
 
-        Готовность таблицы не проверяется: очередь наполняет внешний источник,
-        которому незачем знать, дорисован ли уже Google-документ. Чек полежит и
-        дождётся разбора.
+        Готовность Google-таблицы не проверяется: сканирующему незачем знать,
+        дорисован ли документ, — чек полежит и дождётся разбора.
+
+        Дубль ловится дважды. Предварительная проверка нужна, чтобы ответить
+        внятной причиной, а `IntegrityError` — потому что между ней и вставкой
+        помещается второй такой же скан: без перехвата гонка двух телефонов
+        (или двойного нажатия) отвечала бы пятисоткой.
         """
         await self._get(spreadsheet_id)
-        item = await self._queue.add(
-            CheckQueueItem(spreadsheet_id=spreadsheet_id, check_text=check_text)
-        )
-        await self._commit()
-        return item
 
-    async def delete_from_queue(self, spreadsheet_id: int, item_id: int) -> None:
-        """Убирает чек из очереди (пользователь его пропустил или разобрал)."""
-        await self._get_ready(spreadsheet_id)
-        if not await self._queue.delete_for_spreadsheet(item_id, spreadsheet_id):
-            raise NotFoundError("check")
-        await self._commit()
+        existing = await self._checks.get_by_external_key(spreadsheet_id, kind, external_key)
+        if existing is not None:
+            raise ConflictError("Чек уже добавлен", details={"reason": ALREADY_SAVED_REASON})
+
+        check = Check(
+            spreadsheet_id=spreadsheet_id,
+            kind=kind,
+            qr_raw=qr_raw,
+            external_key=external_key,
+            raw_payload=raw_payload,
+            fetched_at=fetched_at,
+        )
+        try:
+            saved = await self._checks.add(check)
+            await self._commit()
+        except IntegrityError as error:
+            # Сессия после нарушения ограничения непригодна: без отката любой
+            # следующий запрос в ней получил бы PendingRollbackError.
+            await self._session.rollback()
+            raise ConflictError(
+                "Чек уже добавлен",
+                details={"reason": ALREADY_SAVED_REASON},
+            ) from error
+
+        logger.info("Сохранён чек %s (%s) в документ %s", saved.id, kind, spreadsheet_id)
+        return saved
 
     # --- кэш ---
 
@@ -105,10 +144,9 @@ class CheckService(BaseSpreadsheetService):
         source_id: int,
         items: Sequence[CheckItem],
         new_product_types: Sequence[ProductTypeAssignment] = (),
-        check_id: int | None = None,
         check_json: str | None = None,
     ) -> list[Record]:
-        """Записывает разобранный чек: типы товаров, кэш, операции, снятие с очереди.
+        """Записывает разобранный чек: типы товаров, кэш, операции.
 
         Всё перечисленное — одна транзакция. Порядок внутри значения не имеет,
         важно лишь то, что ни одна её часть не может уцелеть без остальных.
@@ -162,9 +200,6 @@ class CheckService(BaseSpreadsheetService):
                         product_type=item.product_type,
                     )
                 )
-
-        if check_id is not None:
-            await self._queue.delete_for_spreadsheet(check_id, spreadsheet_id)
 
         keys: list[TaskKey] = [
             (spreadsheet_id, SyncTaskKind.REDRAW, SheetTarget.OPERATIONS, period.id),

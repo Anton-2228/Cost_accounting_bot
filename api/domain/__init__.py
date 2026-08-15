@@ -9,7 +9,7 @@ from __future__ import annotations
 from api.domain.cashed_record import CashedRecord
 from api.domain.category import Category
 from api.domain.category_daily_total import CategoryDailyTotal
-from api.domain.check_queue_item import CheckQueueItem
+from api.domain.check import Check
 from api.domain.pending_notification import PendingNotification
 from api.domain.period import Period
 from api.domain.record import Record
@@ -27,7 +27,7 @@ __all__ = [
     "CashedRecord",
     "Category",
     "CategoryDailyTotal",
-    "CheckQueueItem",
+    "Check",
     "PendingNotification",
     "Period",
     "Record",

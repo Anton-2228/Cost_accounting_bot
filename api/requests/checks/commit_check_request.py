@@ -11,11 +11,9 @@ from api.requests.checks.product_type_assignment_request import ProductTypeAssig
 class CommitCheckRequest(BaseModel):
     """Тело запроса записи чека целиком.
 
-    Чек приезжает одним запросом намеренно: позиции, новые типы товаров, кэш и
-    снятие чека с очереди пишутся одной транзакцией. Разбить это на несколько
-    запросов значило бы допустить состояние «половина чека в реестре».
-
-    `check_id` необязателен: чек мог прийти боту не через очередь.
+    Чек приезжает одним запросом намеренно: позиции, новые типы товаров и кэш
+    пишутся одной транзакцией. Разбить это на несколько запросов значило бы
+    допустить состояние «половина чека в реестре».
     """
 
     model_config = ConfigDict(extra="forbid")
@@ -23,5 +21,4 @@ class CommitCheckRequest(BaseModel):
     source_id: int = Field(gt=0)
     items: list[CheckItemRequest] = Field(min_length=1)
     new_product_types: list[ProductTypeAssignmentRequest] = []
-    check_id: int | None = Field(default=None, gt=0)
     check_json: str | None = None

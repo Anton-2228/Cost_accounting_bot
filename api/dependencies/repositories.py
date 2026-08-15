@@ -13,7 +13,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from api.db.session import get_session
 from api.repositories.cashed_record_repository import CashedRecordRepository
 from api.repositories.category_repository import CategoryRepository
-from api.repositories.check_queue_repository import CheckQueueRepository
+from api.repositories.check_repository import CheckRepository
 from api.repositories.period_repository import PeriodRepository
 from api.repositories.record_repository import RecordRepository
 from api.repositories.sheet_mapping_repository import SheetMappingRepository
@@ -77,11 +77,11 @@ def get_cashed_record_repository(
     return CashedRecordRepository(session)
 
 
-def get_check_queue_repository(
+def get_check_repository(
     session: AsyncSession = Depends(get_session),
-) -> CheckQueueRepository:
-    """Репозиторий очереди чеков."""
-    return CheckQueueRepository(session)
+) -> CheckRepository:
+    """Репозиторий сохранённых чеков."""
+    return CheckRepository(session)
 
 
 def get_sheet_sync_task_repository(

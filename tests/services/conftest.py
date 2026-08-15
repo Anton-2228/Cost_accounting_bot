@@ -12,7 +12,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from api.repositories.cashed_record_repository import CashedRecordRepository
 from api.repositories.category_repository import CategoryRepository
-from api.repositories.check_queue_repository import CheckQueueRepository
+from api.repositories.check_repository import CheckRepository
 from api.repositories.period_repository import PeriodRepository
 from api.repositories.record_repository import RecordRepository
 from api.repositories.sheet_mapping_repository import SheetMappingRepository
@@ -91,7 +91,7 @@ def check_service(session: AsyncSession) -> CheckService:
         sources=SourceRepository(session),
         records=RecordRepository(session),
         cashed_records=CashedRecordRepository(session),
-        queue=CheckQueueRepository(session),
+        checks=CheckRepository(session),
         tasks=SheetSyncTaskRepository(session),
     )
 

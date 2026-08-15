@@ -14,13 +14,14 @@
 расходов). Архитектурный эталон — `/root/sales_analysis`, его конвенции
 воспроизводятся точно.
 
-Система из трёх частей:
+Система из четырёх частей:
 
 | Часть | Состояние | Ответственность |
 |---|---|---|
 | `api/` | **готов** | Владеет Postgres. Вся предметная логика и все деньги |
 | `google_sheets_service/` | **готов**, см. [GSHEETS_machine.md](GSHEETS_machine.md) | Единственный, кто ходит в Google API. Разгребает очередь перерисовки, читает правки пользователя и отдаёт в api |
 | `telegram_bot/` | **готов**, см. [BOT_machine.md](BOT_machine.md) | aiogram-фронтенд: разбирает ввод, зовёт api, печатает ответ по-русски |
+| `checks_service/` + `mini_app/` | **готов**, см. [CHECKS_machine.md](CHECKS_machine.md) | Единственная публичная часть системы: Mini App сканирует QR-код чека, сервис получает расшифровку и кладёт сырьё в api |
 
 **Api никогда не ходит в Google.** Мутация — одна короткая транзакция в Postgres,
 которая заодно пишет строку в очередь `sheet_sync_tasks`. Отсюда главное
@@ -56,13 +57,18 @@ uv run pytest
 
 ```
 new_version/
-├── pyproject.toml · uv.lock · alembic.ini · docker-compose.yml · README.md
-├── dockerfiles/{api,google_sheets_service}.Dockerfile
+├── pyproject.toml · uv.lock · alembic.ini · docker-compose.yml · Caddyfile · README.md
+├── dockerfiles/{api,google_sheets_service,telegram_bot,checks_service}.Dockerfile
 ├── scripts/entrypoint.sh        # ждёт Postgres → alembic upgrade head → uvicorn
-├── env/{api,postgres,google_sheets_service}.env.example
+├── env/{api,postgres,google_sheets_service,telegram_bot,checks_service}.env.example
 ├── docs/API_machine.md          # этот файл
 ├── docs/GSHEETS_machine.md      # карта google_sheets_service
+├── docs/BOT_machine.md          # карта telegram_bot
+├── docs/CHECKS_machine.md       # карта checks_service и mini_app
 ├── google_sheets_service/       # разбор очереди и работа с Google
+├── telegram_bot/                # aiogram-фронтенд
+├── checks_service/              # бэкенд Mini App: QR → расшифровка → чек в api
+├── mini_app/                    # статика Mini App, без сборщика
 ├── api/
 │   ├── main.py                  # create_app() + app, lifespan (в нём же ролловер)
 │   ├── core/                    # config, constants, logging, messages, period, text, types
@@ -88,10 +94,14 @@ new_version/
     ├── services/     # conftest с фикстурами сервисов + по файлу на сервис
     ├── db/test_schema_constraints.py
     ├── api/          # по файлу на роутер
-    └── google_sheets_service/  # фейки Google, unit и тесты движка
+    ├── google_sheets_service/  # фейки Google, unit и тесты движка
+    ├── telegram_bot/
+    └── checks_service/         # парсер ФНС, реестр, initData, роутеры Mini App
 ```
 
-**Сознательно отсутствует:** разбор чеков (`/check`) — см. [BOT_machine.md](BOT_machine.md) §10.
+**Сознательно отсутствует:** разбор чека — сырьё в БД уже кладётся
+(`checks_service`), а интерпретация отложена, см.
+[CHECKS_machine.md](CHECKS_machine.md) §8 и [BOT_machine.md](BOT_machine.md) §10.
 
 ---
 
@@ -127,6 +137,7 @@ new_version/
 |---|---|
 | `entity_status` | `ACTIVE`, `INACTIVE` — намеренно **без** `DELETED` |
 | `category_kind` | `INCOME`, `EXPENSE` |
+| `check_kind` | `RU_FNS` — формат чека; зеркалится в `checks_service/enums.py` |
 | `period_status` | `OPEN`, `CLOSED` |
 | `sheet_target` | `STRUCTURE`, `CATEGORIES`, `BILLS`, `OPERATIONS`, `STATISTICS` |
 | `sync_task_kind` | `REDRAW` (БД → лист), `IMPORT` (лист → БД) |
@@ -150,7 +161,7 @@ new_version/
 | `records` | `amount` **знаковая**, `added_at DATE`, `period_id`/`category_id`/`source_id` — составные FK, `deleted_at`, поля чеков |
 | `transfers` | `from_source_id`/`to_source_id`, `amount` CHECK `> 0`, CHECK `from <> to` |
 | `cashed_records` | UNIQUE `(spreadsheet_id, product_name)` |
-| `check_queue_items` | `check_text` |
+| `checks` | сырьё чека: `kind`, `qr_raw`, `external_key`, `raw_payload` JSONB, `fetched_at`; UNIQUE `(spreadsheet_id, kind, external_key)` |
 | `sheet_sync_tasks` | очередь, см. §5 |
 | `sheet_mappings` | `(spreadsheet_id, target, period_id) → google_sheet_id, title` |
 | `user_notifications` | исходящие сообщения, `delivered_at`; партиальный индекс по недоставленным |
@@ -280,8 +291,8 @@ backoff перестал бы работать.
 | `GET/POST /spreadsheets/{id}/records` · `DELETE .../records/last` · `.../records/{id}` | операции; `?period_id=` |
 | `GET/POST /spreadsheets/{id}/transfers` · `DELETE .../transfers/last` · `.../transfers/{id}` | переводы |
 | `GET /spreadsheets/{id}/periods` · `.../periods/current` · `.../periods/{id}/statistics` | периоды и дневные итоги |
-| `GET/POST /spreadsheets/{id}/checks-queue` · `DELETE .../checks-queue/{id}` | очередь чеков |
-| `GET /spreadsheets/{id}/cashed-records` · `POST .../checks/commit` | кэш типов, запись чека |
+| `GET/POST /spreadsheets/{id}/checks` | сохранённые чеки; повтор — 409 `check_already_saved` (для checks_service) |
+| `GET /spreadsheets/{id}/cashed-records` · `POST .../checks/commit` | кэш типов, запись разобранного чека |
 | `GET /spreadsheets/{id}/notifications` · `POST .../notifications/{id}/delivered` | сообщения боту |
 | `POST /spreadsheets/{id}/import/categories` · `.../import/bills` | лист → БД (для gsheets) |
 | `GET/POST /spreadsheets/{id}/sheet-mappings` | где лежит лист (для gsheets) |
@@ -339,12 +350,33 @@ Aiogram-3 фронтенд, описан в [BOT_machine.md](BOT_machine.md). В
 бот дочитывает пропущенное при обращении пользователя, а подтверждение общее для
 обоих путей — одно сообщение не уходит дважды.
 
-### Шаг 3. Разбор чеков
+### Шаг 3. Вход чеков — сделан
 
-Единственная неперенесённая часть старого бота: `/check`, работа с
-proverkacheka и LLM. Отложена вместе с логикой наполнения очереди — сегодня
-`check_queue_items` пополнить нечем. Подробности и список того, что нельзя
-повторять из старой реализации, — в [BOT_machine.md](BOT_machine.md) §10.
+`checks_service` и `mini_app`, описаны в [CHECKS_machine.md](CHECKS_machine.md).
+Ради них в api появилось (миграция `b1e6a4c7d905`):
+
+- таблица **`checks`** и enum `check_kind` — сырьё чека и его формат. Ни даты,
+  ни суммы, ни валюты отдельными колонками: форматов будет больше одного, и
+  выбрать, чью сумму считать настоящей, можно только на разборе;
+- **`check_queue_items` удалена целиком** вместе с репозиторием, доменной
+  моделью, маппером, тремя эндпоинтами очереди и параметром `check_id` у
+  `POST /checks/commit`. Наполнять её было нечем: старый Telethon-слушатель
+  отключён, а `POST /checks-queue` никто не звал;
+- `POST /spreadsheets/{id}/checks` с дублем, пойманным дважды — предварительной
+  проверкой ради внятной причины и `IntegrityError` ради гонки двух
+  одновременных сканов.
+
+**Инварианты целы:** api по-прежнему не делает ни одного внешнего вызова и
+по-прежнему не публикуется наружу. Наружу смотрит один Caddy, а во внешний мир
+ходит один `checks_service`.
+
+### Шаг 4. Разбор чека
+
+Единственное, чего не хватает: `checks` → типы товаров → категории → операции
+реестра. Сырьё в БД уже накапливается, `cashed_records` и
+`POST /checks/commit` готовы и доработки не требуют. Подробности — в
+[CHECKS_machine.md](CHECKS_machine.md) §8, список того, что нельзя повторять из
+старой реализации, — в [BOT_machine.md](BOT_machine.md) §10.
 
 ---
 

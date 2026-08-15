@@ -3,25 +3,28 @@
 Учёт личных расходов. Postgres — источник истины, Google Spreadsheet — отчётная
 поверхность и интерфейс редактирования справочников.
 
-Система состоит из трёх частей:
+Система состоит из четырёх частей:
 
 | Часть | Состояние | Ответственность |
 |---|---|---|
 | `api/` | готов | Владеет Postgres. Вся предметная логика и все деньги |
 | `google_sheets_service/` | готов | Единственный, кто ходит в Google API. Разгребает очередь перерисовки листов, читает правки пользователя и отдаёт их в api |
-| `telegram_bot/` | **этот шаг** | aiogram-фронтенд: разбирает ввод, зовёт api, печатает ответ по-русски |
+| `telegram_bot/` | готов | aiogram-фронтенд: разбирает ввод, зовёт api, печатает ответ по-русски |
+| `checks_service/` + `mini_app/` | **этот шаг** | Единственная публичная часть системы: Mini App сканирует QR-код чека, сервис получает расшифровку и кладёт сырьё в api |
 
 ## Что сделано на этом шаге
 
-Telegram-бот: текстовые команды с подбором категорий и счетов по псевдонимам,
-мастер создания таблицы, операции и переводы, работа со справочниками через
-Google-лист. Плюс доставка уведомлений о фоновой работе — api сам толкает их
-боту, а бот дочитывает пропущенное при обращении пользователя.
+Вход для чеков. Telegram Mini App сканирует QR-код чека штатным сканером
+Telegram, сервер распознаёт формат, получает расшифровку у внешнего сервиса и
+сохраняет чек в БД. Кода бота этот шаг не тронул: приложение запускается через
+Menu Button в BotFather.
 
-Разбор чеков в этот шаг не входит и появится отдельно вместе с логикой
-наполнения очереди.
+В БД едет только сырьё — QR-строка, вид формата и ответ внешнего сервиса
+целиком. Ни даты, ни суммы, ни валюты отдельными колонками: форматов чеков
+будет больше одного (сегодня ФНС, позже сербский), и решать, чью сумму считать
+настоящей, можно только на разборе. Разбор чека — следующий шаг.
 
-Подробности: [docs/BOT_machine.md](docs/BOT_machine.md).
+Подробности: [docs/CHECKS_machine.md](docs/CHECKS_machine.md).
 
 ## Ключевые архитектурные решения
 
@@ -60,12 +63,19 @@ cp env/api.env.example env/api.env
 cp env/postgres.env.example env/postgres.env
 cp env/google_sheets_service.env.example env/google_sheets_service.env
 cp env/telegram_bot.env.example env/telegram_bot.env
+cp env/checks_service.env.example env/checks_service.env
 # заполнить пароли, положить ключ сервисного аккаунта в secrets/google_sa.json,
-# указать TELEGRAM_BOT_TOKEN и ALLOWED_TELEGRAM_IDS
+# указать TELEGRAM_BOT_TOKEN, ALLOWED_TELEGRAM_IDS и PROVERKACHEKA_API_TOKEN
 docker compose up -d --build
 curl -s localhost:8010/health          # api
 curl -s localhost:8011/health          # отчёт последнего прохода по очереди
+curl -s localhost:8012/health          # бэкенд Mini App
+curl -s https://185.239.49.175.sslip.io/   # статика Mini App через Caddy
 ```
+
+Mini App подключается вручную: BotFather → Bot Settings → Menu Button → URL
+`https://185.239.49.175.sslip.io/`. Открывать его надо **с телефона**: штатный
+сканер QR есть только в мобильном Telegram.
 
 Миграции применяет `scripts/entrypoint.sh` при старте контейнера api.
 
@@ -78,7 +88,7 @@ curl -s localhost:8011/health          # отчёт последнего про�
 ```bash
 uv sync
 uv run ruff check .
-uv run mypy api google_sheets_service telegram_bot tests
+uv run mypy api checks_service google_sheets_service telegram_bot tests
 ```
 
 Тестам нужен настоящий Postgres 16 (схема использует нативные enum,

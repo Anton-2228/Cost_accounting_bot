@@ -15,7 +15,7 @@ from api.db.session import get_session
 from api.dependencies.repositories import (
     get_cashed_record_repository,
     get_category_repository,
-    get_check_queue_repository,
+    get_check_repository,
     get_period_repository,
     get_record_repository,
     get_sheet_mapping_repository,
@@ -29,7 +29,7 @@ from api.dependencies.repositories import (
 )
 from api.repositories.cashed_record_repository import CashedRecordRepository
 from api.repositories.category_repository import CategoryRepository
-from api.repositories.check_queue_repository import CheckQueueRepository
+from api.repositories.check_repository import CheckRepository
 from api.repositories.period_repository import PeriodRepository
 from api.repositories.record_repository import RecordRepository
 from api.repositories.sheet_mapping_repository import SheetMappingRepository
@@ -127,10 +127,10 @@ def get_check_service(
     sources: SourceRepository = Depends(get_source_repository),
     records: RecordRepository = Depends(get_record_repository),
     cashed_records: CashedRecordRepository = Depends(get_cashed_record_repository),
-    queue: CheckQueueRepository = Depends(get_check_queue_repository),
+    checks: CheckRepository = Depends(get_check_repository),
     tasks: SheetSyncTaskRepository = Depends(get_sheet_sync_task_repository),
 ) -> CheckService:
-    """Сервис чеков: очередь, кэш типов и запись разобранного чека."""
+    """Сервис чеков: сохранение сырья, кэш типов и запись разобранного чека."""
     return CheckService(
         session,
         spreadsheets,
@@ -139,7 +139,7 @@ def get_check_service(
         sources=sources,
         records=records,
         cashed_records=cashed_records,
-        queue=queue,
+        checks=checks,
         tasks=tasks,
     )
 
