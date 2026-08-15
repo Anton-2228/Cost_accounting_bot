@@ -1,0 +1,428 @@
+# `api/` — карта модуля и план работ
+
+Документ для последующих сессий. Описывает **что уже сделано** в `new_version/api`,
+какие инварианты нельзя нарушать и **что делать дальше**.
+
+Пиши на русском: сообщения пользователю, комментарии, докстринги, сообщения
+коммитов.
+
+---
+
+## 1. Контекст
+
+Переписывание с нуля старого проекта `/root/Cost_accounting_bot` (учёт личных
+расходов). Архитектурный эталон — `/root/sales_analysis`, его конвенции
+воспроизводятся точно.
+
+Система из трёх частей:
+
+| Часть | Состояние | Ответственность |
+|---|---|---|
+| `api/` | **готов** | Владеет Postgres. Вся предметная логика и все деньги |
+| `google_sheets_service/` | **готов**, см. [GSHEETS_machine.md](GSHEETS_machine.md) | Единственный, кто ходит в Google API. Разгребает очередь перерисовки, читает правки пользователя и отдаёт в api |
+| `telegram_bot/` | **готов**, см. [BOT_machine.md](BOT_machine.md) | aiogram-фронтенд: разбирает ввод, зовёт api, печатает ответ по-русски |
+
+**Api никогда не ходит в Google.** Мутация — одна короткая транзакция в Postgres,
+которая заодно пишет строку в очередь `sheet_sync_tasks`. Отсюда главное
+свойство: операция не может ответить пользователю ошибкой после того, как деньги
+уже списаны.
+
+---
+
+## 2. Что сделано
+
+Каркас, слой данных, сервисный слой, HTTP-слой и фоновый ролловер. Проверено, а
+не заявлено:
+
+| Проверка | Команда | Результат |
+|---|---|---|
+| Линтер | `uv run ruff check .` | чисто |
+| Типы | `uv run mypy api google_sheets_service tests` | чисто, 272 файла |
+| Тесты | `uv run pytest` | 330 тестов (вместе с gsheets) |
+| Обратимость миграции | `alembic upgrade head` → `downgrade base` → `upgrade head` | типы и таблицы вычищаются полностью |
+| Миграция == `create_all` | `pg_dump` обеих схем + diff | идентичны |
+| Запуск с нуля | `docker compose up -d --build` | миграция применяется, `/health/ready` отвечает, healthcheck зелёный |
+
+Тестам нужен настоящий Postgres 16 (нативные enum, `IDENTITY`, частичные и
+выражательные индексы, `UNIQUE NULLS NOT DISTINCT`, отложенные составные ключи):
+
+```bash
+docker run -d --name pg-test -e POSTGRES_USER=test -e POSTGRES_PASSWORD=test \
+    -e POSTGRES_DB=cost_test -p 5544:5432 postgres:16
+uv run pytest
+```
+
+### Дерево
+
+```
+new_version/
+├── pyproject.toml · uv.lock · alembic.ini · docker-compose.yml · README.md
+├── dockerfiles/{api,google_sheets_service}.Dockerfile
+├── scripts/entrypoint.sh        # ждёт Postgres → alembic upgrade head → uvicorn
+├── env/{api,postgres,google_sheets_service}.env.example
+├── docs/API_machine.md          # этот файл
+├── docs/GSHEETS_machine.md      # карта google_sheets_service
+├── google_sheets_service/       # разбор очереди и работа с Google
+├── api/
+│   ├── main.py                  # create_app() + app, lifespan (в нём же ролловер)
+│   ├── core/                    # config, constants, logging, messages, period, text, types
+│   ├── db/                      # base, mixins, engine, session, transaction, column_types
+│   ├── enums/                   # 7 файлов, по одному на enum
+│   ├── orm/                     # 16 таблиц + __init__ (регистрация в Base.metadata)
+│   ├── domain/                  # pydantic-зеркало + производные модели
+│   ├── mappers/                 # base + 12
+│   ├── repositories/            # base + 13
+│   ├── services/                # base, _periods + 11 сервисов
+│   ├── tasks/                   # rollover_loop.py
+│   ├── validation.py            # разбор листов, русские тексты ошибок
+│   ├── exceptions/              # base, handlers
+│   ├── requests/                # подпакет на домен, extra="forbid"
+│   ├── responses/               # common (DataResponse, ItemsResponse, Page, Error) + по домену
+│   ├── dependencies/            # repositories.py, services.py
+│   ├── routers/                 # system + 9 доменных, 34 маршрута
+│   └── alembic/versions/  # c05740c0de01 (схема) + 7f3c1d9a4b02 (аренда задачи)
+└── tests/
+    ├── conftest.py · factories.py
+    ├── unit/         # period, text, mappers, rollover_loop
+    ├── repositories/ # по файлу на репозиторий + test_source_balance.py
+    ├── services/     # conftest с фикстурами сервисов + по файлу на сервис
+    ├── db/test_schema_constraints.py
+    ├── api/          # по файлу на роутер
+    └── google_sheets_service/  # фейки Google, unit и тесты движка
+```
+
+**Сознательно отсутствует:** разбор чеков (`/check`) — см. [BOT_machine.md](BOT_machine.md) §10.
+
+---
+
+## 3. Конвенции (соблюдать)
+
+- **Один класс — один файл**, имя файла snake_case по сущности. ORM с суффиксом
+  `ORM` (`CategoryORM`), доменные — голым существительным (`Category`).
+- `from __future__ import annotations` после однострочного докстринга модуля.
+  Русские докстринги на модуль, класс и каждый публичный метод.
+- PEP 695 generics: `class BaseRepository[ORM_T: Base, DOMAIN_T]`, `class Page[T]`.
+  Никогда `Generic[T]`.
+- Всё async. Сессия — per-request `Depends(get_session)`.
+- Слои: `router → service → repository → mapper → ORM`. Инварианты:
+  - ORM-объект **не покидает репозиторий**;
+  - HTTP-схема **не доходит до репозитория** (роутер превращает её в доменную
+    модель или в аргументы метода сервиса);
+  - конвертация только в маппере, `to_orm` не ставит `id`/`created_at`/`updated_at`;
+  - domain → response конвертируется **в роутере** через `Response.model_validate(...)`.
+- **Репозитории только `flush`/`refresh`, никогда не коммитят.** Коммитит сервис
+  ровно одним вызовом `api.db.transaction.commit(session)`.
+- Приватные атрибуты `self._x`, всё после первого позиционного — keyword-only.
+- Логирование %-стилем, не f-строками: `logger.info("Создан документ %s", id)`.
+- Строка длиной до 100 символов.
+
+---
+
+## 4. Схема БД
+
+16 таблиц. Enum нативные, `StrEnum`, **имя члена == значение** (SQLAlchemy пишет
+в БД имя).
+
+| Enum | Значения |
+|---|---|
+| `entity_status` | `ACTIVE`, `INACTIVE` — намеренно **без** `DELETED` |
+| `category_kind` | `INCOME`, `EXPENSE` |
+| `period_status` | `OPEN`, `CLOSED` |
+| `sheet_target` | `STRUCTURE`, `CATEGORIES`, `BILLS`, `OPERATIONS`, `STATISTICS` |
+| `sync_task_kind` | `REDRAW` (БД → лист), `IMPORT` (лист → БД) |
+| `access_role` | `READER`, `WRITER` |
+| `notification_kind` | `TABLE_READY`, `IMPORT_ERROR`, `SYNC_FAILED`, `ROLLOVER` |
+
+Миксины: `PkMixin` (BIGINT IDENTITY), `TimestampMixin`, `SoftDeleteMixin`
+(`deleted_at`). Деньги везде `NUMERIC(14,2)` / `Decimal`.
+
+| Таблица | Ключевое |
+|---|---|
+| `users` | `telegram_id` UNIQUE |
+| `spreadsheets` | `user_id` FK UNIQUE (один пользователь — одна таблица); `google_spreadsheet_id` **nullable** UNIQUE; `reset_day` SMALLINT CHECK 1..28; `timezone` VARCHAR default `Europe/Moscow` |
+| `spreadsheet_accesses` | `(spreadsheet_id, email)` UNIQUE, `granted_at` NULL = «выдать предстоит» |
+| `periods` | UNIQUE `(spreadsheet_id, start_date)`; UNIQUE `(id, spreadsheet_id)`; CHECK `end_date > start_date` |
+| `categories` | `kind`, `status`, `title`; партиальный UNIQUE `(spreadsheet_id, lower(title)) WHERE deleted_at IS NULL` |
+| `category_associations` | `(spreadsheet_id, alias)` UNIQUE; CHECK `alias = lower(alias)` |
+| `category_product_types` | `(spreadsheet_id, product_type)` UNIQUE; CHECK lower |
+| `sources` | `start_balance NUMERIC(14,2)`. **`current_balance` отсутствует** |
+| `source_associations` | `(spreadsheet_id, alias)` UNIQUE (своё пространство имён) |
+| `records` | `amount` **знаковая**, `added_at DATE`, `period_id`/`category_id`/`source_id` — составные FK, `deleted_at`, поля чеков |
+| `transfers` | `from_source_id`/`to_source_id`, `amount` CHECK `> 0`, CHECK `from <> to` |
+| `cashed_records` | UNIQUE `(spreadsheet_id, product_name)` |
+| `check_queue_items` | `check_text` |
+| `sheet_sync_tasks` | очередь, см. §5 |
+| `sheet_mappings` | `(spreadsheet_id, target, period_id) → google_sheet_id, title` |
+| `user_notifications` | исходящие сообщения, `delivered_at`; партиальный индекс по недоставленным |
+
+**Составные внешние ключи** везде, где есть `spreadsheet_id`:
+`records.(category_id, spreadsheet_id) → categories.(id, spreadsheet_id)` и т. д.
+Поэтому «операция ссылается на категорию из чужого документа» — невыразимое
+состояние, а не то, что должен не забыть проверить сервис.
+
+Ключи на `periods`/`categories`/`sources` объявлены `DEFERRABLE INITIALLY
+DEFERRED`: при удалении документа Postgres каскадно удаляет и операции, и
+справочники, а порядок между каскадами не определён. Отложенная проверка
+выполняется один раз в конце транзакции, когда удалено уже всё. **Не менять на
+немедленные** — удаление документа начнёт падать.
+
+---
+
+## 5. Очередь перерисовки листов (`sheet_sync_tasks`)
+
+Центральный механизм. Инвариант: **строка описывает не изменение, а
+устаревание.** Она не несёт данных о том, что произошло, — только адрес листа.
+Перерисовка всегда строится из текущего состояния БД целиком, поэтому повтор
+безопасен, порядок обработки не важен, а единственный возможный сбой — потеря
+задачи, которая чинится следующей же правкой или ручной синхронизацией.
+
+```sql
+CONSTRAINT uq_sheet_sync_tasks_key
+    UNIQUE NULLS NOT DISTINCT (spreadsheet_id, kind, target, period_id)
+CONSTRAINT ck_sheet_sync_tasks_period_matches_target
+    CHECK ((target IN ('OPERATIONS','STATISTICS')) = (period_id IS NOT NULL))
+CONSTRAINT ck_sheet_sync_tasks_import_target
+    CHECK (kind <> 'IMPORT' OR target IN ('CATEGORIES','BILLS'))
+```
+
+- `NULLS NOT DISTINCT` требует **PostgreSQL 15+**. У `CATEGORIES`/`BILLS`/
+  `STRUCTURE` период пуст; без этого схлопывание для них не работало бы и задачи
+  копились бы без предела.
+- CHECK по периоду **двусторонний**. Односторонняя формулировка пропустила бы
+  задачу `CATEGORIES` с периодом: она не совпала бы по ключу с нормальной, не
+  схлопнулась бы и висела вечно.
+- `kind` входит в ключ: перерисовка и импорт одного листа — разные работы, и
+  схлопнись они в одну строку, одна из двух потерялась бы совсем.
+
+Методы `SheetSyncTaskRepository`:
+
+| Метод | Назначение |
+|---|---|
+| `enqueue(spreadsheet_id, target, period_id=None, *, kind=REDRAW)` | `ON CONFLICT DO UPDATE`: двигает `requested_at`, не создаёт дубль |
+| `enqueue_many(keys)` | один оператор; **дедуплицирует ключи в Python** — PG падает на двух одинаковых ключах в одном INSERT |
+| `claim(limit)` | `FOR UPDATE SKIP LOCKED`; **вызывающий обязан сразу закоммитить** — блокировки живут до конца транзакции |
+| `complete(task_id, requested_at)` | условное удаление; `False` = пришла новая правка |
+| `release(task_id)` | снять захват после `complete() is False` |
+| `fail(task_id, error)` | `attempts + 1`, экспоненциальная пауза, текст в `last_error`; возвращает обновлённую задачу |
+
+В `enqueue` `LEAST(...)` ссылается **на колонку таблицы**, не на `excluded`: в
+`excluded` лежит серверный `now()` вставляемой строки, `LEAST` выродился бы и
+backoff перестал бы работать.
+
+---
+
+## 6. Инварианты, которые нельзя нарушать
+
+1. **Баланс не хранится.** Считается `SourceRepository.balances()` тремя
+   **коррелированными подзапросами**. Три `LEFT JOIN` с `GROUP BY` дадут
+   декартово произведение — тест `test_balance_with_records_and_transfers_on_both_sides`
+   специально построен так, чтобы это поймать.
+2. **Деньги — `Decimal`.** Ни одного `float`, ни одного `int()`/`round()` по пути
+   от БД к листу.
+3. **Знак — свойство категории.** `records.amount` знаковая
+   (`SignedMoneyDecimal`), `transfers.amount` строго положительная
+   (`PositiveMoneyDecimal`). Наружу суммы принимаются **без знака**. Общий
+   `MoneyDecimal` на `Record.amount` завалит валидацией каждый расход.
+4. **Периоды полуинтервальные `[start, end)`.** Отбор операций — по `period_id`,
+   не по диапазону дат.
+5. **`added_at` вычисляет код** по `spreadsheets.timezone`, не `server_default`.
+   Для `Europe/Moscow` сутки сменяются в 21:00 UTC.
+6. **`reset_day` строго 1..28.** Только это делает `replace(day=...)` и сдвиг на
+   месяц всегда валидными.
+7. **Псевдонимы нормализованы** валидатором доменной модели (`normalize_terms`).
+   `CHECK` в БД не пропустит ненормализованное значение никаким путём.
+8. **Удаление мягкое** (`deleted_at`), и `soft_delete` идемпотентен за счёт
+   условия `deleted_at IS NULL`. Единственное исключение — удаление документа:
+   оно физическое, каскадом от `users`.
+9. **Схема меняется только миграцией.** `create_all` живёт исключительно в
+   тестах. Партиальные, GIN- и выражательные индексы Alembic autogenerate **не
+   видит** — писать руками и дублировать в `__table_args__`, иначе тесты будут
+   зелёными на схеме, которой нет в проде.
+10. **Период закрывается ролловером, как только закончился.** Закрытый период не
+    меняется и выпадает из веера задач. Без этого `list_open` через два года
+    заставлял бы одну правку справочника перерисовывать все месяцы за всю
+    историю документа.
+11. **Чтение ничего не создаёт.** Период создают только операция (лениво, под
+    сегодняшнюю дату) и ролловер; `GET /periods/current` на его отсутствие
+    отвечает 404.
+
+---
+
+## 7. Решения, принятые при доводке api
+
+| Решение | Выбор и почему |
+|---|---|
+| Распределённые транзакции (`X-Transaction-Id` из эталона) | **не портированы**: здесь нет клиента, которому нужен атомарный этап из нескольких запросов. Чек и так приезжает одним вызовом. Добавить позже — механическая замена `commit` на `maybe_commit` |
+| Схемы ответов | отдельные `api/responses/<домен>/*_response.py`; внутренние поля (`deleted_at`, `spreadsheet_id`) не выдаются |
+| Служебные эндпоинты для gsheets | **одна плоская поверхность** с пользовательскими, различие — тег `service` в Swagger. Аутентификации нет: api не публикуется наружу |
+| Закрытие периода | сразу на ролловере. Цена: удаление операции прошлого месяца — 422. Ввод задним числом невозможен в принципе, поэтому больше эта плата ничего не стоит |
+| Ролловер | asyncio-задача в `lifespan` + `pg_try_advisory_xact_lock(namespace, spreadsheet_id)` на каждый документ. Транзакционная блокировка снимается сама, поэтому «api строго в один воркер» больше не требуется |
+| Перевод на листе | одна строка в реестре операций (`Category = «Перевод»`, `Source = «А → Б»`). Отдельный `SheetTarget` не вводился |
+| `records.check_json` | оставлен как есть — копия JSON в каждой позиции чека. Принятый долг. Наружу поле не отдаётся: `RecordResponse` превращает его в признак `from_check`, иначе список операций за месяц весил бы мегабайты |
+| Категории и счета | правятся **только** через лист + импорт. Один путь записи — нечему расходиться |
+| Списки | `ItemsResponse[T]` (одно поле `items`). `Page[T]` остаётся для выборок, способных вырасти; сейчас таких нет |
+
+---
+
+## 8. Поверхность API
+
+Префикс `/api/v1`, вне него — только `/health` и `/health/ready`.
+
+| Метод и путь | Назначение |
+|---|---|
+| `POST /spreadsheets` | создать таблицу (`/start`), 201; повтор — 409 |
+| `GET /spreadsheets/by-telegram/{telegram_id}` | таблица пользователя (объявлен **до** `/{id}`) |
+| `GET /spreadsheets/{id}` · `DELETE /spreadsheets/{id}` | чтение, удаление (204) |
+| `GET /spreadsheets/{id}/categories` · `sources` · `balances` | справочники, `?only_active=` |
+| `GET/POST /spreadsheets/{id}/accesses` · `POST .../accesses/{id}/granted` | доступы; `?pending_only=` |
+| `POST /spreadsheets/{id}/sync` | попросить вчитать листы, 202 |
+| `POST /spreadsheets/{id}/google-id` | привязать созданный документ (для gsheets) |
+| `GET/POST /spreadsheets/{id}/records` · `DELETE .../records/last` · `.../records/{id}` | операции; `?period_id=` |
+| `GET/POST /spreadsheets/{id}/transfers` · `DELETE .../transfers/last` · `.../transfers/{id}` | переводы |
+| `GET /spreadsheets/{id}/periods` · `.../periods/current` · `.../periods/{id}/statistics` | периоды и дневные итоги |
+| `GET/POST /spreadsheets/{id}/checks-queue` · `DELETE .../checks-queue/{id}` | очередь чеков |
+| `GET /spreadsheets/{id}/cashed-records` · `POST .../checks/commit` | кэш типов, запись чека |
+| `GET /spreadsheets/{id}/notifications` · `POST .../notifications/{id}/delivered` | сообщения боту |
+| `POST /spreadsheets/{id}/import/categories` · `.../import/bills` | лист → БД (для gsheets) |
+| `GET/POST /spreadsheets/{id}/sheet-mappings` | где лежит лист (для gsheets) |
+| `POST /sheet-sync-tasks/claim` · `.../{id}/complete` · `.../{id}/fail` | очередь (для gsheets) |
+
+`?period_id=` необязателен: без него берётся текущий период. Один эндпоинт
+обслуживает и бота («покажи мои операции»), и gsheets («перерисуй лист периода 7»).
+
+Конверты: `{"data": ...}` для одиночного ресурса, `{"items": [...]}` для списка,
+`{"code", "message", "details"}` для ошибки. **Русский текст для пользователя
+живёт в боте** и подбирается по `code`. Исключения — два, и оба потому, что текст
+собирается из пользовательских данных: разбор листа (`api/validation.py`, едет в
+поле `error` ответа импорта) и уведомления фоновой работы (`api/core/messages.py`).
+
+---
+
+## 9. Что делать дальше
+
+### Шаг 1. `google_sheets_service/` — сделан
+
+Раскладка листов, механика перерисовки и разбор очереди описаны в
+[GSHEETS_machine.md](GSHEETS_machine.md). Ради него в api появились три вещи
+(миграция `7f3c1d9a4b02`):
+
+- **срок аренды забранной задачи** — `claim` отбирает и просроченные захваты,
+  иначе умерший воркер замораживал лист навсегда и молча;
+- **признак `terminal` в `fail`** — 403 и 404 от Google повтором не лечатся, и
+  ждать пятой попытки значит молчать полчаса о том, что известно с первой;
+- **`POST /spreadsheets/{id}/accesses/{id}/failed`** — почта, которую Google не
+  принял, удаляется, иначе попадала бы в каждую последующую сверку скелета.
+
+### Шаг 2. `telegram_bot/` — сделан
+
+Aiogram-3 фронтенд, описан в [BOT_machine.md](BOT_machine.md). В боте осталось
+только представление: подбор по псевдонимам, состояние FSM, русские тексты. Вся
+арифметика и все деньги — в api.
+
+Ради него в api появилась **доставка уведомлений push-ом** (миграции не
+потребовалось):
+
+- `UserNotificationRepository.list_undelivered_all()` — вся очередь одним
+  запросом с join'ом до `users.telegram_id`. Уведомление знает только документ,
+  а отправлять надо в чат; без `telegram_id` бот не смог бы узнать, у кого
+  спрашивать, не заведя собственный список пользователей — второй источник
+  истины о том, кто вообще есть;
+- доменная модель `PendingNotification` — результат выборки с join'ом, обратного
+  отображения в ORM у неё нет;
+- `api/tasks/notification_loop.py` — цикл в `lifespan` рядом с ролловером: берёт
+  недоставленные, толкает боту, по 2xx ставит `delivered_at`. Он же и есть
+  механизм повтора: бот, лежавший в момент правки листа, получит текст разбора
+  следующим проходом. **Пустой `BOT_NOTIFY_URL` выключает рассылку** — api
+  обязан подниматься и без бота.
+
+`GET /spreadsheets/{id}/notifications` и `POST .../delivered` сохранены: по ним
+бот дочитывает пропущенное при обращении пользователя, а подтверждение общее для
+обоих путей — одно сообщение не уходит дважды.
+
+### Шаг 3. Разбор чеков
+
+Единственная неперенесённая часть старого бота: `/check`, работа с
+proverkacheka и LLM. Отложена вместе с логикой наполнения очереди — сегодня
+`check_queue_items` пополнить нечем. Подробности и список того, что нельзя
+повторять из старой реализации, — в [BOT_machine.md](BOT_machine.md) §10.
+
+---
+
+## 10. Как добавить новый домен
+
+1. `api/enums/<name>.py` при необходимости.
+2. `api/orm/<entity>.py` + строка в `api/orm/__init__.py`.
+3. `api/domain/<entity>.py`.
+4. `api/mappers/<entity>_mapper.py` + строка в `__init__`.
+5. `api/repositories/<entity>_repository.py` + строка в `__init__`.
+6. `api/services/<entity>_service.py`.
+7. `api/requests/<домен>/` и `api/responses/<домен>/`.
+8. Фабрики в `api/dependencies/repositories.py` и `services.py`.
+9. `api/routers/<домен>.py` + `api_router.include_router(...)`.
+10. Миграция: `uv run alembic revision --autogenerate -m "..."`, затем **прочитать
+    глазами** — партиальные, GIN- и выражательные индексы автогенерация не видит.
+11. Тесты: репозиторий, ограничения схемы, сервис, эндпоинт.
+
+---
+
+## 11. Грабли
+
+1. **Автогенерация Alembic и enum.** Вставляет `sa.Enum(..., metadata=MetaData())`
+   — не импортируется и не работает. Правило: типы объявлять модульными
+   `postgresql.ENUM(..., create_type=False)`, создавать явно в начале `upgrade()`,
+   удалять в конце `downgrade()` **после** таблиц (пока на тип ссылается колонка,
+   `DROP TYPE` не проходит). Готовый образец — `c05740c0de01_initial_schema.py`.
+2. **Переприсваивание дочерней коллекции не работает.** SQLAlchemy в одном
+   `flush` выдаёт `INSERT` раньше `DELETE`, и `delete-orphan` не спасает:
+   добавление одного псевдонима к набору падает на уникальном ключе. Всегда
+   `DELETE` → `flush` → `INSERT`, и **сразу по всему документу**
+   (`replace_associations_bulk`): обмен псевдонимами между двумя категориями
+   по одной категории неисполним.
+3. **`FOR UPDATE` несовместим с `GROUP BY`/`DISTINCT`/агрегатами.** Подзапрос
+   отбора в `claim` должен остаться простым `SELECT id`.
+4. **`ON CONFLICT DO UPDATE` и дубли в одном операторе** → `command cannot affect
+   row a second time`. Дедуплицировать ключи заранее.
+5. **`expire_on_commit=False` обязателен.** Иначе доступ к атрибуту после
+   `commit()` уходит в БД внутри синхронного кода и падает с `MissingGreenlet`.
+   Обратная сторона: после `UPDATE` объект в сессии остаётся прежним, поэтому
+   изменённую запись надо возвращать через `RETURNING`, а не перечитывать
+   (`SpreadsheetRepository.set_google_spreadsheet_id`).
+6. **`lazy="selectin"` — единственный безопасный вариант** подгрузки связей в
+   async. Обычная ленивая загрузка сработает при обращении к атрибуту, где негде
+   поставить `await`.
+7. **`NullPool` в тестах.** Без него соединения asyncpg переживают тест и
+   привязываются к другому циклу событий.
+8. **`ZoneInfo` требует пакет `tzdata`** в slim-образе; он в зависимостях, не
+   удалять. Часовой пояс документа приходит от пользователя, поэтому неизвестное
+   значение — рабочий случай: ролловер ловит ошибку по документу и продолжает
+   обход остальных.
+9. **Переменные окружения в `conftest.py` выставляются до первого импорта
+   `api.*`** — настройки читаются на импорте модуля.
+10. **Ruff считает `api` и `tests` своими** (`known-first-party`); без этого
+    `--fix` переставляет импорты в тестах при каждом прогоне.
+11. **`@computed_field` над `@property` mypy не поддерживает** (`prop-decorator`).
+    Это рекомендованный pydantic способ отдать производное поле, поэтому в
+    `RecordResponse` стоит точечный `# type: ignore[prop-decorator]`.
+12. **`ASGITransport` не выполняет lifespan.** Фикстура `client` поднимает
+    приложение без событий запуска, поэтому фоновый ролловер в тестах эндпоинтов
+    не работает — и не мешает им. Его цикл проверяется отдельно
+    (`tests/unit/test_rollover_loop.py`), а смена месяца — через сервис.
+13. **`RolloverLoop.stop()` до первого прохода отменяет и первый проход**: цикл
+    проверяет событие остановки до вызова. В работе это незаметно, но тест обязан
+    дождаться прохода, прежде чем останавливать.
+
+---
+
+## 12. Что осталось неиспользованным
+
+- `ExternalServiceError` (502) объявлен, но не выбрасывается: в api по-прежнему
+  нет ни одного внешнего вызова. В `google_sheets_service` эту роль играет свой
+  `GoogleApiError` — тащить исключение api в сервис, который его не импортирует,
+  было бы связыванием на ровном месте.
+- `Page[T]` объявлен, но пагинация нигде не нужна: каждый запрос ограничен одним
+  документом и одним учётным месяцем. Использовать, только если появится
+  выборка, способная вырасти.
+- `BaseRepository.list()` и `delete()` (физическое удаление) не вызываются ни из
+  одного репозитория — предназначены для будущих доменов.
+- `AccessRole.READER` не используется: доступ выдаётся на запись, потому что
+  пользователь правит справочники прямо в таблице.

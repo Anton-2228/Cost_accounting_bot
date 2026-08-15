@@ -1,0 +1,91 @@
+[project]
+name = "cost-accounting"
+version = "0.1.0"
+description = "API учёта личных расходов: Postgres как источник истины, Google Spreadsheet как отчётная поверхность"
+readme = "README.md"
+requires-python = ">=3.12"
+dependencies = [
+    "fastapi>=0.115",
+    "uvicorn[standard]>=0.32",
+    "sqlalchemy[asyncio]>=2.0.36",
+    "asyncpg>=0.30",
+    "alembic>=1.14",
+    "pydantic>=2.9",
+    "pydantic-settings>=2.6",
+    "python-dateutil>=2.9",
+    "greenlet>=3.1",
+    "tzdata>=2024.1",
+    # google_sheets_service: официальный SDK синхронный, поэтому нужен ещё и
+    # httplib2 напрямую — только он даёт явный socket-таймаут и доступ к пулу
+    # соединений, который приходится сбрасывать между тиками.
+    "google-api-python-client>=2.149",
+    "google-auth>=2.35",
+    "google-auth-httplib2>=0.2",
+    "httplib2>=0.22",
+    "httpx>=0.27",
+    "anyio>=4.6",
+    # telegram_bot: aiogram и хранилище состояний диалога.
+    "aiogram>=3.10,<4",
+    "redis>=5.0",
+]
+
+[dependency-groups]
+dev = [
+    "ruff>=0.8",
+    "mypy>=1.13",
+    "pytest>=8.3",
+    "pytest-asyncio>=0.24",
+    "asgi-lifespan>=2.1",
+    "httpx>=0.27",
+    "types-python-dateutil>=2.9",
+    "types-httplib2>=0.22",
+]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["api", "google_sheets_service", "telegram_bot"]
+
+[tool.ruff]
+target-version = "py312"
+line-length = 100
+src = ["api", "google_sheets_service", "telegram_bot"]
+
+[tool.ruff.lint]
+select = [
+    "E",   # pycodestyle errors
+    "F",   # pyflakes
+    "I",   # isort
+    "UP",  # pyupgrade
+    "B",   # flake8-bugbear
+    "C4",  # flake8-comprehensions
+    "SIM", # flake8-simplify
+    "TID", # flake8-tidy-imports
+]
+ignore = [
+    "B008",  # вызов функции в значении аргумента по умолчанию — нужно для FastAPI Depends()
+]
+
+[tool.ruff.lint.isort]
+known-first-party = ["api", "google_sheets_service", "telegram_bot", "tests"]
+
+[tool.ruff.lint.per-file-ignores]
+"api/alembic/*" = ["E501"]
+
+[tool.mypy]
+python_version = "3.12"
+plugins = ["pydantic.mypy"]
+warn_unused_ignores = true
+warn_redundant_casts = true
+disallow_untyped_defs = true
+ignore_missing_imports = true
+exclude = ["api/alembic/versions/"]
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+asyncio_default_fixture_loop_scope = "session"
+asyncio_default_test_loop_scope = "session"
+testpaths = ["tests"]
+pythonpath = ["."]
