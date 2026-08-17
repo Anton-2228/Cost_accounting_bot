@@ -84,35 +84,39 @@ curl -s localhost:8012/health          # бэкенд Mini App
 ## Публикация Mini App
 
 Единственная публичная часть системы — Mini App: Telegram открывает его только
-по HTTPS. Наружу его выводит nginx хоста, конфиг —
-[deploy/nginx/accounting.root-hub.ru.conf.example](deploy/nginx/accounting.root-hub.ru.conf.example)
-и сниппет [deploy/nginx/mini_app.conf.example](deploy/nginx/mini_app.conf.example).
+по HTTPS. Конфиг — [deploy/nginx/mini_app.conf.example](deploy/nginx/mini_app.conf.example),
+один файл.
 
-Хост стоит за NAT: снаружи 80 и 443 проброшены на `192.168.100.114`, поэтому
-адресов у одной и той же страницы два — `https://accounting.root-hub.ru/`
-снаружи и `http://192.168.100.114/` из локальной сети. Второй нужен не для
-удобства: имя снаружи ведёт на шлюз, и без NAT loopback изнутри сети оно никуда
-не приходит.
+Раскладка: `accounting.root-hub.ru` ведёт на шлюз `95.31.139.53`, он же
+терминирует TLS и проксирует HTTP на `192.168.100.114`, где живут nginx и весь
+стек. Отсюда два адреса у одной страницы — `https://accounting.root-hub.ru/`
+снаружи и `http://192.168.100.114/` из локальной сети: имя изнутри уходит на
+шлюз и без NAT loopback обратно не возвращается. Оба имени обслуживает один
+server-блок.
 
-1. Сниппет → `/etc/nginx/snippets/mini_app.conf`, в нём проверить `root`. Если
-   репозиторий лежит в домашнем каталоге, nginx туда по умолчанию не пройдёт и
-   отдаст 403 — права выдаются отдельно, командой из шапки сниппета.
-2. Конфиг сайта → `/etc/nginx/sites-available/`, линк в `sites-enabled`. Если
-   блок для `accounting.root-hub.ru` уже есть, второй не заводить — добавить в
-   существующий одну строку `include snippets/mini_app.conf;`.
-3. `nginx -t && systemctl reload nginx`.
-4. BotFather → Bot Settings → Menu Button → URL `https://accounting.root-hub.ru/`.
-5. Открыть меню бота **с телефона**: штатный сканер QR есть только в мобильном
+```bash
+sudo cp deploy/nginx/mini_app.conf.example /etc/nginx/sites-available/mini_app.conf
+sudo ln -s /etc/nginx/sites-available/mini_app.conf /etc/nginx/sites-enabled/
+sudo nginx -t && sudo systemctl reload nginx
+```
+
+1. В скопированном файле проверить `root` — путь до `mini_app/` внутри клона.
+2. Если репозиторий лежит в домашнем каталоге, выдать nginx проход: команды
+   `setfacl` в шапке конфига. Иначе статика отвечает 403 при живом `/api`.
+3. BotFather → Bot Settings → Menu Button → URL `https://accounting.root-hub.ru/`.
+4. Открыть меню бота **с телефона**: штатный сканер QR есть только в мобильном
    Telegram. Телефон должен быть в мобильной сети, а не в домашнем Wi-Fi, —
    иначе он упрётся в тот же NAT loopback.
 
 ```bash
-curl -s  http://192.168.100.114/            # статика, с самой машины
-curl -s  https://accounting.root-hub.ru/    # она же снаружи
+curl -s -H "Host: accounting.root-hub.ru" http://127.0.0.1/   # статика, с самой машины
+curl -s  https://accounting.root-hub.ru/                      # она же снаружи
 curl -si -X POST https://accounting.root-hub.ru/api/v1/mini-app/checks/preview
-# 401 от сервиса — проксирование живо (подписи initData в curl нет и быть не может).
-# 404 от nginx означает, что запрос до сервиса не дошёл: чаще всего из-за
-# слэша в конце proxy_pass.
+# 401 от сервиса — цепочка шлюз → nginx → checks-service собрана целиком
+# (подписи initData в curl нет и быть не может).
+# «Welcome to nginx» снаружи при рабочем локальном ответе — шлюз не передаёт Host.
+# 404 — запрос не дошёл до сервиса: чаще всего из-за слэша в конце proxy_pass.
+# 403 — nginx не может прочитать файлы, см. пункт 2.
 ```
 
 Статика и `/api` обязаны отдаваться **с одного имени**: страница ходит в бэкенд

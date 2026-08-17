@@ -1,58 +1,87 @@
-# Тело публичной точки: статика Mini App и её же запросы в checks-service.
-# Вынесено в сниппет, потому что подключается дважды — из блока по имени
-# (снаружи, HTTPS) и из блока по адресу (изнутри сети, HTTP). Копия вместо
-# include рано или поздно разъехалась бы, и наружу с внутренней сети работало бы
-# по-разному.
+# Единственная публичная точка системы: Mini App на accounting.root-hub.ru.
+# Статика и /api/* отдаются с одного имени намеренно — один origin, ни CORS, ни
+# mixed content: страница ходит в бэкенд по относительному пути, а
+# CORSMiddleware в checks_service нет и не нужен.
 #
-# Ставится в /etc/nginx/snippets/mini_app.conf.
+# TLS терминирует шлюз (95.31.139.53), сюда, на 192.168.100.114, приходит уже
+# расшифрованный HTTP. Поэтому здесь нет ни сертификата, ни редиректа на 443:
+# снаружи HTTPS обеспечен шлюзом, и Telegram видит именно его. Если TLS однажды
+# переедет на этот хост — добавить `listen 443 ssl`, пару ssl_certificate и
+# отдельный блок с редиректом с 80-го.
+#
+# api, Postgres, redis и бот сюда не выведены и остаются на 127.0.0.1: наружу
+# смотрит ровно один сервис, и он единственный, у кого есть проверка подписи
+# initData.
+#
+# Установка:
+#   sudo cp deploy/nginx/mini_app.conf.example /etc/nginx/sites-available/mini_app.conf
+#   sudo ln -s /etc/nginx/sites-available/mini_app.conf /etc/nginx/sites-enabled/
+#   sudo nginx -t && sudo systemctl reload nginx
+#
 # Заменить: /home/user/Cost_accounting_bot → каталог, куда склонирован
 # репозиторий.
 
-# Статика Mini App. Каталог должен быть читаем пользователем nginx: право на
-# чтение файлов и +x на КАЖДЫЙ каталог пути, включая сам домашний.
-#
-# Домашние каталоги обычно закрыты (750 или 700), а nginx работает не от
-# владельца, — поэтому из /home статика без отдельной выдачи прав отвечает 403
-# при живом /api, что читается как «сломалась страница». Выдать права точечно,
-# не открывая дом всей машине:
-#
-#   setfacl -m u:www-data:--x /home/user
-#   setfacl -R -m u:www-data:rX /home/user/Cost_accounting_bot/mini_app
-#
-# Имя пользователя проверить по `ps -o user= -C nginx | sort -u`: в сборках не
-# из Debian это `nginx`, а не `www-data`. Проверка результата —
-# `sudo -u www-data cat /home/user/Cost_accounting_bot/mini_app/index.html`.
-# Грубая замена без ACL: `chmod o+x /home/user && chmod -R o+rX .../mini_app`.
-root /home/user/Cost_accounting_bot/mini_app;
-index index.html;
+server {
+    listen 80;
+    listen [::]:80;
 
-location / {
-    try_files $uri $uri/ =404;
+    # Два имени в одном блоке: снаружи запрос приходит от шлюза с заголовком
+    # Host, изнутри сети — прямо по адресу (имя ведёт на шлюз и без NAT loopback
+    # обратно не возвращается).
+    #
+    # Блок намеренно НЕ default_server: штатный `default` остаётся на месте, а
+    # двух дефолтов на одном порту nginx не допускает. Цена — шлюз обязан
+    # передавать `Host` как есть (`proxy_set_header Host $host;`). Если он шлёт
+    # свой адрес, запрос уедет в `default` и отдаст «Welcome to nginx» при
+    # полностью правильном конфиге; тогда либо чинить шлюз, либо выключить
+    # `default` и дописать сюда `default_server`.
+    server_name accounting.root-hub.ru 192.168.100.114;
 
-    # Telegram держит страницу в WebView и кэширует её агрессивно: без запрета
-    # после каждого обновления пользователь получал бы старый app.js против
-    # нового api — без единой ошибки в логах.
-    add_header Cache-Control "no-cache, must-revalidate";
-}
+    # Статика Mini App. Каталог должен быть читаем пользователем nginx: право на
+    # чтение файлов и +x на КАЖДЫЙ каталог пути, включая сам домашний.
+    #
+    # Домашние каталоги обычно закрыты (750 или 700), а nginx работает не от
+    # владельца, — поэтому из /home статика без отдельной выдачи прав отвечает
+    # 403 при живом /api, что читается как «сломалась страница». Выдать права
+    # точечно, не открывая дом всей машине:
+    #
+    #   sudo setfacl -m u:www-data:--x /home/user
+    #   sudo setfacl -R -m u:www-data:rX /home/user/Cost_accounting_bot/mini_app
+    #
+    # Проверка: `sudo -u www-data head -3 .../mini_app/index.html` печатает HTML.
+    # Имя пользователя — `ps -o user= -C nginx | sort -u`: не везде www-data.
+    root /home/user/Cost_accounting_bot/mini_app;
+    index index.html;
 
-# Запросы Mini App в checks-service. Порт опубликован compose-ом только на
-# 127.0.0.1, поэтому этот location — единственный путь к сервису снаружи.
-#
-# В proxy_pass намеренно нет пути после порта: так nginx передаёт URI
-# неизменным, и /api/v1/mini-app/... доходит до роутера как есть. Слэш в конце
-# (`http://127.0.0.1:8012/`) обрезал бы префикс и дал бы 404 на каждый запрос.
-location /api/ {
-    proxy_pass http://127.0.0.1:8012;
-    proxy_http_version 1.1;
-    proxy_set_header Host              $host;
-    proxy_set_header X-Real-IP         $remote_addr;
-    proxy_set_header X-Forwarded-For   $proxy_add_x_forwarded_for;
-    proxy_set_header X-Forwarded-Proto $scheme;
+    location / {
+        try_files $uri $uri/ =404;
 
-    # Расшифровка чека идёт во внешний proverkacheka (таймаут 20 с) и дальше в
-    # api (30 с). Дефолтных 60 с хватает впритык, поэтому запас задан явно:
-    # оборванный ответ означал бы для пользователя пропавший чек при списанном
-    # лимите расшифровок.
-    proxy_read_timeout 90s;
-    proxy_send_timeout 90s;
+        # Telegram держит страницу в WebView и кэширует её агрессивно: без
+        # запрета после каждого обновления пользователь получал бы старый
+        # app.js против нового api — без единой ошибки в логах.
+        add_header Cache-Control "no-cache, must-revalidate";
+    }
+
+    # Запросы Mini App в checks-service. Порт опубликован compose-ом только на
+    # 127.0.0.1, поэтому этот location — единственный путь к сервису снаружи.
+    #
+    # В proxy_pass намеренно нет пути после порта: так nginx передаёт URI
+    # неизменным, и /api/v1/mini-app/... доходит до роутера как есть. Слэш в
+    # конце (`http://127.0.0.1:8012/`) обрезал бы префикс и дал бы 404 на
+    # каждый запрос.
+    location /api/ {
+        proxy_pass http://127.0.0.1:8012;
+        proxy_http_version 1.1;
+        proxy_set_header Host              $host;
+        proxy_set_header X-Real-IP         $remote_addr;
+        proxy_set_header X-Forwarded-For   $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+
+        # Расшифровка чека идёт во внешний proverkacheka (таймаут 20 с) и
+        # дальше в api (30 с). Дефолтных 60 с хватает впритык, поэтому запас
+        # задан явно: оборванный ответ означал бы для пользователя пропавший
+        # чек при списанном лимите расшифровок.
+        proxy_read_timeout 90s;
+        proxy_send_timeout 90s;
+    }
 }

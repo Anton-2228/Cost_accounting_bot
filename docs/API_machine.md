@@ -61,7 +61,7 @@ uv run pytest
 ```
 new_version/
 ├── pyproject.toml · uv.lock · alembic.ini · docker-compose.yml · README.md
-├── deploy/nginx/                # публикация Mini App: сайт + сниппет для nginx хоста
+├── deploy/nginx/mini_app.conf.example  # публикация Mini App через nginx хоста
 ├── dockerfiles/{api,google_sheets_service,telegram_bot,checks_service}.Dockerfile
 ├── scripts/entrypoint.sh        # ждёт Postgres → alembic upgrade head → uvicorn
 ├── env/{api,postgres,google_sheets_service,telegram_bot,checks_service}.env.example
