@@ -112,8 +112,13 @@ async def test_commit_writes_whole_check_in_one_transaction(
     assert spreadsheet.id is not None
     assert food.id is not None and fun.id is not None and source.id is not None
 
+    check = await factories.create_check(session, spreadsheet)
+    await session.commit()
+    assert check.id is not None
+
     records = await check_service.commit_check(
         spreadsheet.id,
+        check_id=check.id,
         source_id=source.id,
         items=[
             CheckItem(
@@ -129,7 +134,6 @@ async def test_commit_writes_whole_check_in_one_transaction(
                 amount=Decimal("450.00"),
             ),
         ],
-        check_json="сырой чек",
     )
 
     assert [record.amount for record in records] == [Decimal("-89.90"), Decimal("-450.00")]
@@ -143,7 +147,12 @@ async def test_commit_writes_whole_check_in_one_transaction(
         task.target
         for task in await SheetSyncTaskRepository(session).list_by_spreadsheet(spreadsheet.id)
     }
-    assert targets == {SheetTarget.OPERATIONS, SheetTarget.STATISTICS, SheetTarget.BILLS}
+    assert targets == {
+        SheetTarget.OPERATIONS,
+        SheetTarget.STATISTICS,
+        SheetTarget.CHECKS,
+        SheetTarget.BILLS,
+    }
 
 
 async def test_new_product_types_are_attached_and_redraw_categories(
@@ -157,8 +166,13 @@ async def test_new_product_types_are_attached_and_redraw_categories(
     await session.commit()
     assert spreadsheet.id is not None and category.id is not None and source.id is not None
 
+    check = await factories.create_check(session, spreadsheet)
+    await session.commit()
+    assert check.id is not None
+
     await check_service.commit_check(
         spreadsheet.id,
+        check_id=check.id,
         source_id=source.id,
         items=[
             CheckItem(
@@ -204,8 +218,13 @@ async def test_default_expense_category_never_learns_product_types(
     await session.commit()
     assert spreadsheet.id is not None and basket.id is not None and source.id is not None
 
+    check = await factories.create_check(session, spreadsheet)
+    await session.commit()
+    assert check.id is not None
+
     await check_service.commit_check(
         spreadsheet.id,
+        check_id=check.id,
         source_id=source.id,
         items=[
             CheckItem(
@@ -245,8 +264,13 @@ async def test_inactive_category_still_accepts_check_item(
     assert hidden is not None and hidden.status is EntityStatus.INACTIVE
     await session.commit()
 
+    check = await factories.create_check(session, spreadsheet)
+    await session.commit()
+    assert check.id is not None
+
     records = await check_service.commit_check(
         spreadsheet.id,
+        check_id=check.id,
         source_id=source.id,
         items=[
             CheckItem(product_name="товар", category_id=category.id, amount=Decimal("15.00"))
@@ -266,8 +290,13 @@ async def test_item_without_product_type_is_not_cached(
     await session.commit()
     assert spreadsheet.id is not None and category.id is not None and source.id is not None
 
+    check = await factories.create_check(session, spreadsheet)
+    await session.commit()
+    assert check.id is not None
+
     await check_service.commit_check(
         spreadsheet.id,
+        check_id=check.id,
         source_id=source.id,
         items=[
             CheckItem(product_name="загадка", category_id=category.id, amount=Decimal("1.00"))
@@ -291,9 +320,14 @@ async def test_alien_category_aborts_whole_check(
     assert spreadsheet.id is not None and own.id is not None
     assert source.id is not None and alien.id is not None
 
+    check = await factories.create_check(session, spreadsheet)
+    await session.commit()
+    assert check.id is not None
+
     with pytest.raises(NotFoundError):
         await check_service.commit_check(
             spreadsheet.id,
+            check_id=check.id,
             source_id=source.id,
             items=[
                 CheckItem(product_name="первый", category_id=own.id, amount=Decimal("1.00")),
@@ -317,3 +351,217 @@ async def test_save_into_unknown_spreadsheet(check_service: CheckService) -> Non
     """Чек в несуществующий документ — 404."""
     with pytest.raises(NotFoundError):
         await _save(check_service, 12345)
+
+
+async def test_commit_marks_check_processed_and_links_records(
+    session: AsyncSession,
+    check_service: CheckService,
+) -> None:
+    """Отметка о разборе и ссылка на чек — часть той же транзакции.
+
+    Уцелей операции без отметки, чек вернулся бы в очередь и был бы записан
+    второй раз; уцелей отметка без операций — покупки исчезли бы молча.
+    """
+    spreadsheet = await factories.create_spreadsheet(session, ready=True)
+    category = await factories.create_category(session, spreadsheet)
+    source = await factories.create_source(session, spreadsheet)
+    check = await factories.create_check(session, spreadsheet)
+    await session.commit()
+    assert spreadsheet.id is not None and category.id is not None
+    assert source.id is not None and check.id is not None
+
+    records = await check_service.commit_check(
+        spreadsheet.id,
+        check_id=check.id,
+        source_id=source.id,
+        items=[
+            CheckItem(product_name="молоко", category_id=category.id, amount=Decimal("89.90"))
+        ],
+    )
+
+    assert [record.check_id for record in records] == [check.id]
+    assert await check_service.list_checks(spreadsheet.id, unprocessed=True) == []
+    stored = await check_service.list_checks(spreadsheet.id)
+    assert stored[0].processed_at is not None
+
+
+async def test_zero_priced_item_is_written_as_is(
+    session: AsyncSession,
+    check_service: CheckService,
+) -> None:
+    """Нулевая позиция записывается, а не отбрасывается.
+
+    «Второй товар в подарок» — законная строка чека. Отбросить её значило бы
+    разойтись с итогом чека, которым разбор себя и проверяет.
+    """
+    spreadsheet = await factories.create_spreadsheet(session, ready=True)
+    category = await factories.create_category(session, spreadsheet)
+    source = await factories.create_source(session, spreadsheet)
+    check = await factories.create_check(session, spreadsheet)
+    await session.commit()
+    assert spreadsheet.id is not None and category.id is not None
+    assert source.id is not None and check.id is not None
+
+    records = await check_service.commit_check(
+        spreadsheet.id,
+        check_id=check.id,
+        source_id=source.id,
+        items=[
+            CheckItem(product_name="подарок", category_id=category.id, amount=Decimal("0.00"))
+        ],
+    )
+    assert [record.amount for record in records] == [Decimal("0.00")]
+
+
+async def test_second_commit_of_same_check_is_conflict(
+    session: AsyncSession,
+    check_service: CheckService,
+) -> None:
+    """Повторный разбор того же чека — 409, а не вторая пачка операций."""
+    spreadsheet = await factories.create_spreadsheet(session, ready=True)
+    category = await factories.create_category(session, spreadsheet)
+    source = await factories.create_source(session, spreadsheet)
+    check = await factories.create_check(session, spreadsheet)
+    await session.commit()
+    assert spreadsheet.id is not None and category.id is not None
+    assert source.id is not None and check.id is not None
+
+    items = [CheckItem(product_name="молоко", category_id=category.id, amount=Decimal("1.00"))]
+    await check_service.commit_check(
+        spreadsheet.id, check_id=check.id, source_id=source.id, items=items
+    )
+
+    with pytest.raises(ConflictError) as failure:
+        await check_service.commit_check(
+            spreadsheet.id, check_id=check.id, source_id=source.id, items=items
+        )
+    assert failure.value.details == {"reason": "check_already_processed"}
+
+    written = await session.scalar(
+        select(func.count())
+        .select_from(RecordORM)
+        .where(RecordORM.spreadsheet_id == spreadsheet.id)
+    )
+    assert written == 1
+
+
+async def test_alien_check_is_not_found(
+    session: AsyncSession,
+    check_service: CheckService,
+) -> None:
+    """Чек чужого документа для разбора не существует."""
+    mine = await factories.create_spreadsheet(session, ready=True)
+    category = await factories.create_category(session, mine)
+    source = await factories.create_source(session, mine)
+    stranger = await factories.create_spreadsheet(session, ready=True)
+    alien = await factories.create_check(session, stranger)
+    await session.commit()
+    assert mine.id is not None and category.id is not None
+    assert source.id is not None and alien.id is not None
+
+    with pytest.raises(NotFoundError):
+        await check_service.commit_check(
+            mine.id,
+            check_id=alien.id,
+            source_id=source.id,
+            items=[
+                CheckItem(product_name="молоко", category_id=category.id, amount=Decimal("1.00"))
+            ],
+        )
+
+
+async def test_product_type_taken_by_another_category_is_conflict(
+    session: AsyncSession,
+    check_service: CheckService,
+) -> None:
+    """Тип, закреплённый за другой категорией, — 409 с её названием.
+
+    Молчаливое переназначение сделало бы раскладку позиций чека зависящей от
+    порядка обработки, а безымянный отказ пользователь не смог бы исправить: он
+    не знает, куда «продукты» уже отнесены.
+    """
+    spreadsheet = await factories.create_spreadsheet(session, ready=True)
+    food = await factories.create_category(
+        session, spreadsheet, title="Еда", product_types=["продукты"]
+    )
+    fun = await factories.create_category(session, spreadsheet, title="Развлечения")
+    source = await factories.create_source(session, spreadsheet)
+    check = await factories.create_check(session, spreadsheet)
+    await session.commit()
+    assert spreadsheet.id is not None and food.id is not None
+    assert fun.id is not None and source.id is not None and check.id is not None
+
+    with pytest.raises(ConflictError) as failure:
+        await check_service.commit_check(
+            spreadsheet.id,
+            check_id=check.id,
+            source_id=source.id,
+            items=[
+                CheckItem(
+                    product_name="молоко",
+                    product_type="продукты",
+                    category_id=fun.id,
+                    amount=Decimal("1.00"),
+                )
+            ],
+            new_product_types=[
+                ProductTypeAssignment(category_id=fun.id, product_type="продукты")
+            ],
+        )
+    assert failure.value.details == {
+        "reason": "product_type_taken",
+        "product_type": "продукты",
+        "category": "Еда",
+    }
+
+    written = await session.scalar(
+        select(func.count())
+        .select_from(RecordORM)
+        .where(RecordORM.spreadsheet_id == spreadsheet.id)
+    )
+    assert written == 0
+
+
+async def test_processed_check_cannot_be_deleted(
+    session: AsyncSession,
+    check_service: CheckService,
+) -> None:
+    """Разобранный чек не удалить: на него ссылаются операции реестра."""
+    spreadsheet = await factories.create_spreadsheet(session, ready=True)
+    category = await factories.create_category(session, spreadsheet)
+    source = await factories.create_source(session, spreadsheet)
+    check = await factories.create_check(session, spreadsheet)
+    await session.commit()
+    assert spreadsheet.id is not None and category.id is not None
+    assert source.id is not None and check.id is not None
+
+    await check_service.commit_check(
+        spreadsheet.id,
+        check_id=check.id,
+        source_id=source.id,
+        items=[
+            CheckItem(product_name="молоко", category_id=category.id, amount=Decimal("1.00"))
+        ],
+    )
+
+    with pytest.raises(ConflictError) as failure:
+        await check_service.delete_check(spreadsheet.id, check.id)
+    assert failure.value.details == {"reason": "check_already_processed"}
+    assert len(await check_service.list_checks(spreadsheet.id)) == 1
+
+
+async def test_unprocessed_check_is_deleted(
+    session: AsyncSession,
+    check_service: CheckService,
+) -> None:
+    """Неразобранный чек удаляется физически: хранить сырьё «удалённым» незачем."""
+    spreadsheet = await factories.create_spreadsheet(session, ready=True)
+    check = await factories.create_check(session, spreadsheet)
+    await session.commit()
+    assert spreadsheet.id is not None and check.id is not None
+
+    await check_service.delete_check(spreadsheet.id, check.id)
+    assert await check_service.list_checks(spreadsheet.id) == []
+
+    with pytest.raises(NotFoundError):
+        await check_service.delete_check(spreadsheet.id, check.id)

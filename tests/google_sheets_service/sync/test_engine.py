@@ -5,6 +5,7 @@ from __future__ import annotations
 from google_sheets_service.exceptions import GoogleApiError
 from tests.google_sheets_service.factories import (
     make_category,
+    make_check,
     make_record,
     make_source,
     make_task,
@@ -94,6 +95,34 @@ async def test_tasks_of_one_document_run_in_fixed_order(ready_harness: Harness) 
     await ready_harness.engine.run_once()
 
     assert ready_harness.api.tasks.completed == [4, 3, 2, 1]
+
+
+async def test_checks_sheet_is_drawn_before_the_register(ready_harness: Harness) -> None:
+    """Архив чеков заполняется раньше реестра, который на него ссылается.
+
+    В колонке `Check` реестра стоит номер чека. Появись он раньше строки
+    архива, в промежутке между двумя задачами пользователь видел бы ссылку в
+    пустоту.
+    """
+    ready_harness.api.tasks.queue = [
+        make_task(task_id=1, target="OPERATIONS", period_id=7),
+        make_task(task_id=2, target="CHECKS", period_id=7),
+    ]
+
+    await ready_harness.engine.run_once()
+
+    assert ready_harness.api.tasks.completed == [2, 1]
+
+
+async def test_checks_sheet_is_built_from_the_period_archive(ready_harness: Harness) -> None:
+    """Лист чеков строится выборкой по периоду — своего периода у чека нет."""
+    ready_harness.api.checks.checks = [make_check(check_id=5)]
+    ready_harness.api.tasks.queue = [make_task(target="CHECKS", period_id=7)]
+
+    await ready_harness.engine.run_once()
+
+    assert "list_checks:7" in ready_harness.api.checks.calls
+    assert ready_harness.sheets.batches, "перерисовка не дошла до Google"
 
 
 async def test_one_failed_task_does_not_stop_the_others(ready_harness: Harness) -> None:

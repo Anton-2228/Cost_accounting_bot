@@ -61,6 +61,62 @@ async def test_record_cannot_reference_foreign_category(session: AsyncSession) -
         await session.commit()
 
 
+async def test_record_cannot_reference_foreign_check(session: AsyncSession) -> None:
+    """Операция не может сослаться на чек из чужого документа.
+
+    Тот же составной ключ, что у категории, счёта и периода: принадлежность
+    чужому документу — невыразимое состояние, а не проверка, которую сервис
+    должен не забыть.
+    """
+    mine = await factories.create_spreadsheet(session)
+    other = await factories.create_spreadsheet(session)
+    my_period = await factories.create_period(session, mine)
+    my_category = await factories.create_category(session, mine)
+    my_source = await factories.create_source(session, mine)
+    foreign_check = await factories.create_check(session, other)
+    await session.commit()
+
+    session.add(
+        RecordORM(
+            spreadsheet_id=mine.id,
+            period_id=my_period.id,
+            category_id=my_category.id,
+            source_id=my_source.id,
+            amount=Decimal("-1.00"),
+            added_at=my_period.start_date,
+            check_id=foreign_check.id,
+        )
+    )
+    with pytest.raises(IntegrityError):
+        await session.commit()
+
+
+async def test_zero_amount_record_is_allowed(session: AsyncSession) -> None:
+    """Нулевая операция проходит: `amount <> 0` в схеме больше нет.
+
+    Позиция чека с нулевой ценой законна («второй товар в подарок»), а
+    отбросить её нельзя — сумма записанных позиций перестала бы сходиться с
+    итогом чека, которым разбор себя проверяет.
+    """
+    spreadsheet = await factories.create_spreadsheet(session)
+    period = await factories.create_period(session, spreadsheet)
+    category = await factories.create_category(session, spreadsheet)
+    source = await factories.create_source(session, spreadsheet)
+    await session.commit()
+
+    session.add(
+        RecordORM(
+            spreadsheet_id=spreadsheet.id,
+            period_id=period.id,
+            category_id=category.id,
+            source_id=source.id,
+            amount=Decimal("0.00"),
+            added_at=period.start_date,
+        )
+    )
+    await session.commit()
+
+
 async def test_duplicate_telegram_id_is_rejected(session: AsyncSession) -> None:
     """Повторный /start не создаёт второго пользователя.
 
@@ -239,6 +295,63 @@ async def test_period_target_requires_period(session: AsyncSession) -> None:
             spreadsheet_id=spreadsheet.id,
             target=SheetTarget.OPERATIONS,
             period_id=None,
+        )
+    )
+    with pytest.raises(IntegrityError):
+        await session.commit()
+
+
+async def test_checks_target_is_bound_to_a_period(session: AsyncSession) -> None:
+    """Лист чеков — периодный адресат, как реестр и статистика.
+
+    Архив чеков режется по месяцам вместе со всем остальным в документе, и
+    задача без периода означала бы лист, которому некуда писать.
+    """
+    from api.enums import SheetTarget
+
+    spreadsheet = await factories.create_spreadsheet(session)
+    period = await factories.create_period(session, spreadsheet)
+    await session.commit()
+
+    session.add(
+        SheetSyncTaskORM(
+            spreadsheet_id=spreadsheet.id,
+            target=SheetTarget.CHECKS,
+            period_id=period.id,
+        )
+    )
+    await session.commit()
+
+    session.add(
+        SheetSyncTaskORM(
+            spreadsheet_id=spreadsheet.id,
+            target=SheetTarget.CHECKS,
+            period_id=None,
+        )
+    )
+    with pytest.raises(IntegrityError):
+        await session.commit()
+
+
+async def test_checks_sheet_cannot_be_read_back(session: AsyncSession) -> None:
+    """Импорт архива чеков невыразим: лист производен от базы.
+
+    Читать обратно можно только справочники. Ограничение `import_target`
+    существовало до появления архива и должно было накрыть его само — проверка
+    подтверждает, что накрыло.
+    """
+    from api.enums import SheetTarget, SyncTaskKind
+
+    spreadsheet = await factories.create_spreadsheet(session)
+    period = await factories.create_period(session, spreadsheet)
+    await session.commit()
+
+    session.add(
+        SheetSyncTaskORM(
+            spreadsheet_id=spreadsheet.id,
+            kind=SyncTaskKind.IMPORT,
+            target=SheetTarget.CHECKS,
+            period_id=period.id,
         )
     )
     with pytest.raises(IntegrityError):

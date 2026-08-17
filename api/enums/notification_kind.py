@@ -17,6 +17,8 @@ class NotificationKind(StrEnum):
 
     #: Google-документ создан, можно давать ссылку.
     TABLE_READY = "TABLE_READY"
+    #: Лист прочитан, правки применены.
+    IMPORT_OK = "IMPORT_OK"
     #: Разбор листа не удался, в БД ничего не записано.
     IMPORT_ERROR = "IMPORT_ERROR"
     #: Перерисовка листа не удаётся раз за разом.

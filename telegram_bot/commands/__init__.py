@@ -2,10 +2,14 @@
 
 from __future__ import annotations
 
+from telegram_bot.ai import AiClient
 from telegram_bot.aiogram_wrapper import AiogramWrapper
 from telegram_bot.api_client import ApiGateway
 from telegram_bot.commands.base_command import BaseCommand
 from telegram_bot.commands.cancel import CancelCommand
+from telegram_bot.commands.check import CheckCommand
+from telegram_bot.commands.check_delete import CheckDeleteCommand
+from telegram_bot.commands.check_skip import CheckSkipCommand
 from telegram_bot.commands.help import HelpCommand
 from telegram_bot.commands.manager import Manager
 from telegram_bot.commands.record_add import RecordAddCommand
@@ -26,13 +30,19 @@ def get_commands(
     api: ApiGateway,
     aiogram_wrapper: AiogramWrapper,
     catch_up: NotificationCatchUp,
+    ai: AiClient,
 ) -> dict[str, BaseCommand]:
     """Собирает реестр команд.
 
     Ключ совпадает с командой Telegram без слеша, поэтому второй таблицы
     соответствий не существует и рассинхронизироваться нечему.
+
+    `/check_skip` и `/check_del` получают саму команду разбора, а не копию её
+    логики: очередь и черновик живут в одном месте, и показать следующий чек
+    умеет только оно.
     """
     arguments = (manager, api, aiogram_wrapper, catch_up)
+    check = CheckCommand(*arguments, ai)
     return {
         CommandName.START: StartCommand(*arguments),
         CommandName.HELP: HelpCommand(*arguments),
@@ -45,6 +55,9 @@ def get_commands(
         CommandName.TABLE_SYNC: TableSyncCommand(*arguments),
         CommandName.TABLE_EMAIL: TableEmailCommand(*arguments),
         CommandName.TABLE_DELETE: TableDeleteCommand(*arguments),
+        CommandName.CHECK: check,
+        CommandName.CHECK_SKIP: CheckSkipCommand(*arguments, check),
+        CommandName.CHECK_DEL: CheckDeleteCommand(*arguments, check),
     }
 
 

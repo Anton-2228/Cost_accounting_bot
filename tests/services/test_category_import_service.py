@@ -200,6 +200,52 @@ async def test_broken_sheet_writes_nothing_and_notifies(
     assert notifications[0].text == result.error
 
 
+async def test_successful_import_confirms_itself(
+    session: AsyncSession,
+    category_import_service: CategoryImportService,
+) -> None:
+    """Прочитанный лист подтверждается уведомлением.
+
+    До сих пор импорт сообщал о себе только ошибкой: `/table_sync` отвечал
+    «задачу поставили», и пользователь, поправивший опечатку, не имел способа
+    убедиться, что правку увидели.
+    """
+    spreadsheet = await factories.create_spreadsheet(session, ready=True)
+    await session.commit()
+    assert spreadsheet.id is not None
+
+    await category_import_service.import_rows(spreadsheet.id, [_row(name="Еда")])
+
+    notifications = await UserNotificationRepository(session).list_undelivered(spreadsheet.id)
+    assert [item.kind for item in notifications] == [NotificationKind.IMPORT_OK]
+    assert "Categories" in notifications[0].text
+
+
+async def test_import_that_changes_nothing_still_confirms(
+    session: AsyncSession,
+    category_import_service: CategoryImportService,
+) -> None:
+    """Повторное чтение того же листа подтверждается снова.
+
+    Подтверждение не зависит от счётчиков: пользователь мог править лист,
+    передумать и вернуть как было. Молчание в ответ он прочитает как «меня не
+    услышали» — ровно та неопределённость, ради которой уведомление и
+    заводилось.
+    """
+    spreadsheet = await factories.create_spreadsheet(session, ready=True)
+    category = await factories.create_category(session, spreadsheet, title="Еда")
+    await session.commit()
+    assert spreadsheet.id is not None
+
+    result = await category_import_service.import_rows(
+        spreadsheet.id, [_row(category_id=str(category.id), name="Еда")]
+    )
+
+    assert (result.created, result.deleted) == (0, 0)
+    notifications = await UserNotificationRepository(session).list_undelivered(spreadsheet.id)
+    assert [item.kind for item in notifications] == [NotificationKind.IMPORT_OK]
+
+
 async def test_repeated_id_is_rejected(
     session: AsyncSession,
     category_import_service: CategoryImportService,

@@ -4,11 +4,13 @@ from __future__ import annotations
 
 from datetime import UTC, date, datetime
 from decimal import Decimal
+from typing import Any
 
 from google_sheets_service.main_api.dto import (
     Access,
     Category,
     CategoryDailyTotal,
+    Check,
     Period,
     Record,
     SheetMapping,
@@ -46,10 +48,16 @@ def make_task(
     )
 
 
+#: Момент создания строки таблицы. Входит в метку документа в Drive, поэтому
+#: значение фиксировано: метка обязана быть одной и той же между повторами.
+SPREADSHEET_CREATED_AT = datetime(2026, 8, 14, 12, 0, tzinfo=UTC)
+
+
 def make_spreadsheet(
     *,
     spreadsheet_id: int = 1,
     google_spreadsheet_id: str | None = "google-1",
+    created_at: datetime = SPREADSHEET_CREATED_AT,
 ) -> Spreadsheet:
     """Учётная таблица."""
     return Spreadsheet(
@@ -58,6 +66,7 @@ def make_spreadsheet(
         title="Проверка",
         reset_day=1,
         timezone="Europe/Moscow",
+        created_at=created_at,
     )
 
 
@@ -137,7 +146,7 @@ def make_record(
     notes: str = "",
     product_name: str | None = "Хлеб",
     product_type: str | None = "выпечка",
-    from_check: bool = False,
+    check_id: int | None = None,
 ) -> Record:
     """Операция."""
     return Record(
@@ -150,7 +159,22 @@ def make_record(
         notes=notes,
         product_name=product_name,
         product_type=product_type,
-        from_check=from_check,
+        check_id=check_id,
+    )
+
+
+def make_check(
+    *,
+    check_id: int = 1,
+    raw_payload: dict[str, Any] | None = None,
+) -> Check:
+    """Разобранный чек для листа-архива."""
+    return Check(
+        id=check_id,
+        raw_payload=raw_payload if raw_payload is not None else {"data": {"json": {
+            "totalSum": 12100,
+            "items": [{"name": "Молоко 3.2%", "sum": 8990}],
+        }}},
     )
 
 

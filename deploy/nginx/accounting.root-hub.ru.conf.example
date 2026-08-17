@@ -1,0 +1,60 @@
+# Единственная публичная точка системы: Mini App на accounting.root-hub.ru.
+# Статика и /api/* отдаются с одного имени намеренно — один origin, ни CORS, ни
+# mixed content; страница ходит в бэкенд по относительному пути, а
+# CORSMiddleware в checks_service нет и не нужен.
+#
+# Хост стоит за NAT: снаружи 80 и 443 проброшены на 192.168.100.114. Изнутри
+# сети имя может резолвиться во внешний адрес и никуда не приходить (NAT
+# loopback есть не везде), поэтому блока два — публичный по имени и служебный по
+# адресу. Один и тот же сниппет в обоих: расхождение между «снаружи» и «изнутри»
+# было бы невидимым до первого разбирательства.
+#
+# api, Postgres, redis и бот сюда не выведены и остаются на 127.0.0.1: наружу
+# смотрит ровно один сервис, и он единственный, у кого есть проверка подписи
+# initData.
+#
+# Ставится в /etc/nginx/sites-available/, линкуется в sites-enabled,
+# `nginx -t && systemctl reload nginx`.
+
+server {
+    listen 80;
+    listen [::]:80;
+    server_name accounting.root-hub.ru;
+
+    # Место под проверку Let's Encrypt: продление не должно упираться в
+    # редирект. При certbot в режиме nginx-плагина блок не мешает.
+    location /.well-known/acme-challenge/ {
+        root /var/www/certbot;
+    }
+
+    location / {
+        return 301 https://$host$request_uri;
+    }
+}
+
+# Снаружи: то, что открывает Telegram. Mini App работает только по HTTPS.
+server {
+    listen 443 ssl;
+    listen [::]:443 ssl;
+    http2 on;
+    server_name accounting.root-hub.ru;
+
+    # Сертификат уже настроен — строки ниже приведены для полноты. Если
+    # server-блок для этого имени в конфигурации уже есть, второй заводить не
+    # надо: достаточно добавить в существующий одну строку `include`.
+    ssl_certificate     /etc/letsencrypt/live/accounting.root-hub.ru/fullchain.pem;
+    ssl_certificate_key /etc/letsencrypt/live/accounting.root-hub.ru/privkey.pem;
+
+    include snippets/mini_app.conf;
+}
+
+# Изнутри сети: http://192.168.100.114/. Нужен потому, что имя снаружи ведёт на
+# шлюз, а не на этот хост. HTTPS здесь не поднять — сертификат выдан на имя, и
+# на IP он не проверится; Telegram по этому адресу Mini App и не откроет.
+# Адрес служебный: проверки руками и доступ из локальной сети.
+server {
+    listen 192.168.100.114:80;
+    server_name 192.168.100.114;
+
+    include snippets/mini_app.conf;
+}

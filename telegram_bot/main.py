@@ -8,11 +8,20 @@ import uvicorn
 from aiogram import F
 from aiogram.filters import Command, CommandObject, StateFilter
 from aiogram.fsm.context import FSMContext
-from aiogram.types import BotCommand, Message
+from aiogram.types import BotCommand, CallbackQuery, Message
 
 from telegram_bot.config import settings
 from telegram_bot.enums import CommandName
-from telegram_bot.init import AIOGRAM_WRAPPER, API, BOT, DISPATCHER, MANAGER, ROUTER, STORAGE
+from telegram_bot.init import (
+    AI,
+    AIOGRAM_WRAPPER,
+    API,
+    BOT,
+    DISPATCHER,
+    MANAGER,
+    ROUTER,
+    STORAGE,
+)
 from telegram_bot.logging import get_logger, setup_logging
 from telegram_bot.notify_server import NotifyServer
 from telegram_bot.resources.messages import DIALOG_IN_PROGRESS_MESSAGE, UNKNOWN_MESSAGE
@@ -26,6 +35,15 @@ _CREATE_TABLE_STATES = (
     States.CREATE_TABLE_RESET_DAY,
     States.CREATE_TABLE_TIMEZONE,
     States.CREATE_TABLE_EMAIL,
+)
+
+#: Состояния разбора чека: их обслуживает одна команда, а `/check_skip` и
+#: `/check_del` осмысленны только внутри них — вне разбора нечего пропускать и
+#: нечего удалять.
+_CHECK_STATES = (
+    States.CHECK_TYPES,
+    States.CHECK_CATEGORIES,
+    States.CHECK_SOURCE,
 )
 
 #: Команды, которым не нужен ни диалог, ни аргументы разбора состояния.
@@ -56,6 +74,9 @@ _MENU = [
     BotCommand(command=CommandName.TABLE_SYNC, description="Вчитать правки из таблицы"),
     BotCommand(command=CommandName.TABLE_EMAIL, description="Открыть доступ почте"),
     BotCommand(command=CommandName.TABLE_DELETE, description="Отвязать таблицу"),
+    BotCommand(command=CommandName.CHECK, description="Разобрать чек"),
+    BotCommand(command=CommandName.CHECK_SKIP, description="Отложить чек"),
+    BotCommand(command=CommandName.CHECK_DEL, description="Удалить чек"),
     BotCommand(command=CommandName.CANCEL, description="Прервать диалог"),
     BotCommand(command=CommandName.HELP, description="Справка"),
 ]
@@ -68,28 +89,51 @@ def _register_handlers() -> None:
 
     1. `/cancel` — раньше всего и во всех состояниях, иначе диалог мог бы его
        перехватить и разобрать как свой ответ.
-    2. Любая другая команда, набранная посреди диалога, получает подсказку, а
+    2. Команды разбора чека — внутри его состояний и только там.
+    3. Любая другая команда, набранная посреди диалога, получает подсказку, а
        не молчание и не разбор её текста как ответа на вопрос. В старой версии
        `/table` внутри диалога уходил в разбор шага и получал «Странный ввод».
-    3. Шаги диалогов.
-    4. Обычные команды — только вне состояний.
-    5. Всё остальное.
+    4. Шаги диалогов.
+    5. Обычные команды — только вне состояний.
+    6. Всё остальное.
     """
     router = ROUTER
 
     router.message.register(_on_cancel, Command(CommandName.CANCEL))
 
     router.message.register(
+        _on_check_skip, Command(CommandName.CHECK_SKIP), StateFilter(*_CHECK_STATES)
+    )
+    router.message.register(
+        _on_check_delete, Command(CommandName.CHECK_DEL), StateFilter(*_CHECK_STATES)
+    )
+
+    router.message.register(
         _on_command_during_dialog,
-        StateFilter(*_CREATE_TABLE_STATES, States.ADD_EMAIL, States.CONFIRM_DELETE_TABLE),
+        StateFilter(
+            *_CREATE_TABLE_STATES,
+            *_CHECK_STATES,
+            States.ADD_EMAIL,
+            States.CONFIRM_DELETE_TABLE,
+        ),
         F.text.startswith("/"),
     )
 
     router.message.register(_on_create_table_step, StateFilter(*_CREATE_TABLE_STATES))
     router.message.register(_on_add_email_step, StateFilter(States.ADD_EMAIL))
     router.message.register(_on_delete_table_step, StateFilter(States.CONFIRM_DELETE_TABLE))
+    router.message.register(_on_check_step, StateFilter(*_CHECK_STATES))
+
+    # Кнопка «Готово» живёт только внутри разбора: без фильтра по состоянию
+    # кнопка от предыдущего чека оставалась бы живой и применялась к текущему.
+    router.callback_query.register(
+        _on_check_done,
+        StateFilter(*_CHECK_STATES),
+        F.data.startswith("check_done:"),
+    )
 
     router.message.register(_on_start, Command(CommandName.START), StateFilter(None))
+    router.message.register(_on_check, Command(CommandName.CHECK), StateFilter(None))
     router.message.register(_on_table_email, Command(CommandName.TABLE_EMAIL), StateFilter(None))
     router.message.register(
         _on_table_delete, Command(CommandName.TABLE_DELETE), StateFilter(None)
@@ -128,9 +172,34 @@ async def _on_delete_table_step(message: Message, state: FSMContext) -> None:
     await MANAGER.launch(CommandName.TABLE_DELETE, message, state)
 
 
+async def _on_check_step(message: Message, state: FSMContext) -> None:
+    """Очередной шаг разбора чека: правки или счёт."""
+    await MANAGER.launch(CommandName.CHECK, message, state)
+
+
+async def _on_check_skip(message: Message, state: FSMContext) -> None:
+    """Отложить текущий чек."""
+    await MANAGER.launch(CommandName.CHECK_SKIP, message, state)
+
+
+async def _on_check_delete(message: Message, state: FSMContext) -> None:
+    """Удалить текущий чек."""
+    await MANAGER.launch(CommandName.CHECK_DEL, message, state)
+
+
+async def _on_check_done(callback: CallbackQuery, state: FSMContext) -> None:
+    """Кнопка «Готово» на стадии разбора чека."""
+    await MANAGER.launch_callback(CommandName.CHECK, callback, state)
+
+
 async def _on_start(message: Message, state: FSMContext) -> None:
     """Начало мастера создания таблицы."""
     await MANAGER.launch(CommandName.START, message, state)
+
+
+async def _on_check(message: Message, state: FSMContext) -> None:
+    """Начало разбора чеков."""
+    await MANAGER.launch(CommandName.CHECK, message, state)
 
 
 async def _on_table_email(message: Message, state: FSMContext) -> None:
@@ -187,6 +256,7 @@ async def main() -> None:
             group.create_task(notify_server.serve(), name="notify-http")
     finally:
         await API.aclose()
+        await AI.aclose()
         await STORAGE.close()
         await BOT.session.close()
         logger.info("Бот остановлен")

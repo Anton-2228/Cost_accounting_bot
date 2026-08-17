@@ -77,6 +77,21 @@ class ApiHttpClient:
         response = await self._request("POST", path, body=body, timeout=timeout)
         return dict(response.json()["data"])
 
+    async def post_items(
+        self,
+        path: str,
+        *,
+        body: dict[str, Any] | None = None,
+        timeout: float | None = None,
+    ) -> list[dict[str, Any]]:
+        """POST, возвращающий список.
+
+        Нужен записи разобранного чека: она создаёт сразу N операций и отдаёт
+        их все, потому что чек — одна транзакция, а не N запросов.
+        """
+        response = await self._request("POST", path, body=body, timeout=timeout)
+        return list(response.json()["items"])
+
     async def post_empty(
         self,
         path: str,

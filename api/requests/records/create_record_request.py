@@ -26,4 +26,3 @@ class CreateRecordRequest(BaseModel):
     notes: str = Field(default="", max_length=constants.NOTES_MAX_LENGTH)
     product_name: str | None = Field(default=None, max_length=constants.PRODUCT_NAME_MAX_LENGTH)
     product_type: str | None = Field(default=None, max_length=constants.PRODUCT_TYPE_MAX_LENGTH)
-    check_json: str | None = None

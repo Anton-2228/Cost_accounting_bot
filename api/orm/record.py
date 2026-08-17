@@ -7,13 +7,11 @@ from decimal import Decimal
 
 from sqlalchemy import (
     BigInteger,
-    CheckConstraint,
     Date,
     ForeignKey,
     ForeignKeyConstraint,
     Index,
     String,
-    Text,
     text,
 )
 from sqlalchemy.orm import Mapped, mapped_column
@@ -45,8 +43,18 @@ class RecordORM(PkMixin, TimestampMixin, SoftDeleteMixin, Base):
     каскадами не определён — отложенная проверка выполняется один раз в конце
     транзакции, когда удалено уже всё.
 
-    Поля `product_name`, `product_type` и `check_json` заполняются только для
-    позиций, распознанных из чека.
+    Поля `product_name`, `product_type` и `check_id` заполняются только для
+    позиций, распознанных из чека. `check_id` заменил прежний `check_json`:
+    копия расшифровки лежала в каждой позиции чека целиком, хотя сам чек уже
+    хранится строкой в `checks`. Ключ отложенный по той же причине, что и
+    остальные: при удалении документа порядок каскадов не определён. `ondelete`
+    не ставится — удалять разрешено только неразобранный чек, у которого
+    операций нет по определению.
+
+    Ограничения «сумма не ноль» на таблице нет. Нулевая позиция чека законна:
+    акция «второй товар бесплатно» даёт строку с ценой 0, и отбросить её
+    значило бы разойтись с итогом чека, а записать под видом ненулевой —
+    исказить реестр.
     """
 
     __tablename__ = "records"
@@ -72,7 +80,13 @@ class RecordORM(PkMixin, TimestampMixin, SoftDeleteMixin, Base):
             initially="DEFERRED",
             name="fk_records_source_id_sources",
         ),
-        CheckConstraint("amount <> 0", name="amount_not_zero"),
+        ForeignKeyConstraint(
+            ["check_id", "spreadsheet_id"],
+            ["checks.id", "checks.spreadsheet_id"],
+            deferrable=True,
+            initially="DEFERRED",
+            name="fk_records_check_id_checks",
+        ),
         # Лист операций периода.
         Index(
             "ix_records_period_id_alive",
@@ -125,4 +139,4 @@ class RecordORM(PkMixin, TimestampMixin, SoftDeleteMixin, Base):
         nullable=True,
         default=None,
     )
-    check_json: Mapped[str | None] = mapped_column(Text, nullable=True, default=None)
+    check_id: Mapped[int | None] = mapped_column(BigInteger, nullable=True, default=None)

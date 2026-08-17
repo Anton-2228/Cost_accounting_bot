@@ -87,11 +87,20 @@ def ready_harness(harness: Harness) -> Harness:
             google_sheet_id=14,
             title="Stat. 2026-08-01",
         ),
+        make_mapping(
+            mapping_id=5,
+            target="CHECKS",
+            period_id=7,
+            google_sheet_id=15,
+            title="Checks 2026-08-01",
+        ),
     ]
+    # Ширина сетки — системные колонки плюс запас под формулы пользователя.
     harness.sheets.layout = [
-        SheetProperties(sheet_id=11, title="Categories", row_count=200, column_count=7),
-        SheetProperties(sheet_id=12, title="Bills", row_count=200, column_count=6),
-        SheetProperties(sheet_id=13, title="2026-08-01", row_count=200, column_count=9),
-        SheetProperties(sheet_id=14, title="Stat. 2026-08-01", row_count=200, column_count=33),
+        SheetProperties(sheet_id=11, title="Categories", row_count=200, column_count=17),
+        SheetProperties(sheet_id=12, title="Bills", row_count=200, column_count=16),
+        SheetProperties(sheet_id=13, title="2026-08-01", row_count=200, column_count=19),
+        SheetProperties(sheet_id=14, title="Stat. 2026-08-01", row_count=200, column_count=43),
+        SheetProperties(sheet_id=15, title="Checks 2026-08-01", row_count=200, column_count=12),
     ]
     return harness

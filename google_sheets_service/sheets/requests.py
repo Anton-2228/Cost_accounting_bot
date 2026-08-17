@@ -27,17 +27,21 @@ def sheet_properties(
     *,
     row_count: int = constants.GRID_INITIAL_ROWS,
 ) -> dict[str, Any]:
-    """Свойства листа: сетка точного размера и замороженная шапка.
+    """Свойства листа: сетка по раскладке плюс запас, замороженная шапка.
 
     Старая версия оставляла умолчание в 26 колонок и 1000 строк: лишние ячейки
     съедали лимит документа в десять миллионов, а тысяча строк была потолком в
     999 операций за месяц, о который система разбивалась молча.
+
+    Ширина — `grid_column_count`, а не `column_count`: десять колонок за
+    системными отданы пользователю под собственные формулы. Перерисовка их не
+    трогает, потому что все её запросы ограничены `column_count`.
     """
     return {
         "title": title,
         "gridProperties": {
             "rowCount": max(row_count, constants.FIRST_DATA_ROW),
-            "columnCount": layout.column_count,
+            "columnCount": layout.grid_column_count,
             "frozenRowCount": constants.HEADER_ROW_COUNT,
         },
     }
@@ -259,6 +263,10 @@ def _protection_requests(sheet_id: int, layout: SheetLayout) -> list[dict[str, A
     `editors.users` пуст намеренно: документом владеет сервисный аккаунт, и
     пустой список означает «править может только владелец». Пользователь при
     этом остаётся редактором документа и свободно работает в остальных ячейках.
+
+    Даже сплошная защита адресуется прямоугольником по `column_count`, а не
+    листом целиком (`{"sheetId": ...}`): лист целиком закрыл бы и свободные
+    колонки, ради которых запас и появился.
     """
     editors: dict[str, list[str]] = {"users": []}
     if layout.protect_whole_sheet:
@@ -266,7 +274,12 @@ def _protection_requests(sheet_id: int, layout: SheetLayout) -> list[dict[str, A
             {
                 "addProtectedRange": {
                     "protectedRange": {
-                        "range": {"sheetId": sheet_id},
+                        "range": grid_range(
+                            sheet_id,
+                            start_row=0,
+                            start_column=0,
+                            end_column=layout.column_count,
+                        ),
                         "description": "Лист заполняется автоматически",
                         "warningOnly": False,
                         "editors": editors,

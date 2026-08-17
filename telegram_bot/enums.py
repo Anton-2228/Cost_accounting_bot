@@ -19,6 +19,14 @@ class FsmDataKeys(StrEnum):
     RESET_DAY = "reset_day"
     TIMEZONE = "timezone"
 
+    # Разбор чека.
+    CHECK_DRAFT = "check_draft"
+    #: Чеки, пропущенные в этой сессии. Причина, по которой очередь не
+    #: зацикливается: пропущенный чек остаётся `processed_at IS NULL` и иначе
+    #: возвращался бы «следующим» бесконечно.
+    SKIPPED_CHECK_IDS = "skipped_check_ids"
+    SAVED_COUNT = "saved_count"
+
 
 class CommandName(StrEnum):
     """Ключи, по которым `Manager` находит команду.
@@ -46,3 +54,7 @@ class CommandName(StrEnum):
     TABLE_SYNC = "table_sync"
     TABLE_EMAIL = "table_email"
     TABLE_DELETE = "table_delete"
+
+    CHECK = "check"
+    CHECK_SKIP = "check_skip"
+    CHECK_DEL = "check_del"

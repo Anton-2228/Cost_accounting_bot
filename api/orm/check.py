@@ -33,6 +33,11 @@ class CheckORM(PkMixin, TimestampMixin, Base):
     расшифровки. Отказ внешнего сервиса — ошибка пользователю, а не строка со
     статусом «дозаберём потом»; иначе к разбору пришлось бы прикручивать
     обработку неполных чеков, которых в норме не бывает.
+
+    `processed_at` — единственный признак того, что чек разобран. Отдельного
+    статуса нет намеренно: разбор либо записал операции и проставил метку одной
+    транзакцией, либо не сделал ни того, ни другого. Промежуточных значений,
+    которые пришлось бы чинить руками, не существует.
     """
 
     __tablename__ = "checks"
@@ -43,7 +48,21 @@ class CheckORM(PkMixin, TimestampMixin, Base):
             "external_key",
             name="uq_checks_spreadsheet_id_kind_external_key",
         ),
+        # Данные это не ограничивает: id уже первичный ключ. Констрейнт нужен,
+        # чтобы стал возможен составной внешний ключ `records → checks`:
+        # PostgreSQL требует UNIQUE ровно по тому набору колонок, на который
+        # ссылается FK. Ровно как у `periods`.
+        UniqueConstraint("id", "spreadsheet_id", name="uq_checks_id_spreadsheet_id"),
         Index("ix_checks_spreadsheet_id", "spreadsheet_id", "id"),
+        # Очередь разбора: «самый старый неразобранный чек документа». Индекс
+        # партиальный, потому что разобранные чеки в этой выборке не нужны
+        # никогда, а их со временем становится большинство.
+        Index(
+            "ix_checks_unprocessed",
+            "spreadsheet_id",
+            "id",
+            postgresql_where="processed_at IS NULL",
+        ),
     )
 
     spreadsheet_id: Mapped[int] = mapped_column(
@@ -61,3 +80,9 @@ class CheckORM(PkMixin, TimestampMixin, Base):
     #: Когда расшифровка была получена. От `created_at` отличается тем, что
     #: относится к внешнему сервису, а не к строке в нашей таблице.
     fetched_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    #: Когда чек был разобран в операции реестра. Пусто — чек ждёт разбора.
+    processed_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True),
+        nullable=True,
+        default=None,
+    )

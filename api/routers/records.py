@@ -52,7 +52,6 @@ async def create_record(
         notes=payload.notes,
         product_name=payload.product_name,
         product_type=payload.product_type,
-        check_json=payload.check_json,
     )
     return DataResponse(data=RecordResponse.model_validate(record))
 

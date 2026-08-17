@@ -71,7 +71,7 @@ class SheetSyncTaskORM(PkMixin, Base):
         # проставленным периодом: она не совпала бы по ключу с нормальной
         # задачей CATEGORIES, не схлопнулась бы и осталась висеть навсегда.
         CheckConstraint(
-            "(target IN ('OPERATIONS', 'STATISTICS')) = (period_id IS NOT NULL)",
+            "(target IN ('OPERATIONS', 'STATISTICS', 'CHECKS')) = (period_id IS NOT NULL)",
             name="period_matches_target",
         ),
         # Читать обратно можно только справочники: лист операций и статистика

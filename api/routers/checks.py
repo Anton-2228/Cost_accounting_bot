@@ -21,10 +21,23 @@ router = APIRouter(prefix="/spreadsheets/{spreadsheet_id}", tags=["checks"])
 @router.get("/checks", response_model=ItemsResponse[CheckResponse])
 async def list_checks(
     spreadsheet_id: int,
+    unprocessed: bool = False,
+    period_id: int | None = None,
     service: CheckService = Depends(get_check_service),
 ) -> ItemsResponse[CheckResponse]:
-    """Сохранённые чеки документа в порядке поступления."""
-    items = await service.list_checks(spreadsheet_id)
+    """Сохранённые чеки документа в порядке поступления.
+
+    `?unprocessed=true` — очередь разбора: только то, что ещё не превратилось в
+    операции реестра. Порядок «от самого старого» существен, по нему бот и
+    выбирает, какой чек показать следующим.
+
+    `?period_id=` — архив месяца: разобранные чеки, чьи операции попали в этот
+    период. По нему `google_sheets_service` строит лист чеков. Отдельного
+    маршрута для архива нет: это та же коллекция под другим фильтром.
+    """
+    items = await service.list_checks(
+        spreadsheet_id, unprocessed=unprocessed, period_id=period_id
+    )
     return ItemsResponse(items=[CheckResponse.model_validate(item) for item in items])
 
 
@@ -52,6 +65,20 @@ async def save_check(
         fetched_at=payload.fetched_at,
     )
     return DataResponse(data=CheckResponse.model_validate(check))
+
+
+@router.delete("/checks/{check_id}", status_code=status.HTTP_204_NO_CONTENT)
+async def delete_check(
+    spreadsheet_id: int,
+    check_id: int,
+    service: CheckService = Depends(get_check_service),
+) -> None:
+    """Удаляет неразобранный чек (команда `/check_del`).
+
+    Подтверждения нет: удаляется сырьё, которое ещё ни во что не превратилось.
+    Разобранный чек — 409: на него ссылаются операции реестра.
+    """
+    await service.delete_check(spreadsheet_id, check_id)
 
 
 @router.get("/cashed-records", response_model=ItemsResponse[CashedRecordResponse])
@@ -82,11 +109,12 @@ async def commit_check(
 
     Стадии диалога, модель и подтверждения пользователя остаются у клиента: они
     перемежаются вопросами и живут в его состоянии. Сюда приезжает готовый
-    результат — новые типы товаров, кэш и N операций, и ни одна часть не может
-    уцелеть без остальных.
+    результат — новые типы товаров, кэш, N операций и отметка о разборе, и ни
+    одна часть не может уцелеть без остальных.
     """
     records = await service.commit_check(
         spreadsheet_id,
+        check_id=payload.check_id,
         source_id=payload.source_id,
         items=[
             CheckItem(
@@ -104,6 +132,5 @@ async def commit_check(
             )
             for assignment in payload.new_product_types
         ],
-        check_json=payload.check_json,
     )
     return ItemsResponse(items=[RecordResponse.model_validate(item) for item in records])

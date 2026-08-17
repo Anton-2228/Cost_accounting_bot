@@ -132,8 +132,11 @@ services:
       api:
         condition: service_healthy
     ports:
-      # Наружу публикует Caddy и только по HTTPS. Порт на 127.0.0.1 оставлен
-      # для проверок руками.
+      # Единственный сервис, до которого доходит запрос из интернета, — но и он
+      # слушает только 127.0.0.1: наружу его выводит веб-сервер хоста, у
+      # которого уже есть домен и сертификат (deploy/nginx/checks.conf.example).
+      # Порт открыт для 127.0.0.1, а не для 0.0.0.0, именно поэтому: обойти
+      # HTTPS и проверку подписи снаружи нельзя.
       - "127.0.0.1:8012:8000"
     healthcheck:
       test: ["CMD-SHELL", "python -c \"import urllib.request; urllib.request.urlopen('http://localhost:8000/health', timeout=2)\""]
@@ -142,27 +145,6 @@ services:
       retries: 5
       start_period: 20s
 
-  caddy:
-    image: caddy:2-alpine
-    restart: unless-stopped
-    # Единственный контейнер, смотрящий в интернет. Он же получает и продлевает
-    # сертификат Let's Encrypt — для этого и нужен 80-й порт.
-    ports:
-      - "80:80"
-      - "443:443"
-    volumes:
-      - ./Caddyfile:/etc/caddy/Caddyfile:ro
-      - ./mini_app:/srv/mini_app:ro
-      # Сертификаты переживают пересоздание контейнера: Let's Encrypt ограничивает
-      # число выдач на домен, и терять их на каждом `up --build` нельзя.
-      - caddy_data:/data
-      - caddy_config:/config
-    depends_on:
-      checks-service:
-        condition: service_healthy
-
 volumes:
   pg_data:
   redis_data:
-  caddy_data:
-  caddy_config:

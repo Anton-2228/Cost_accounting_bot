@@ -55,6 +55,18 @@ OPERATIONS_LAYOUT = SheetLayout(
     protect_whole_sheet=True,
 )
 
+#: Архив разобранных чеков месяца. Две колонки: номер чека и его расшифровка
+#: целиком. Таблица служит в том числе архивом, а отметка «чек был» архивом не
+#: является — в реестре у позиций стоит номер, здесь по нему лежит сам чек.
+#: Защищён целиком: производен от базы, как и реестр.
+CHECKS_LAYOUT = SheetLayout(
+    columns=(
+        Column(header="ID", width=50),
+        Column(header="Check", width=600),
+    ),
+    protect_whole_sheet=True,
+)
+
 #: Ширина колонки одного дня на листе статистики.
 DAY_COLUMN_WIDTH = 45
 
@@ -97,3 +109,8 @@ def operations_sheet_title(start_date: date) -> str:
 def statistics_sheet_title(start_date: date) -> str:
     """Заголовок листа статистики — та же дата с префиксом."""
     return f"{constants.STATISTICS_TITLE_PREFIX}{start_date.isoformat()}"
+
+
+def checks_sheet_title(start_date: date) -> str:
+    """Заголовок листа чеков — та же дата со своим префиксом."""
+    return f"{constants.CHECKS_TITLE_PREFIX}{start_date.isoformat()}"

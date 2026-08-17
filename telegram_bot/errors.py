@@ -40,7 +40,14 @@ _CONFLICT: dict[str, str] = {
     ),
     "access_exists": "Этой почте доступ уже открыт",
     "google_id_already_set": "К этой таблице уже привязан документ",
+    "check_already_saved": "Этот чек уже добавлен",
+    "check_already_processed": "Этот чек уже разобран — его операции в реестре",
 }
+
+#: Признак конфликта, текст которого собирается из данных документа: назвать
+#: чужую категорию необходимо, иначе отказ выглядит беспричинным — пользователь
+#: не знает, куда «молочка» уже отнесена, и повторяет ту же правку.
+TYPE_TAKEN_REASON = "product_type_taken"
 
 UNAVAILABLE_MESSAGE = "Сервис данных недоступен, попробуйте позже"
 UNEXPECTED_MESSAGE = "Что-то пошло не так. Попробуйте ещё раз"
@@ -58,9 +65,30 @@ class ApiErrorPresenter:
         if isinstance(error, ApiNotFoundError):
             return _NOT_FOUND.get(error.resource, "Не нашёл того, о чём вы просите")
         if isinstance(error, ApiConflictError):
+            if error.reason == TYPE_TAKEN_REASON:
+                return cls._type_taken(error)
             return _CONFLICT.get(error.reason, "Так сейчас нельзя")
         if isinstance(error, ApiValidationError):
             # Текст приходит готовым и объясняет причину точнее, чем любая
             # формулировка по коду: он собран из данных самого документа.
             return error.message or "Так нельзя"
         return UNEXPECTED_MESSAGE
+
+    @staticmethod
+    def _type_taken(error: ApiConflictError) -> str:
+        """Текст отказа «тип уже закреплён за другой категорией».
+
+        Собирается из `details`, потому что оба слова в нём — данные документа:
+        какой именно тип и за какой категорией он числится. Категории в ответе
+        может не быть — так бывает, когда конфликт поймала гонка с импортом
+        листа, и назвать её тогда нечем.
+        """
+        product_type = str(error.details.get("product_type", ""))
+        category = str(error.details.get("category", ""))
+        subject = f"Тип «{product_type}»" if product_type else "Этот тип"
+        if category:
+            return (
+                f"{subject} уже закреплён за категорией «{category}».\n"
+                "Выберите её же или другой тип"
+            )
+        return f"{subject} уже закреплён за другой категорией. Выберите другой тип"

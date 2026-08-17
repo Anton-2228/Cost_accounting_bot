@@ -9,21 +9,23 @@
 from __future__ import annotations
 
 import itertools
-from datetime import date
+from datetime import UTC, date, datetime
 from decimal import Decimal
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from api.core.period import period_bounds
 from api.domain.category import Category
+from api.domain.check import Check
 from api.domain.period import Period
 from api.domain.record import Record
 from api.domain.source import Source
 from api.domain.spreadsheet import Spreadsheet
 from api.domain.transfer import Transfer
 from api.domain.user import User
-from api.enums import CategoryKind
+from api.enums import CategoryKind, CheckKind
 from api.repositories.category_repository import CategoryRepository
+from api.repositories.check_repository import CheckRepository
 from api.repositories.period_repository import PeriodRepository
 from api.repositories.record_repository import RecordRepository
 from api.repositories.source_repository import SourceRepository
@@ -33,6 +35,7 @@ from api.repositories.user_repository import UserRepository
 _telegram_ids = itertools.count(1000)
 _titles = itertools.count(1)
 _google_ids = itertools.count(1)
+_checks = itertools.count(1)
 
 
 async def create_user(session: AsyncSession, *, telegram_id: int | None = None) -> User:
@@ -137,6 +140,40 @@ async def create_source(
     )
 
 
+async def create_check(
+    session: AsyncSession,
+    spreadsheet: Spreadsheet,
+    *,
+    external_key: str | None = None,
+    raw_payload: dict[str, object] | None = None,
+) -> Check:
+    """Создаёт неразобранный чек с минимальным правдоподобным сырьём ФНС."""
+    assert spreadsheet.id is not None
+    key = external_key if external_key is not None else f"7384440901402798:145:{next(_checks)}"
+    return await CheckRepository(session).add(
+        Check(
+            spreadsheet_id=spreadsheet.id,
+            kind=CheckKind.RU_FNS,
+            qr_raw=f"t=20260725T1507&s=89.90&fn=7384440901402798&i=145&fp={key}&n=1",
+            external_key=key,
+            raw_payload=raw_payload
+            if raw_payload is not None
+            else {
+                "code": 1,
+                "data": {
+                    "json": {
+                        "operationType": 1,
+                        "totalSum": 8990,
+                        "retailPlace": "Магазин",
+                        "items": [{"name": "молоко", "sum": 8990}],
+                    }
+                },
+            },
+            fetched_at=datetime(2026, 7, 25, 15, 8, tzinfo=UTC),
+        )
+    )
+
+
 async def create_record(
     session: AsyncSession,
     spreadsheet: Spreadsheet,
@@ -147,6 +184,7 @@ async def create_record(
     amount: Decimal,
     added_at: date | None = None,
     notes: str = "",
+    check_id: int | None = None,
 ) -> Record:
     """Создаёт операцию. Сумма знаковая: расход отрицателен."""
     assert spreadsheet.id is not None
@@ -162,6 +200,7 @@ async def create_record(
             amount=amount,
             added_at=added_at if added_at is not None else period.start_date,
             notes=notes,
+            check_id=check_id,
         )
     )
 

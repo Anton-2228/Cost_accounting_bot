@@ -60,7 +60,7 @@ class SheetMappingORM(PkMixin, TimestampMixin, Base):
             name="uq_sheet_mappings_spreadsheet_id_google_sheet_id",
         ),
         CheckConstraint(
-            "(target IN ('OPERATIONS', 'STATISTICS')) = (period_id IS NOT NULL)",
+            "(target IN ('OPERATIONS', 'STATISTICS', 'CHECKS')) = (period_id IS NOT NULL)",
             name="period_matches_target",
         ),
     )

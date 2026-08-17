@@ -1,0 +1,56 @@
+# Тело публичной точки: статика Mini App и её же запросы в checks-service.
+# Вынесено в сниппет, потому что подключается дважды — из блока по имени
+# (снаружи, HTTPS) и из блока по адресу (изнутри сети, HTTP). Копия вместо
+# include рано или поздно разъехалась бы, и наружу с внутренней сети работало бы
+# по-разному.
+#
+# Ставится в /etc/nginx/snippets/mini_app.conf.
+# Заменить: /home/user/Cost_accounting_bot → каталог, куда склонирован
+# репозиторий.
+
+# Статика Mini App. Каталог должен быть читаем пользователем nginx: право на
+# чтение файлов и +x на КАЖДЫЙ каталог пути, включая сам домашний.
+#
+# Домашние каталоги обычно закрыты (750 или 700), а nginx работает не от
+# владельца, — поэтому из /home статика без отдельной выдачи прав отвечает 403.
+# Выдать их точечно, не открывая дом всему миру:
+#
+#   setfacl -m u:www-data:--x /home/user
+#   setfacl -R -m u:www-data:rX /home/user/Cost_accounting_bot/mini_app
+#
+# Имя пользователя проверить по `ps -o user= -C nginx | sort -u`: в сборках не
+# из Debian это `nginx`, а не `www-data`. Грубая замена без ACL —
+# `chmod o+x /home/user && chmod -R o+rX .../mini_app`.
+root /home/user/Cost_accounting_bot/mini_app;
+index index.html;
+
+location / {
+    try_files $uri $uri/ =404;
+
+    # Telegram держит страницу в WebView и кэширует её агрессивно: без запрета
+    # после каждого обновления пользователь получал бы старый app.js против
+    # нового api — без единой ошибки в логах.
+    add_header Cache-Control "no-cache, must-revalidate";
+}
+
+# Запросы Mini App в checks-service. Порт опубликован compose-ом только на
+# 127.0.0.1, поэтому этот location — единственный путь к сервису снаружи.
+#
+# В proxy_pass намеренно нет пути после порта: так nginx передаёт URI
+# неизменным, и /api/v1/mini-app/... доходит до роутера как есть. Слэш в конце
+# (`http://127.0.0.1:8012/`) обрезал бы префикс и дал бы 404 на каждый запрос.
+location /api/ {
+    proxy_pass http://127.0.0.1:8012;
+    proxy_http_version 1.1;
+    proxy_set_header Host              $host;
+    proxy_set_header X-Real-IP         $remote_addr;
+    proxy_set_header X-Forwarded-For   $proxy_add_x_forwarded_for;
+    proxy_set_header X-Forwarded-Proto $scheme;
+
+    # Расшифровка чека идёт во внешний proverkacheka (таймаут 20 с) и дальше в
+    # api (30 с). Дефолтных 60 с хватает впритык, поэтому запас задан явно:
+    # оборванный ответ означал бы для пользователя пропавший чек при списанном
+    # лимите расшифровок.
+    proxy_read_timeout 90s;
+    proxy_send_timeout 90s;
+}

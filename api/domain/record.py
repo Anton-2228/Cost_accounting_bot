@@ -30,7 +30,7 @@ class Record(BaseModel):
     notes: str = ""
     product_name: str | None = None
     product_type: str | None = None
-    check_json: str | None = None
+    check_id: int | None = None
     deleted_at: datetime | None = None
     created_at: datetime | None = None
     updated_at: datetime | None = None

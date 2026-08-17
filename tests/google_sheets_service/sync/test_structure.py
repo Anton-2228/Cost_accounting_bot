@@ -2,12 +2,15 @@
 
 from __future__ import annotations
 
+from datetime import UTC, datetime
+
 import pytest
 
 from google_sheets_service import constants
 from google_sheets_service.exceptions import GoogleApiError
 from google_sheets_service.google.sheets_client import SheetProperties
 from tests.google_sheets_service.factories import (
+    SPREADSHEET_CREATED_AT,
     make_access,
     make_mapping,
     make_period,
@@ -28,8 +31,10 @@ async def test_creates_document_and_binds_it(harness: Harness) -> None:
     assert "create_spreadsheet:Проверка" in harness.sheets.calls
     assert "set_google_id:google-new" in harness.api.spreadsheets.calls
     # Метка ставится сразу после создания: если процесс умрёт здесь, следующая
-    # попытка найдёт документ по ней и не создаст второй.
-    assert harness.drive.calls == ["find:1", "mark:google-new=1"]
+    # попытка найдёт документ по ней и не создаст второй. В метку входит момент
+    # создания строки, а не один только её номер, — см. тест ниже.
+    marker = f"1:{SPREADSHEET_CREATED_AT.isoformat()}"
+    assert harness.drive.calls == [f"find:{marker}", f"mark:google-new={marker}"]
 
 
 async def test_does_not_create_second_document_when_marked_one_exists(
@@ -43,7 +48,7 @@ async def test_does_not_create_second_document_when_marked_one_exists(
     """
     harness.api.spreadsheets.spreadsheet = make_spreadsheet(google_spreadsheet_id=None)
     harness.api.periods.periods = [make_period()]
-    harness.drive.known_files["1"] = "google-existing"
+    harness.drive.known_files[f"1:{SPREADSHEET_CREATED_AT.isoformat()}"] = "google-existing"
     harness.api.tasks.queue = [make_task(target="STRUCTURE")]
 
     await harness.engine.run_once()
@@ -52,8 +57,33 @@ async def test_does_not_create_second_document_when_marked_one_exists(
     assert "set_google_id:google-existing" in harness.api.spreadsheets.calls
 
 
-async def test_creates_four_sheets_for_open_period(harness: Harness) -> None:
-    """Новому документу заводятся справочники и оба листа открытого периода."""
+async def test_document_of_a_previous_database_is_not_adopted(harness: Harness) -> None:
+    """Документ от прежней жизни базы своим не считается.
+
+    Номер строки уникален только в пределах одной базы: пересозданная начинает
+    нумерацию заново, и таблица №1 находила по метке `1` документ прежнего
+    запуска — привязывала его вместо создания нового, вместе с чужим названием
+    и чужими листами. Ровно это и случилось вживую: документ «ddd» достался
+    таблице, созданной под названием «Учет».
+    """
+    harness.api.spreadsheets.spreadsheet = make_spreadsheet(
+        google_spreadsheet_id=None,
+        created_at=datetime(2026, 8, 16, 20, 52, tzinfo=UTC),
+    )
+    harness.api.periods.periods = [make_period()]
+    # Метка документа от прежней базы: тот же номер строки, другой момент.
+    harness.drive.known_files[f"1:{SPREADSHEET_CREATED_AT.isoformat()}"] = "google-чужой"
+    harness.api.tasks.queue = [make_task(target="STRUCTURE")]
+
+    await harness.engine.run_once()
+
+    assert "create_spreadsheet:Проверка" in harness.sheets.calls
+    assert "set_google_id:google-new" in harness.api.spreadsheets.calls
+    assert "set_google_id:google-чужой" not in harness.api.spreadsheets.calls
+
+
+async def test_creates_five_sheets_for_open_period(harness: Harness) -> None:
+    """Новому документу заводятся справочники и все три листа периода."""
     harness.api.spreadsheets.spreadsheet = make_spreadsheet()
     harness.api.periods.periods = [make_period()]
     harness.api.tasks.queue = [make_task(target="STRUCTURE")]
@@ -66,9 +96,10 @@ async def test_creates_four_sheets_for_open_period(harness: Harness) -> None:
         constants.BILLS_SHEET_TITLE,
         "2026-08-01",
         "Stat. 2026-08-01",
+        "Checks 2026-08-01",
     ]
     assert harness.api.sheet_mappings.calls.count("list_mappings") == 1
-    assert len([call for call in harness.api.sheet_mappings.calls if "upsert" in call]) == 4
+    assert len([call for call in harness.api.sheet_mappings.calls if "upsert" in call]) == 5
 
 
 async def test_skips_sheets_of_closed_periods(harness: Harness) -> None:
@@ -86,7 +117,7 @@ async def test_skips_sheets_of_closed_periods(harness: Harness) -> None:
 
     await harness.engine.run_once()
 
-    assert len(harness.sheets.layout) == 4
+    assert len(harness.sheets.layout) == 5
 
 
 async def test_recreates_sheet_deleted_by_user(harness: Harness) -> None:
@@ -335,4 +366,4 @@ async def test_closed_period_without_tasks_gets_no_sheets(harness: Harness) -> N
 
     titles = [sheet.title for sheet in harness.sheets.layout]
     # Только справочники и листы единственного открытого периода.
-    assert len(titles) == 4
+    assert len(titles) == 5

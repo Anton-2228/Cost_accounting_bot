@@ -2,7 +2,8 @@
 
 from __future__ import annotations
 
-from datetime import UTC, datetime
+from datetime import UTC, date, datetime
+from decimal import Decimal
 
 import pytest
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -10,11 +11,14 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from api.domain.check import Check
 from api.enums import CheckKind
 from api.repositories.check_repository import CheckRepository
+from api.repositories.record_repository import RecordRepository
 from tests import factories
 
 pytestmark = pytest.mark.usefixtures("clean_db")
 
 _FETCHED_AT = datetime(2026, 7, 25, 15, 7, tzinfo=UTC)
+_PROCESSED_AT = datetime(2026, 7, 26, 9, 0, tzinfo=UTC)
+_LATER = datetime(2026, 7, 27, 9, 0, tzinfo=UTC)
 
 
 def _check(spreadsheet_id: int, external_key: str) -> Check:
@@ -86,3 +90,151 @@ async def test_checks_are_ordered_by_arrival(session: AsyncSession) -> None:
 
     checks = await repository.list_by_spreadsheet(spreadsheet.id)
     assert [check.external_key for check in checks] == ["первый", "второй", "третий"]
+
+
+async def test_unprocessed_queue_keeps_order_and_loses_marked(session: AsyncSession) -> None:
+    """Очередь разбора — только неотмеченные, от самого старого.
+
+    Порядок существен: чек, пролежавший неделю, должен быть разобран раньше
+    сегодняшнего, иначе очередь превращается в стек и старое в ней тонет.
+    """
+    spreadsheet = await factories.create_spreadsheet(session)
+    await session.commit()
+    assert spreadsheet.id is not None
+
+    repository = CheckRepository(session)
+    saved = [await repository.add(_check(spreadsheet.id, key)) for key in ("а", "б", "в")]
+    await session.commit()
+    assert saved[1].id is not None
+
+    marked = await repository.mark_processed(saved[1].id, at=_PROCESSED_AT)
+    await session.commit()
+    assert marked is not None and marked.processed_at == _PROCESSED_AT
+
+    queue = await repository.list_by_spreadsheet(spreadsheet.id, unprocessed=True)
+    assert [check.external_key for check in queue] == ["а", "в"]
+    assert len(await repository.list_by_spreadsheet(spreadsheet.id)) == 3
+
+
+async def test_mark_processed_is_not_repeatable(session: AsyncSession) -> None:
+    """Повторная отметка ничего не меняет и говорит об этом.
+
+    Условие `processed_at IS NULL` — не перестраховка: без него второй разбор
+    переписал бы метку времени и отчитался об успехе там, где записывать чек
+    уже было нельзя.
+    """
+    spreadsheet = await factories.create_spreadsheet(session)
+    await session.commit()
+    assert spreadsheet.id is not None
+
+    repository = CheckRepository(session)
+    saved = await repository.add(_check(spreadsheet.id, "ключ"))
+    await session.commit()
+    assert saved.id is not None
+
+    assert await repository.mark_processed(saved.id, at=_PROCESSED_AT) is not None
+    assert await repository.mark_processed(saved.id, at=_LATER) is None
+
+    stored = await repository.get_for_spreadsheet(saved.id, spreadsheet.id)
+    assert stored is not None and stored.processed_at == _PROCESSED_AT
+
+
+async def test_check_of_another_document_is_invisible(session: AsyncSession) -> None:
+    """Чек чужого документа не находится по id."""
+    mine = await factories.create_spreadsheet(session)
+    other = await factories.create_spreadsheet(session)
+    await session.commit()
+    assert mine.id is not None and other.id is not None
+
+    repository = CheckRepository(session)
+    alien = await repository.add(_check(other.id, "чужой"))
+    await session.commit()
+    assert alien.id is not None
+
+    assert await repository.get_for_spreadsheet(alien.id, other.id) is not None
+    assert await repository.get_for_spreadsheet(alien.id, mine.id) is None
+
+
+async def test_period_archive_holds_only_checks_of_that_month(session: AsyncSession) -> None:
+    """В архив месяца попадают чеки, чьи операции лежат в этом периоде.
+
+    Своего периода у чека нет: он приезжает из Mini App задолго до разбора, а
+    месяц ему назначают операции. Неразобранный чек операций не имеет и в
+    архиве не появляется вовсе.
+    """
+    spreadsheet = await factories.create_spreadsheet(session, ready=True)
+    month = await factories.create_period(session, spreadsheet, day=date(2026, 7, 20))
+    next_month = await factories.create_period(session, spreadsheet, day=date(2026, 8, 20))
+    category = await factories.create_category(session, spreadsheet)
+    source = await factories.create_source(session, spreadsheet)
+    await session.commit()
+    assert spreadsheet.id is not None and month.id is not None
+
+    repository = CheckRepository(session)
+    parsed = await repository.add(_check(spreadsheet.id, "разобран"))
+    other_month = await repository.add(_check(spreadsheet.id, "из другого месяца"))
+    await repository.add(_check(spreadsheet.id, "в очереди"))
+    await session.commit()
+
+    await factories.create_record(
+        session, spreadsheet, month, category, source,
+        amount=Decimal("-89.90"), check_id=parsed.id,
+    )
+    await factories.create_record(
+        session, spreadsheet, next_month, category, source,
+        amount=Decimal("-10.00"), check_id=other_month.id,
+    )
+    await session.commit()
+
+    archive = await repository.list_processed_for_period(spreadsheet.id, month.id)
+    assert [item.id for item in archive] == [parsed.id]
+
+
+async def test_period_archive_survives_deletion_of_its_records(session: AsyncSession) -> None:
+    """Чек остаётся в архиве, даже когда все его операции удалены.
+
+    Пользователь, удаливший строку реестра, не отзывал чек. Зависеть от
+    `deleted_at` значило бы: удалил последнюю позицию — и чек молча пропал из
+    архива, ради которого лист и существует.
+    """
+    spreadsheet = await factories.create_spreadsheet(session, ready=True)
+    period = await factories.create_period(session, spreadsheet)
+    category = await factories.create_category(session, spreadsheet)
+    source = await factories.create_source(session, spreadsheet)
+    await session.commit()
+    assert spreadsheet.id is not None and period.id is not None
+
+    repository = CheckRepository(session)
+    check = await repository.add(_check(spreadsheet.id, "ключ"))
+    await session.commit()
+
+    record = await factories.create_record(
+        session, spreadsheet, period, category, source,
+        amount=Decimal("-89.90"), check_id=check.id,
+    )
+    await session.commit()
+    assert record.id is not None
+
+    await RecordRepository(session).soft_delete(record.id, at=_LATER)
+    await session.commit()
+
+    archive = await repository.list_processed_for_period(spreadsheet.id, period.id)
+    assert [item.id for item in archive] == [check.id]
+
+
+async def test_check_is_deleted_physically(session: AsyncSession) -> None:
+    """Удаление чека физическое: мягкого удаления у сырья нет."""
+    spreadsheet = await factories.create_spreadsheet(session)
+    await session.commit()
+    assert spreadsheet.id is not None
+
+    repository = CheckRepository(session)
+    saved = await repository.add(_check(spreadsheet.id, "ключ"))
+    await session.commit()
+    assert saved.id is not None
+
+    assert await repository.delete(saved.id) is True
+    await session.commit()
+
+    assert await repository.list_by_spreadsheet(spreadsheet.id) == []
+    assert await repository.delete(saved.id) is False

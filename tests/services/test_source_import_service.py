@@ -127,6 +127,26 @@ async def test_broken_balance_writes_nothing_and_notifies(
     assert [item.kind for item in notifications] == [NotificationKind.IMPORT_ERROR]
 
 
+async def test_successful_import_confirms_itself(
+    session: AsyncSession,
+    source_import_service: SourceImportService,
+) -> None:
+    """Прочитанный лист счетов подтверждается уведомлением.
+
+    `Categories` и `Bills` — две независимые задачи импорта, и подтверждение у
+    каждой своё: они выполняются по отдельности, иногда с заметной паузой.
+    """
+    spreadsheet = await factories.create_spreadsheet(session, ready=True)
+    await session.commit()
+    assert spreadsheet.id is not None
+
+    await source_import_service.import_rows(spreadsheet.id, [_row(name="Карта")])
+
+    notifications = await UserNotificationRepository(session).list_undelivered(spreadsheet.id)
+    assert [item.kind for item in notifications] == [NotificationKind.IMPORT_OK]
+    assert "Bills" in notifications[0].text
+
+
 async def test_cleared_row_deletes_source_and_frees_alias(
     session: AsyncSession,
     source_import_service: SourceImportService,

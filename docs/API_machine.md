@@ -23,6 +23,9 @@
 | `telegram_bot/` | **готов**, см. [BOT_machine.md](BOT_machine.md) | aiogram-фронтенд: разбирает ввод, зовёт api, печатает ответ по-русски |
 | `checks_service/` + `mini_app/` | **готов**, см. [CHECKS_machine.md](CHECKS_machine.md) | Единственная публичная часть системы: Mini App сканирует QR-код чека, сервис получает расшифровку и кладёт сырьё в api |
 
+Разбор чека — последняя недостающая часть — сделан и живёт в боте
+([BOT_machine.md](BOT_machine.md) §10). Незакрытых пунктов плана больше нет.
+
 **Api никогда не ходит в Google.** Мутация — одна короткая транзакция в Postgres,
 которая заодно пишет строку в очередь `sheet_sync_tasks`. Отсюда главное
 свойство: операция не может ответить пользователю ошибкой после того, как деньги
@@ -38,8 +41,8 @@
 | Проверка | Команда | Результат |
 |---|---|---|
 | Линтер | `uv run ruff check .` | чисто |
-| Типы | `uv run mypy api google_sheets_service tests` | чисто, 272 файла |
-| Тесты | `uv run pytest` | 330 тестов (вместе с gsheets) |
+| Типы | `uv run mypy api checks_service google_sheets_service telegram_bot tests` | чисто, 397 файлов |
+| Тесты | `uv run pytest` | 586 тестов (вместе с gsheets, ботом и чеками) |
 | Обратимость миграции | `alembic upgrade head` → `downgrade base` → `upgrade head` | типы и таблицы вычищаются полностью |
 | Миграция == `create_all` | `pg_dump` обеих схем + diff | идентичны |
 | Запуск с нуля | `docker compose up -d --build` | миграция применяется, `/health/ready` отвечает, healthcheck зелёный |
@@ -57,7 +60,8 @@ uv run pytest
 
 ```
 new_version/
-├── pyproject.toml · uv.lock · alembic.ini · docker-compose.yml · Caddyfile · README.md
+├── pyproject.toml · uv.lock · alembic.ini · docker-compose.yml · README.md
+├── deploy/nginx/                # публикация Mini App: сайт + сниппет для nginx хоста
 ├── dockerfiles/{api,google_sheets_service,telegram_bot,checks_service}.Dockerfile
 ├── scripts/entrypoint.sh        # ждёт Postgres → alembic upgrade head → uvicorn
 ├── env/{api,postgres,google_sheets_service,telegram_bot,checks_service}.env.example
@@ -87,6 +91,8 @@ new_version/
 │   ├── dependencies/            # repositories.py, services.py
 │   ├── routers/                 # system + 9 доменных, 34 маршрута
 │   └── alembic/versions/  # c05740c0de01 (схема) + 7f3c1d9a4b02 (аренда задачи)
+│                           # + b1e6a4c7d905 (чеки) + d4c7b2e910a3 (разбор чека)
+│                           # + e5a1f83b2c47 (лист чеков, подтверждение импорта)
 └── tests/
     ├── conftest.py · factories.py
     ├── unit/         # period, text, mappers, rollover_loop
@@ -99,9 +105,10 @@ new_version/
     └── checks_service/         # парсер ФНС, реестр, initData, роутеры Mini App
 ```
 
-**Сознательно отсутствует:** разбор чека — сырьё в БД уже кладётся
-(`checks_service`), а интерпретация отложена, см.
-[CHECKS_machine.md](CHECKS_machine.md) §8 и [BOT_machine.md](BOT_machine.md) §10.
+**Разбор чека** сырьё не трогает: api по-прежнему не интерпретирует
+`raw_payload` ни одним полем. Из него позиции достаёт бот, а сюда приезжает
+готовый результат — см. [CHECKS_machine.md](CHECKS_machine.md) §8 и
+[BOT_machine.md](BOT_machine.md) §10.
 
 ---
 
@@ -139,10 +146,10 @@ new_version/
 | `category_kind` | `INCOME`, `EXPENSE` |
 | `check_kind` | `RU_FNS` — формат чека; зеркалится в `checks_service/enums.py` |
 | `period_status` | `OPEN`, `CLOSED` |
-| `sheet_target` | `STRUCTURE`, `CATEGORIES`, `BILLS`, `OPERATIONS`, `STATISTICS` |
+| `sheet_target` | `STRUCTURE`, `CATEGORIES`, `BILLS`, `OPERATIONS`, `STATISTICS`, `CHECKS` |
 | `sync_task_kind` | `REDRAW` (БД → лист), `IMPORT` (лист → БД) |
 | `access_role` | `READER`, `WRITER` |
-| `notification_kind` | `TABLE_READY`, `IMPORT_ERROR`, `SYNC_FAILED`, `ROLLOVER` |
+| `notification_kind` | `TABLE_READY`, `IMPORT_OK`, `IMPORT_ERROR`, `SYNC_FAILED`, `ROLLOVER` |
 
 Миксины: `PkMixin` (BIGINT IDENTITY), `TimestampMixin`, `SoftDeleteMixin`
 (`deleted_at`). Деньги везде `NUMERIC(14,2)` / `Decimal`.
@@ -158,10 +165,10 @@ new_version/
 | `category_product_types` | `(spreadsheet_id, product_type)` UNIQUE; CHECK lower |
 | `sources` | `start_balance NUMERIC(14,2)`. **`current_balance` отсутствует** |
 | `source_associations` | `(spreadsheet_id, alias)` UNIQUE (своё пространство имён) |
-| `records` | `amount` **знаковая**, `added_at DATE`, `period_id`/`category_id`/`source_id` — составные FK, `deleted_at`, поля чеков |
+| `records` | `amount` **знаковая и может быть нулевой**, `added_at DATE`, `period_id`/`category_id`/`source_id`/`check_id` — составные FK, `deleted_at`, `product_name`/`product_type` |
 | `transfers` | `from_source_id`/`to_source_id`, `amount` CHECK `> 0`, CHECK `from <> to` |
 | `cashed_records` | UNIQUE `(spreadsheet_id, product_name)` |
-| `checks` | сырьё чека: `kind`, `qr_raw`, `external_key`, `raw_payload` JSONB, `fetched_at`; UNIQUE `(spreadsheet_id, kind, external_key)` |
+| `checks` | сырьё чека: `kind`, `qr_raw`, `external_key`, `raw_payload` JSONB, `fetched_at`, `processed_at`; UNIQUE `(spreadsheet_id, kind, external_key)`; UNIQUE `(id, spreadsheet_id)`; партиальный индекс очереди `WHERE processed_at IS NULL` |
 | `sheet_sync_tasks` | очередь, см. §5 |
 | `sheet_mappings` | `(spreadsheet_id, target, period_id) → google_sheet_id, title` |
 | `user_notifications` | исходящие сообщения, `delivered_at`; партиальный индекс по недоставленным |
@@ -191,7 +198,7 @@ DEFERRED`: при удалении документа Postgres каскадно 
 CONSTRAINT uq_sheet_sync_tasks_key
     UNIQUE NULLS NOT DISTINCT (spreadsheet_id, kind, target, period_id)
 CONSTRAINT ck_sheet_sync_tasks_period_matches_target
-    CHECK ((target IN ('OPERATIONS','STATISTICS')) = (period_id IS NOT NULL))
+    CHECK ((target IN ('OPERATIONS','STATISTICS','CHECKS')) = (period_id IS NOT NULL))
 CONSTRAINT ck_sheet_sync_tasks_import_target
     CHECK (kind <> 'IMPORT' OR target IN ('CATEGORIES','BILLS'))
 ```
@@ -269,7 +276,7 @@ backoff перестал бы работать.
 | Закрытие периода | сразу на ролловере. Цена: удаление операции прошлого месяца — 422. Ввод задним числом невозможен в принципе, поэтому больше эта плата ничего не стоит |
 | Ролловер | asyncio-задача в `lifespan` + `pg_try_advisory_xact_lock(namespace, spreadsheet_id)` на каждый документ. Транзакционная блокировка снимается сама, поэтому «api строго в один воркер» больше не требуется |
 | Перевод на листе | одна строка в реестре операций (`Category = «Перевод»`, `Source = «А → Б»`). Отдельный `SheetTarget` не вводился |
-| `records.check_json` | оставлен как есть — копия JSON в каждой позиции чека. Принятый долг. Наружу поле не отдаётся: `RecordResponse` превращает его в признак `from_check`, иначе список операций за месяц весил бы мегабайты |
+| `records.check_json` | **удалён** (`d4c7b2e910a3`): с появлением `records.check_id` копия JSON в каждой позиции стала дублем строки `checks`. `RecordResponse` отдаёт наружу сам `check_id` (`e5a1f83b2c47`): в колонке `Check` реестра печатается номер чека, а расшифровка лежит строкой на листе-архиве |
 | Категории и счета | правятся **только** через лист + импорт. Один путь записи — нечему расходиться |
 | Списки | `ItemsResponse[T]` (одно поле `items`). `Page[T]` остаётся для выборок, способных вырасти; сейчас таких нет |
 
@@ -291,7 +298,8 @@ backoff перестал бы работать.
 | `GET/POST /spreadsheets/{id}/records` · `DELETE .../records/last` · `.../records/{id}` | операции; `?period_id=` |
 | `GET/POST /spreadsheets/{id}/transfers` · `DELETE .../transfers/last` · `.../transfers/{id}` | переводы |
 | `GET /spreadsheets/{id}/periods` · `.../periods/current` · `.../periods/{id}/statistics` | периоды и дневные итоги |
-| `GET/POST /spreadsheets/{id}/checks` | сохранённые чеки; повтор — 409 `check_already_saved` (для checks_service) |
+| `GET/POST /spreadsheets/{id}/checks` | сохранённые чеки, `?unprocessed=` (очередь разбора) либо `?period_id=` (архив месяца для листа чеков); оба фильтра сразу — 422; повтор — 409 `check_already_saved` |
+| `DELETE /spreadsheets/{id}/checks/{check_id}` | убрать неразобранный чек (204); разобранный — 409 `check_already_processed` |
 | `GET /spreadsheets/{id}/cashed-records` · `POST .../checks/commit` | кэш типов, запись разобранного чека |
 | `GET /spreadsheets/{id}/notifications` · `POST .../notifications/{id}/delivered` | сообщения боту |
 | `POST /spreadsheets/{id}/import/categories` · `.../import/bills` | лист → БД (для gsheets) |
@@ -367,16 +375,83 @@ Aiogram-3 фронтенд, описан в [BOT_machine.md](BOT_machine.md). В
   одновременных сканов.
 
 **Инварианты целы:** api по-прежнему не делает ни одного внешнего вызова и
-по-прежнему не публикуется наружу. Наружу смотрит один Caddy, а во внешний мир
-ходит один `checks_service`.
+по-прежнему не публикуется наружу. Наружу смотрит один поддомен, за которым
+стоит один `checks_service`, — он же единственный, кто ходит во внешний мир.
 
-### Шаг 4. Разбор чека
+### Шаг 4. Разбор чека — сделан
 
-Единственное, чего не хватает: `checks` → типы товаров → категории → операции
-реестра. Сырьё в БД уже накапливается, `cashed_records` и
-`POST /checks/commit` готовы и доработки не требуют. Подробности — в
-[CHECKS_machine.md](CHECKS_machine.md) §8, список того, что нельзя повторять из
-старой реализации, — в [BOT_machine.md](BOT_machine.md) §10.
+`checks` → типы товаров → категории → операции реестра. Диалог живёт в боте
+([BOT_machine.md](BOT_machine.md) §10), карта разбора сырья — в
+[CHECKS_machine.md](CHECKS_machine.md) §8. Ради него в api появилось (миграция
+`d4c7b2e910a3`):
+
+- **`checks.processed_at`** — единственный признак разбора. Отдельного статуса
+  нет: разбор либо записал операции и проставил метку одной транзакцией, либо не
+  сделал ни того, ни другого. Плюс партиальный индекс
+  `(spreadsheet_id, id) WHERE processed_at IS NULL` — очередь бота — и
+  `UNIQUE (id, spreadsheet_id)` как цель составного FK, ровно как у `periods`;
+- **`records.check_id`** вместо `records.check_json`. Ключ составной и
+  отложенный: при удалении документа порядок каскадов не определён. `ondelete`
+  не ставится — удалять разрешено только неразобранный чек, у которого операций
+  нет по определению;
+- **`CHECK amount <> 0` снят с `records`.** Позиция чека с нулевой ценой законна
+  («второй товар в подарок»), и отбросить её нельзя: сумма записанных позиций
+  перестала бы сходиться с итогом чека, которым разбор себя проверяет.
+  `CreateRecordRequest.amount` остаётся `gt=0` — строгость держится на пути
+  записи обычной операции, а не в таблице;
+- **`commit_check` принимает `check_id`**: проверяет принадлежность документу и
+  `processed_at IS NULL`, проставляет `records.check_id` и `checks.processed_at`
+  **в той же транзакции**, что и операции. Инвариант «ни одна часть не уцелеет
+  без остальных» распространяется и на отметку;
+- **два новых 409**: `check_already_processed` и `product_type_taken`. Второй
+  ловится дважды — предварительной проверкой ради названия чужой категории и
+  `IntegrityError` ради гонки с импортом справочника из листа;
+- `?unprocessed=` у списка чеков и `DELETE /spreadsheets/{id}/checks/{check_id}`.
+
+**Инварианты целы:** api по-прежнему не интерпретирует `raw_payload` ни одним
+полем и не делает ни одного внешнего вызова. Ключ модели живёт у бота.
+
+### Шаг 5. Архив чеков в таблице и подтверждение импорта — сделан
+
+Миграция `e5a1f83b2c47`. Таблица используется в том числе как архив, и отметка
+«чек был» архивом не является: теперь расшифровка чека лежит в самой таблице
+строкой на отдельном листе, а в колонке `Check` реестра стоит его номер.
+
+- **`sheet_target.CHECKS`** — лист-архив разобранных чеков месяца. Адресат
+  периодный, поэтому двусторонний CHECK в `sheet_sync_tasks` и `sheet_mappings`
+  пополнился третьим значением. `ck_sheet_sync_tasks_import_target` не тронут:
+  он уже делает «импорт архива чеков» невыразимым;
+- **`GET /spreadsheets/{id}/checks?period_id=`** — архив месяца. Своего периода
+  у чека нет: он приезжает из Mini App задолго до разбора, а месяц ему
+  назначают операции. Выборка выводит принадлежность из `records.check_id`
+  **без** фильтра `deleted_at IS NULL`: пользователь, удаливший строку реестра,
+  не отзывал чек, и зависимость от мягкого удаления молча выносила бы чек из
+  архива. Вместе с `?unprocessed=` фильтр несовместим — 422, а не пустой список;
+- **`RecordResponse.check_id`** вместо вычисляемого `from_check`. Свернуть
+  номер в галочку больше не во что: он и есть ссылка на строку архива;
+- **`SpreadsheetResponse.created_at`** выдаётся наружу не ради показа: вместе с
+  `id` он образует метку, которой `google_sheets_service` помечает документ в
+  Drive и по которой находит его при повторе создания. Одного `id` мало — он
+  уникален лишь в пределах одной жизни базы, и пересозданная база подхватывала
+  по метке чужой документ от прежних запусков вместо создания нового. Схему это
+  не меняет: `created_at` уже есть у `TimestampMixin`;
+- **`notification_kind.IMPORT_OK`** — подтверждение прочитанного листа, по
+  одному на `Categories` и `Bills`. До сих пор импорт сообщал о себе только
+  ошибкой, и пользователь, поправивший опечатку, не имел способа убедиться, что
+  правку увидели. Уведомление пишется **в той же транзакции**, что и правки:
+  иначе возможно «сообщили об успехе, а импорт откатился». Счётчиков в тексте
+  нет намеренно — подтверждение не зависит от того, изменилось ли что-нибудь.
+
+**Грабли миграции.** `ALTER TYPE ... ADD VALUE` выполняется в
+`autocommit_block`: использовать новое значение enum в той же транзакции, где
+оно добавлено, PostgreSQL запрещает, а следующим шагом идёт CHECK с литералом
+`'CHECKS'`. `IMPORT_OK` добавляется с явным `BEFORE 'IMPORT_ERROR'` — иначе
+метка встала бы в конец типа и схема разошлась бы с `create_all`. В `downgrade`
+тип пересоздаётся целиком (`DROP VALUE` в PostgreSQL не существует), и перед
+этим снимаются **все** CHECK по колонке `target`, включая `import_target`:
+после переименования типа литералы в уцелевшем условии остаются старого типа, и
+`ALTER COLUMN ... TYPE` падает с «operator does not exist: sheet_target =
+sheet_target_old».
 
 ---
 
@@ -454,7 +529,9 @@ Aiogram-3 фронтенд, описан в [BOT_machine.md](BOT_machine.md). В
 - `Page[T]` объявлен, но пагинация нигде не нужна: каждый запрос ограничен одним
   документом и одним учётным месяцем. Использовать, только если появится
   выборка, способная вырасти.
-- `BaseRepository.list()` и `delete()` (физическое удаление) не вызываются ни из
-  одного репозитория — предназначены для будущих доменов.
+- `BaseRepository.list()` не вызывается ни из одного репозитория — предназначен
+  для будущих доменов. `delete()` (физическое удаление) с появлением
+  `/check_del` используется: `CheckService.delete_check` убирает неразобранный
+  чек насовсем, потому что мягко удалённое сырьё не нужно никому.
 - `AccessRole.READER` не используется: доступ выдаётся на запись, потому что
   пользователь правит справочники прямо в таблице.

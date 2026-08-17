@@ -71,6 +71,24 @@ class Spreadsheet:
     title: str
     reset_day: int
     timezone: str
+    created_at: datetime
+
+    @property
+    def drive_marker(self) -> str:
+        """Метка документа в Drive: чем он опознаётся при повторе создания.
+
+        Одного `id` мало. Он уникален только в пределах одной жизни базы:
+        пересозданная база начинает нумерацию заново, и таблица №1 находит по
+        метке `1` документ от прежнего запуска — привязывает его вместо
+        создания нового, вместе с чужим названием и чужими листами. Проверено
+        не рассуждением: документ «ddd» с меткой `1` был подхвачен таблицей,
+        созданной под названием «Учет».
+
+        Момент создания строки метку и обезвреживает: он неизменен (`onupdate`
+        его не трогает) и у двух разных баз не совпадает. Отдельная колонка под
+        это не нужна — пара уже уникальна и уже хранится.
+        """
+        return f"{self.id}:{self.created_at.isoformat()}"
 
     @classmethod
     def from_json(cls, body: dict[str, Any]) -> Spreadsheet:
@@ -82,6 +100,7 @@ class Spreadsheet:
             title=str(body["title"]),
             reset_day=int(body["reset_day"]),
             timezone=str(body["timezone"]),
+            created_at=datetime.fromisoformat(body["created_at"]),
         )
 
 
@@ -215,13 +234,16 @@ class Record:
     notes: str
     product_name: str | None
     product_type: str | None
-    from_check: bool
+    #: Номер чека, из которого распознана позиция. Он же печатается в колонке
+    #: `Check` реестра и служит ссылкой на строку листа-архива.
+    check_id: int | None
 
     @classmethod
     def from_json(cls, body: dict[str, Any]) -> Record:
         """Собирает операцию из ответа api."""
         product_name = body["product_name"]
         product_type = body["product_type"]
+        check_id = body["check_id"]
         return cls(
             id=int(body["id"]),
             period_id=int(body["period_id"]),
@@ -232,7 +254,7 @@ class Record:
             notes=str(body["notes"]),
             product_name=None if product_name is None else str(product_name),
             product_type=None if product_type is None else str(product_type),
-            from_check=bool(body["from_check"]),
+            check_id=None if check_id is None else int(check_id),
         )
 
 
@@ -278,6 +300,25 @@ class CategoryDailyTotal:
             day=date.fromisoformat(body["day"]),
             total=_decimal(body["total"]),
         )
+
+
+@dataclass(frozen=True)
+class Check:
+    """Разобранный чек: номер и расшифровка целиком.
+
+    Из ответа api берутся только эти два поля. Остальное (`qr_raw`, вид,
+    ключ формата, отметки времени) в листе не печатается, а `raw_payload`
+    остаётся нетронутым словарём: сервис не интерпретирует чек, он его
+    архивирует.
+    """
+
+    id: int
+    raw_payload: dict[str, Any]
+
+    @classmethod
+    def from_json(cls, body: dict[str, Any]) -> Check:
+        """Собирает чек из ответа api."""
+        return cls(id=int(body["id"]), raw_payload=dict(body["raw_payload"]))
 
 
 @dataclass(frozen=True)

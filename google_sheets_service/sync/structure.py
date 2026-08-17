@@ -143,12 +143,16 @@ class StructureSynchronizer:
         остаётся сиротой, о которой система больше не знает. Именно этим болела
         старая версия, создававшая таблицу до записи в базу.
 
+        Метку даёт `Spreadsheet.drive_marker`, а не идентификатор строки: по
+        одному `id` пересозданная база опознавала «своим» документ от прежнего
+        запуска и привязывала его вместо создания нового.
+
         Листы справочников заводятся **сразу**, в теле создания. Документ без
         явного списка листов Google создаёт со своим «Лист1» на тысячу строк и
         двадцать шесть колонок; в `sheet_mappings` его нет, удалять чужие листы
         сверка не должна, и он остался бы первой вкладкой навсегда.
         """
-        marker = str(spreadsheet.id)
+        marker = spreadsheet.drive_marker
         existing = await self._drive.find_by_app_property(
             constants.DRIVE_APP_PROPERTY_KEY, marker
         )
@@ -254,7 +258,9 @@ class StructureSynchronizer:
                 row_count=(
                     constants.GRID_INITIAL_ROWS if existing is None else existing.row_count
                 ),
-                column_count=layout.column_count,
+                # Ширина сетки, а не раскладки: поле зеркалит `gridProperties`
+                # Google, а там за системными колонками стоит запас.
+                column_count=layout.grid_column_count,
             )
             logger.info(
                 "%s лист «%s» документа %s",
@@ -302,6 +308,15 @@ class StructureSynchronizer:
                         layouts.statistics_sheet_title(period.start_date),
                         layouts.statistics_layout(period.start_date, period.end_date),
                         "STATISTICS",
+                        period.id,
+                    )
+                )
+            if ("CHECKS", period.id) not in state.mappings:
+                plan.append(
+                    (
+                        layouts.checks_sheet_title(period.start_date),
+                        layouts.CHECKS_LAYOUT,
+                        "CHECKS",
                         period.id,
                     )
                 )

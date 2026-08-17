@@ -7,6 +7,7 @@
 from __future__ import annotations
 
 from telegram_bot.api_client.catalog import CatalogClient
+from telegram_bot.api_client.checks import ChecksClient, CommitItem, NewProductType
 from telegram_bot.api_client.errors import (
     ApiConflictError,
     ApiError,
@@ -30,6 +31,7 @@ class ApiGateway:
         self.catalog = CatalogClient(self._http)
         self.records = RecordsClient(self._http)
         self.transfers = TransfersClient(self._http)
+        self.checks = ChecksClient(self._http)
         self.notifications = NotificationsClient(self._http)
 
     async def aclose(self) -> None:
@@ -45,6 +47,9 @@ __all__ = [
     "ApiUnavailableError",
     "ApiValidationError",
     "CatalogClient",
+    "ChecksClient",
+    "CommitItem",
+    "NewProductType",
     "NotificationsClient",
     "RecordsClient",
     "SpreadsheetsClient",

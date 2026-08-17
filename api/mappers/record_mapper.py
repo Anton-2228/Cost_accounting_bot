@@ -23,7 +23,7 @@ class RecordMapper(BaseMapper[RecordORM, Record]):
             notes=orm.notes,
             product_name=orm.product_name,
             product_type=orm.product_type,
-            check_json=orm.check_json,
+            check_id=orm.check_id,
             deleted_at=orm.deleted_at,
             created_at=orm.created_at,
             updated_at=orm.updated_at,
@@ -41,6 +41,6 @@ class RecordMapper(BaseMapper[RecordORM, Record]):
             notes=domain.notes,
             product_name=domain.product_name,
             product_type=domain.product_type,
-            check_json=domain.check_json,
+            check_id=domain.check_id,
             deleted_at=domain.deleted_at,
         )

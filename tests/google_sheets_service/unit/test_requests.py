@@ -26,14 +26,17 @@ def _kinds(batch: list[dict[str, Any]]) -> list[str]:
     return [next(iter(request)) for request in batch]
 
 
-def test_create_sheet_uses_exact_column_count() -> None:
-    """Сетка заводится под реальное число колонок, а не под умолчание Google.
+def test_create_sheet_adds_spare_columns_to_the_grid() -> None:
+    """Сетка шире раскладки ровно на запас под формулы пользователя.
 
-    Умолчание в 26 колонок съедало лимит документа в десять миллионов ячеек.
+    Умолчание Google в 26 колонок съедало лимит документа в десять миллионов
+    ячеек, поэтому сетка остаётся считанной; но лист точно по раскладке не
+    оставлял пользователю ни одной ячейки под собственную формулу.
     """
     request = requests.create_sheet_request("Categories", CATEGORIES_LAYOUT)
     grid = request["addSheet"]["properties"]["gridProperties"]
-    assert grid["columnCount"] == CATEGORIES_LAYOUT.column_count == 7
+    assert CATEGORIES_LAYOUT.column_count == 7
+    assert grid["columnCount"] == 7 + constants.SPARE_COLUMN_COUNT
     assert grid["frozenRowCount"] == constants.HEADER_ROW_COUNT
 
 
@@ -52,12 +55,40 @@ def test_header_requests_protect_id_and_current_balance() -> None:
     assert all(item["protectedRange"]["editors"] == {"users": []} for item in protections)
 
 
-def test_header_requests_protect_operations_sheet_whole() -> None:
-    """Реестр операций закрывается целиком: он производен от базы."""
+def test_header_requests_protect_operations_system_columns_only() -> None:
+    """Реестр закрывается по системным колонкам, а не листом целиком.
+
+    Он производен от базы, и правка в нём была бы потеряна следующей же
+    перерисовкой. Но защита листом целиком (`{"sheetId": ...}`) закрыла бы и
+    свободные колонки, ради которых запас и появился.
+    """
     batch = requests.header_requests(SHEET_ID, OPERATIONS_LAYOUT)
     protections = [item["addProtectedRange"] for item in batch if "addProtectedRange" in item]
     assert len(protections) == 1
-    assert protections[0]["protectedRange"]["range"] == {"sheetId": SHEET_ID}
+    assert protections[0]["protectedRange"]["range"] == {
+        "sheetId": SHEET_ID,
+        "startRowIndex": 0,
+        "startColumnIndex": 0,
+        "endColumnIndex": OPERATIONS_LAYOUT.column_count,
+    }
+
+
+def test_redraw_never_touches_spare_columns() -> None:
+    """Ни данные, ни затирание хвоста не выходят за системные колонки.
+
+    Это и есть условие, при котором формула пользователя переживает
+    перерисовку: границей всех запросов служит `column_count`, а не ширина
+    сетки.
+    """
+    batch = requests.redraw_requests(
+        SHEET_ID,
+        OPERATIONS_LAYOUT,
+        _payload(rows=2, width=OPERATIONS_LAYOUT.column_count),
+        sheet_row_count=200,
+    )
+    ends = [item["updateCells"]["range"]["endColumnIndex"] for item in batch]
+    assert ends == [OPERATIONS_LAYOUT.column_count] * 2
+    assert OPERATIONS_LAYOUT.column_count < OPERATIONS_LAYOUT.grid_column_count
 
 
 def test_column_widths_are_merged_for_equal_neighbours() -> None:

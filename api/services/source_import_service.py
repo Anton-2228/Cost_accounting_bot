@@ -8,6 +8,7 @@ from decimal import Decimal
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from api import validation
+from api.core import messages
 from api.core.logging import get_logger
 from api.core.period import now_in_timezone
 from api.domain.sheet_import_result import SheetImportResult
@@ -124,6 +125,14 @@ class SourceImportService(BaseSpreadsheetService):
 
         await self._sources.replace_associations_bulk(aliases)
         await self._tasks.enqueue_many(await self._affected_sheets(spreadsheet_id))
+        # Уведомление уходит в той же транзакции, что и сами правки: иначе
+        # появилось бы состояние «пользователю сообщили об успехе, а импорт
+        # откатился».
+        await self._notifications.notify(
+            spreadsheet_id,
+            NotificationKind.IMPORT_OK,
+            messages.import_ok(messages.BILLS_SHEET_TITLE),
+        )
         await self._commit()
         logger.info(
             "Импорт счетов документа %s: +%s ~%s -%s",

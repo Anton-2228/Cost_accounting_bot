@@ -18,6 +18,7 @@ from tests.google_sheets_service.factories import (
     PERIOD_START,
     make_balance,
     make_category,
+    make_check,
     make_record,
     make_source,
     make_total,
@@ -150,12 +151,62 @@ def test_operation_of_deleted_category_keeps_its_title() -> None:
     assert _text(payload.rows[0][4]) == "Старая"
 
 
-def test_operation_marks_check_origin() -> None:
-    """Операция из чека получает отметку в последней колонке."""
+def test_operation_carries_check_number() -> None:
+    """Операция из чека несёт его номер, а не отметку о происхождении.
+
+    По этому номеру пользователь находит строку на листе-архиве, где лежит сам
+    чек: галочка говорила лишь «чек был», и архивом это не являлось.
+    """
     payload = renderers.render_operations(
-        [make_record(from_check=True)], [], [make_category()], [make_source()]
+        [make_record(check_id=42)], [], [make_category()], [make_source()]
     )
-    assert _text(payload.rows[0][8]) == constants.CHECK_MARK
+    assert _number(payload.rows[0][8]) == 42
+
+
+def test_operation_without_check_leaves_column_empty() -> None:
+    """Операция, введённая руками, оставляет колонку `Check` пустой."""
+    payload = renderers.render_operations(
+        [make_record(check_id=None)], [], [make_category()], [make_source()]
+    )
+    assert _text(payload.rows[0][8]) == ""
+
+
+def test_checks_are_ordered_by_number() -> None:
+    """Строки архива идут по номеру чека: порядок устойчив между перерисовками."""
+    payload = renderers.render_checks(
+        [make_check(check_id=3), make_check(check_id=1), make_check(check_id=2)]
+    )
+    assert [_number(row[0]) for row in payload.rows] == [1, 2, 3]
+
+
+def test_check_payload_is_compact_json_without_escaping() -> None:
+    """Расшифровка печатается компактным JSON с живой кириллицей.
+
+    Без пробелов — ячейка и так на пределе; без `\\uXXXX` — иначе архив
+    нечитаем глазами, а разобрать его обратно всё равно можно.
+    """
+    payload = renderers.render_checks([make_check(raw_payload={"name": "Молоко", "sum": 8990})])
+    assert _text(payload.rows[0][1]) == '{"name":"Молоко","sum":8990}'
+
+
+def test_oversized_check_is_truncated_with_a_note() -> None:
+    """Чек длиннее лимита ячейки обрезается с пометкой, а не роняет перерисовку.
+
+    Отказ Google на слишком длинном значении — 400, то есть ошибка
+    терминальная: одна оптовая закупка иначе остановила бы лист навсегда.
+    """
+    huge = {"items": [{"name": "Товар", "sum": 1} for _ in range(5000)]}
+    payload = renderers.render_checks([make_check(check_id=17, raw_payload=huge)])
+
+    text = _text(payload.rows[0][1])
+    assert len(text) == constants.CELL_TEXT_LIMIT
+    assert text.endswith(constants.CHECK_TRUNCATED_SUFFIX.format(check_id=17))
+
+
+def test_check_within_limit_is_written_whole() -> None:
+    """Чек, помещающийся в ячейку, попадает в неё без единой правки."""
+    payload = renderers.render_checks([make_check(raw_payload={"a": 1})])
+    assert _text(payload.rows[0][1]) == '{"a":1}'
 
 
 def test_statistics_lays_out_blocks_with_separator() -> None:

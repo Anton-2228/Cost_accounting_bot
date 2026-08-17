@@ -18,6 +18,7 @@ from google_sheets_service.main_api.dto import (
     Access,
     Category,
     CategoryDailyTotal,
+    Check,
     ImportResult,
     Period,
     Record,
@@ -28,6 +29,7 @@ from google_sheets_service.main_api.dto import (
     SyncTask,
     Transfer,
 )
+from tests.google_sheets_service.factories import SPREADSHEET_CREATED_AT
 
 
 @dataclass
@@ -187,6 +189,7 @@ class FakeSpreadsheetsClient:
             title="Проверка",
             reset_day=1,
             timezone="Europe/Moscow",
+            created_at=SPREADSHEET_CREATED_AT,
         )
     )
     categories: list[Category] = field(default_factory=list)
@@ -211,6 +214,7 @@ class FakeSpreadsheetsClient:
             title=self.spreadsheet.title,
             reset_day=self.spreadsheet.reset_day,
             timezone=self.spreadsheet.timezone,
+            created_at=self.spreadsheet.created_at,
         )
         return self.spreadsheet
 
@@ -335,6 +339,19 @@ class FakeOperationsClient:
 
 
 @dataclass
+class FakeChecksClient:
+    """Фейк архива чеков."""
+
+    checks: list[Check] = field(default_factory=list)
+    calls: list[str] = field(default_factory=list)
+
+    async def list_by_period(self, spreadsheet_id: int, period_id: int) -> list[Check]:
+        """Чеки периода."""
+        self.calls.append(f"list_checks:{period_id}")
+        return list(self.checks)
+
+
+@dataclass
 class FakeImportsClient:
     """Фейк импорта справочников."""
 
@@ -370,6 +387,7 @@ class FakeApiGateway:
     sheet_mappings: FakeSheetMappingsClient = field(default_factory=FakeSheetMappingsClient)
     periods: FakePeriodsClient = field(default_factory=FakePeriodsClient)
     operations: FakeOperationsClient = field(default_factory=FakeOperationsClient)
+    checks: FakeChecksClient = field(default_factory=FakeChecksClient)
     imports: FakeImportsClient = field(default_factory=FakeImportsClient)
 
     @property
@@ -382,6 +400,7 @@ class FakeApiGateway:
             self.sheet_mappings,
             self.periods,
             self.operations,
+            self.checks,
             self.imports,
         ):
             merged.extend(client.calls)

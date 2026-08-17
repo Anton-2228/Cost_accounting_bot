@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from google_sheets_service.main_api.checks import ChecksApiClient
 from google_sheets_service.main_api.http import ApiHttpClient
 from google_sheets_service.main_api.imports import ImportsApiClient
 from google_sheets_service.main_api.operations import OperationsApiClient
@@ -26,6 +27,7 @@ class ApiGateway:
         self.sheet_mappings = SheetMappingsApiClient(self._http)
         self.periods = PeriodsApiClient(self._http)
         self.operations = OperationsApiClient(self._http)
+        self.checks = ChecksApiClient(self._http)
         self.imports = ImportsApiClient(self._http)
 
     async def aclose(self) -> None:
@@ -36,6 +38,7 @@ class ApiGateway:
 __all__ = [
     "ApiGateway",
     "ApiHttpClient",
+    "ChecksApiClient",
     "ImportsApiClient",
     "OperationsApiClient",
     "PeriodsApiClient",

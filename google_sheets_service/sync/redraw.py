@@ -85,6 +85,11 @@ class SheetRedrawer:
             payload = renderers.render_operations(records, transfers, categories, sources)
             return payload, layouts.OPERATIONS_LAYOUT, mapping.google_sheet_id
 
+        if target == "CHECKS":
+            checks = await self._api.checks.list_by_period(spreadsheet_id, period_id)
+            return renderers.render_checks(checks), layouts.CHECKS_LAYOUT, \
+                mapping.google_sheet_id
+
         if target == "STATISTICS":
             period = state.period(period_id)
             categories = await self._api.spreadsheets.list_categories(

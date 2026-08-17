@@ -31,6 +31,13 @@ class Settings(BaseSettings):
     api_base_url: str
     redis_host: str
 
+    # Ключ модели. Разбор чека спрашивает у неё типы товаров и категории, и
+    # других способов их получить у бота нет: без ключа `/check` работать не
+    # будет. Это и есть та единственная внешняя зависимость, которой у бота
+    # раньше не было — ни драйвера БД, ни ключей Google здесь по-прежнему нет.
+    openai_api_key: str
+    openai_model: str
+
     # ---- Поведение ----
     redis_port: int = constants.DEFAULT_REDIS_PORT
     redis_db: int = 0
@@ -38,6 +45,18 @@ class Settings(BaseSettings):
 
     api_timeout_seconds: float = constants.DEFAULT_API_TIMEOUT_SECONDS
     notify_port: int = constants.DEFAULT_NOTIFY_PORT
+
+    # Прокси для обращений к Bot API. Пусто — напрямую. Касается **только**
+    # Telegram: api учёта живёт в той же docker-сети, и гнать его трафик наружу
+    # значило бы ломать работающее соединение ради недоступного адреса, а к
+    # провайдеру модели бот ходит своим `openai_base_url`.
+    telegram_proxy_url: str | None = None
+
+    # Пусто — официальный адрес OpenAI. Значение нужно для совместимых
+    # провайдеров и прокси, через которые бот и ходит на практике.
+    openai_base_url: str | None = None
+    ai_timeout_seconds: float = constants.DEFAULT_AI_TIMEOUT_SECONDS
+    ai_temperature: float = constants.DEFAULT_AI_TEMPERATURE
 
     # Список telegram_id, которым разрешено пользоваться ботом. Пустой список
     # означает «никому»: бот заводит документы в Google на общий сервисный
@@ -47,6 +66,20 @@ class Settings(BaseSettings):
 
     app_name: str = "Cost Accounting Telegram Bot"
     log_level: str = "INFO"
+
+    @field_validator("telegram_proxy_url", "openai_base_url", mode="before")
+    @classmethod
+    def _empty_to_none(cls, value: object) -> object:
+        """Пустая строка в окружении — это «не задано», а не адрес.
+
+        Закомментировать строку в `.env` получается не всегда (блок
+        `environment` в Compose перекрывает файл только значением), поэтому
+        `TELEGRAM_PROXY_URL=` должен читаться как «без прокси». Иначе aiogram
+        получил бы пустой адрес и упал бы на разборе схемы при старте.
+        """
+        if isinstance(value, str) and not value.strip():
+            return None
+        return value
 
     @field_validator("allowed_telegram_ids", mode="before")
     @classmethod

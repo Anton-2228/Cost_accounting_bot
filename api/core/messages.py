@@ -16,11 +16,28 @@ from datetime import date
 #: Ссылка на документ. Бот получает готовое сообщение и не собирает URL сам.
 GOOGLE_SPREADSHEET_URL = "https://docs.google.com/spreadsheets/d/{google_spreadsheet_id}"
 
+#: Названия листов, которые читаются обратно в базу. Они попадают в текст
+#: сообщения, поэтому лежат здесь: раскладку документа api не знает и знать не
+#: должен, а вот назвать пользователю вкладку, о которой идёт речь, обязан.
+CATEGORIES_SHEET_TITLE = "Categories"
+BILLS_SHEET_TITLE = "Bills"
+
 
 def table_ready(google_spreadsheet_id: str) -> str:
     """Google-документ создан и готов к работе."""
     url = GOOGLE_SPREADSHEET_URL.format(google_spreadsheet_id=google_spreadsheet_id)
     return f"Таблица готова: {url}"
+
+
+def import_ok(sheet_title: str) -> str:
+    """Лист прочитан, правки применены.
+
+    Сообщение уходит и тогда, когда импорт ничего не изменил. Пользователь
+    правил лист и ждёт ответа; молчание при «ноль создано, ноль обновлено» он
+    прочитает как «меня не услышали» — ровно та неопределённость, ради которой
+    уведомление и заводится.
+    """
+    return f"Лист «{sheet_title}» прочитан, правки сохранены"
 
 
 def rollover_done(start_date: date) -> str:

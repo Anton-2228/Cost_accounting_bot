@@ -18,6 +18,10 @@ os.environ.setdefault("TELEGRAM_BOT_TOKEN", "123456:AAHtesttesttesttesttesttestt
 os.environ.setdefault("API_BASE_URL", "http://api:8000/api/v1")
 os.environ.setdefault("REDIS_HOST", "localhost")
 os.environ.setdefault("ALLOWED_TELEGRAM_IDS", "")
+# Ключ модели обязателен так же, как токен бота: без него разбор чека работать
+# не может. В тестах модель подменяется фейком и по сети не ходит ни разу.
+os.environ.setdefault("OPENAI_API_KEY", "test-key")
+os.environ.setdefault("OPENAI_MODEL", "test-model")
 
 import pytest  # noqa: E402
 

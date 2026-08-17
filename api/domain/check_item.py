@@ -4,13 +4,18 @@ from __future__ import annotations
 
 from pydantic import BaseModel, ConfigDict
 
-from api.core.types import PositiveMoneyDecimal
+from api.core.types import MoneyDecimal
 
 
 class CheckItem(BaseModel):
     """Одна позиция чека, уже разложенная ботом по категории.
 
     Сумма без знака: знак поставит вид категории, как и для обычной операции.
+    Ноль допустим — в отличие от `CreateRecordRequest`, где сумма строго
+    положительна. Позиция с нулевой ценой в чеке законна («второй товар в
+    подарок»), и отбросить её значило бы разойтись с итогом чека, по которому
+    разбор себя же и проверяет.
+
     `product_type` может отсутствовать — значит, тип определить не удалось и
     кэшировать нечего.
     """
@@ -20,7 +25,7 @@ class CheckItem(BaseModel):
     product_name: str
     product_type: str | None = None
     category_id: int
-    amount: PositiveMoneyDecimal
+    amount: MoneyDecimal
 
 
 class ProductTypeAssignment(BaseModel):

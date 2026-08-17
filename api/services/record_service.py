@@ -73,7 +73,6 @@ class RecordService(BaseSpreadsheetService):
         notes: str = "",
         product_name: str | None = None,
         product_type: str | None = None,
-        check_json: str | None = None,
     ) -> Record:
         """Добавляет операцию и помечает устаревшими зависящие от неё листы.
 
@@ -112,7 +111,6 @@ class RecordService(BaseSpreadsheetService):
                 notes=notes,
                 product_name=product_name,
                 product_type=product_type,
-                check_json=check_json,
             )
         )
         await self._tasks.enqueue_many(_affected_sheets(spreadsheet_id, period.id))

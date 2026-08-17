@@ -10,9 +10,10 @@
 
 from __future__ import annotations
 
-from datetime import date
+from datetime import date, datetime
 from decimal import Decimal
 from enum import StrEnum
+from typing import Any
 
 from pydantic import BaseModel, ConfigDict
 
@@ -35,6 +36,7 @@ class NotificationKind(StrEnum):
     """Вид уведомления о фоновой работе."""
 
     TABLE_READY = "TABLE_READY"
+    IMPORT_OK = "IMPORT_OK"
     IMPORT_ERROR = "IMPORT_ERROR"
     SYNC_FAILED = "SYNC_FAILED"
     ROLLOVER = "ROLLOVER"
@@ -102,7 +104,10 @@ class Record(BaseModel):
     amount: Decimal
     added_at: date
     notes: str
-    from_check: bool = False
+    #: Номер чека, из которого распознана позиция. Бот его не печатает, но поле
+    #: держится в зеркале схемы api: расхождение мирно живёт до первого
+    #: обращения, а потом обходится дороже.
+    check_id: int | None = None
 
 
 class Transfer(BaseModel):
@@ -117,6 +122,37 @@ class Transfer(BaseModel):
     amount: Decimal
     added_at: date
     notes: str
+
+
+class Check(BaseModel):
+    """Сохранённый чек: сырьё и отметка о разборе.
+
+    `raw_payload` — ответ внешнего сервиса целиком, и разбирает его бот:
+    `telegram_bot.checks.ReceiptExtractor`. Api его не интерпретирует вовсе,
+    поэтому здесь он и остаётся словарём, а не набором полей.
+    """
+
+    model_config = ConfigDict(extra="ignore")
+
+    id: int
+    qr_raw: str
+    raw_payload: dict[str, Any]
+    fetched_at: datetime
+    processed_at: datetime | None = None
+
+
+class CashedRecord(BaseModel):
+    """Выученное соответствие «товар → тип».
+
+    Кэш документа, а не бота: единственный источник истины по нему — api.
+    Благодаря ему модель не спрашивают о товаре, который уже встречался.
+    """
+
+    model_config = ConfigDict(extra="ignore")
+
+    id: int
+    product_name: str
+    product_type: str
 
 
 class UserNotification(BaseModel):

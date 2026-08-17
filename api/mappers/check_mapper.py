@@ -20,6 +20,7 @@ class CheckMapper(BaseMapper[CheckORM, Check]):
             external_key=orm.external_key,
             raw_payload=orm.raw_payload,
             fetched_at=orm.fetched_at,
+            processed_at=orm.processed_at,
             created_at=orm.created_at,
             updated_at=orm.updated_at,
         )
@@ -33,4 +34,5 @@ class CheckMapper(BaseMapper[CheckORM, Check]):
             external_key=domain.external_key,
             raw_payload=domain.raw_payload,
             fetched_at=domain.fetched_at,
+            processed_at=domain.processed_at,
         )

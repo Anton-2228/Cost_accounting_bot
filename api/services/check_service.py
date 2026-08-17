@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from collections.abc import Mapping, Sequence
-from datetime import datetime
+from datetime import UTC, datetime
 from typing import Any
 
 from sqlalchemy.exc import IntegrityError
@@ -17,7 +17,7 @@ from api.domain.check import Check
 from api.domain.check_item import CheckItem, ProductTypeAssignment
 from api.domain.record import Record
 from api.enums import CategoryKind, CheckKind, SheetTarget, SyncTaskKind
-from api.exceptions.base import ConflictError, NotFoundError
+from api.exceptions.base import BusinessRuleError, ConflictError, NotFoundError
 from api.repositories.cashed_record_repository import CashedRecordRepository
 from api.repositories.category_repository import CategoryRepository
 from api.repositories.check_repository import CheckRepository
@@ -35,6 +35,17 @@ logger = get_logger(__name__)
 #: «нарушено ограничение целостности», потому что для сканирующего это не
 #: ошибка, а осмысленный ответ «уже добавлен».
 ALREADY_SAVED_REASON = "check_already_saved"
+
+#: Причина конфликта: чек уже разобран. Возникает, когда разбор запущен дважды
+#: (два устройства, повтор запроса) — операции уже в реестре, и повторная запись
+#: удвоила бы их.
+ALREADY_PROCESSED_REASON = "check_already_processed"
+
+#: Причина конфликта: тип товара уже закреплён за другой категорией документа.
+#: `UNIQUE (spreadsheet_id, product_type)` делает это состояние невыразимым, но
+#: молчаливое переназначение было бы хуже отказа: раскладка позиций чека стала
+#: бы зависеть от порядка обработки.
+TYPE_TAKEN_REASON = "product_type_taken"
 
 
 class CheckService(BaseSpreadsheetService):
@@ -74,10 +85,51 @@ class CheckService(BaseSpreadsheetService):
 
     # --- сохранение ---
 
-    async def list_checks(self, spreadsheet_id: int) -> list[Check]:
-        """Сохранённые чеки документа в порядке поступления."""
+    async def list_checks(
+        self,
+        spreadsheet_id: int,
+        *,
+        unprocessed: bool = False,
+        period_id: int | None = None,
+    ) -> list[Check]:
+        """Сохранённые чеки документа в порядке поступления.
+
+        `unprocessed=True` отдаёт очередь разбора — только то, что ещё ждёт.
+
+        `period_id` отдаёт архив месяца: разобранные чеки, чьи операции попали
+        в этот период. Оба фильтра вместе бессмысленны — неразобранный чек
+        операций не имеет, — и одновременная передача отвергается как ошибка
+        вызывающего, а не молча возвращает пустой список.
+        """
         await self._get(spreadsheet_id)
-        return await self._checks.list_by_spreadsheet(spreadsheet_id)
+        if period_id is not None:
+            if unprocessed:
+                raise BusinessRuleError("Фильтры `unprocessed` и `period_id` несовместимы")
+            return await self._checks.list_processed_for_period(spreadsheet_id, period_id)
+        return await self._checks.list_by_spreadsheet(spreadsheet_id, unprocessed=unprocessed)
+
+    async def delete_check(self, spreadsheet_id: int, check_id: int) -> None:
+        """Физически удаляет неразобранный чек.
+
+        Удаление физическое, а не мягкое: строка `checks` — это сырьё, которое
+        ещё ни во что не превратилось, и хранить его «удалённым» незачем.
+        Разобранный чек удалить нельзя — на него ссылаются операции реестра, и
+        отвязать их значило бы потерять источник каждой из них.
+        """
+        await self._get(spreadsheet_id)
+        check = await self._checks.get_for_spreadsheet(check_id, spreadsheet_id)
+        if check is None:
+            raise NotFoundError("check")
+        if check.processed_at is not None:
+            raise ConflictError(
+                "Чек уже разобран",
+                details={"reason": ALREADY_PROCESSED_REASON},
+            )
+
+        assert check.id is not None
+        await self._checks.delete(check.id)
+        await self._commit()
+        logger.info("Чек %s удалён из документа %s", check_id, spreadsheet_id)
 
     async def save(
         self,
@@ -141,17 +193,27 @@ class CheckService(BaseSpreadsheetService):
         self,
         spreadsheet_id: int,
         *,
+        check_id: int,
         source_id: int,
         items: Sequence[CheckItem],
         new_product_types: Sequence[ProductTypeAssignment] = (),
-        check_json: str | None = None,
     ) -> list[Record]:
-        """Записывает разобранный чек: типы товаров, кэш, операции.
+        """Записывает разобранный чек: типы товаров, кэш, операции, отметку.
 
         Всё перечисленное — одна транзакция. Порядок внутри значения не имеет,
         важно лишь то, что ни одна её часть не может уцелеть без остальных.
+        Отметка `processed_at` — такая же часть: уцелей операции без неё, чек
+        вернулся бы в очередь и был бы записан второй раз.
         """
         spreadsheet = await self._get_ready(spreadsheet_id)
+        check = await self._checks.get_for_spreadsheet(check_id, spreadsheet_id)
+        if check is None:
+            raise NotFoundError("check")
+        if check.processed_at is not None:
+            raise ConflictError(
+                "Чек уже разобран",
+                details={"reason": ALREADY_PROCESSED_REASON},
+            )
         if await self._sources.get_for_spreadsheet(source_id, spreadsheet_id) is None:
             raise NotFoundError("source")
 
@@ -164,7 +226,7 @@ class CheckService(BaseSpreadsheetService):
             for category in await self._categories.list_by_spreadsheet(spreadsheet_id)
             if category.id is not None
         }
-        await self._assign_product_types(new_product_types, categories)
+        await self._assign_product_types(spreadsheet_id, new_product_types, categories)
 
         today = today_for(spreadsheet)
         period = await ensure_current_period(self._periods, spreadsheet, today)
@@ -188,7 +250,7 @@ class CheckService(BaseSpreadsheetService):
                         added_at=today,
                         product_name=item.product_name,
                         product_type=item.product_type,
-                        check_json=check_json,
+                        check_id=check_id,
                     )
                 )
             )
@@ -201,9 +263,21 @@ class CheckService(BaseSpreadsheetService):
                     )
                 )
 
+        marked = await self._checks.mark_processed(check_id, at=datetime.now(UTC))
+        if marked is None:
+            # Между проверкой выше и этим местом чек успел разобрать кто-то ещё.
+            # Тот же ответ, что и по предварительной проверке: операции этой
+            # транзакции откатятся, а уже записанные останутся на месте.
+            await self._session.rollback()
+            raise ConflictError(
+                "Чек уже разобран",
+                details={"reason": ALREADY_PROCESSED_REASON},
+            )
+
         keys: list[TaskKey] = [
             (spreadsheet_id, SyncTaskKind.REDRAW, SheetTarget.OPERATIONS, period.id),
             (spreadsheet_id, SyncTaskKind.REDRAW, SheetTarget.STATISTICS, period.id),
+            (spreadsheet_id, SyncTaskKind.REDRAW, SheetTarget.CHECKS, period.id),
             (spreadsheet_id, SyncTaskKind.REDRAW, SheetTarget.BILLS, None),
         ]
         if new_product_types:
@@ -211,11 +285,17 @@ class CheckService(BaseSpreadsheetService):
         await self._tasks.enqueue_many(keys)
 
         await self._commit()
-        logger.info("Чек из %s позиций записан в документ %s", len(created), spreadsheet_id)
+        logger.info(
+            "Чек %s из %s позиций записан в документ %s",
+            check_id,
+            len(created),
+            spreadsheet_id,
+        )
         return created
 
     async def _assign_product_types(
         self,
+        spreadsheet_id: int,
         assignments: Sequence[ProductTypeAssignment],
         categories: Mapping[int, Category],
     ) -> None:
@@ -224,6 +304,12 @@ class CheckService(BaseSpreadsheetService):
         Категория по умолчанию для расходов типов не получает никогда: это
         корзина для всего, что не удалось разложить, и обучение на её
         содержимом притянуло бы туда же следующие чеки.
+
+        Занятый тип ловится дважды. Предварительная проверка нужна, чтобы
+        назвать чужую категорию: пользователь должен знать, куда уже отнесена
+        «молочка», иначе отказ выглядит беспричинным. `IntegrityError` — потому
+        что между проверкой и вставкой помещается импорт справочника из листа,
+        который закрепляет тот же тип за другой категорией.
         """
         for assignment in assignments:
             category = categories.get(assignment.category_id)
@@ -231,6 +317,34 @@ class CheckService(BaseSpreadsheetService):
                 raise NotFoundError("category")
             if category.title == constants.DEFAULT_EXPENSE_CATEGORY:
                 continue
-            await self._categories.add_product_type(
-                assignment.category_id, assignment.product_type
+
+            owner = await self._categories.find_by_product_type(
+                spreadsheet_id, assignment.product_type
             )
+            if owner is not None and owner.id != assignment.category_id:
+                await self._session.rollback()
+                raise self._type_taken(assignment.product_type, owner.title)
+
+            try:
+                await self._categories.add_product_type(
+                    assignment.category_id, assignment.product_type
+                )
+            except IntegrityError as error:
+                # Сессия после нарушения ограничения непригодна: без отката
+                # любой следующий запрос в ней получил бы PendingRollbackError.
+                await self._session.rollback()
+                raise self._type_taken(assignment.product_type, None) from error
+
+    @staticmethod
+    def _type_taken(product_type: str, category_title: str | None) -> ConflictError:
+        """Собирает отказ «тип уже закреплён за другой категорией»."""
+        details: dict[str, Any] = {
+            "reason": TYPE_TAKEN_REASON,
+            "product_type": product_type,
+        }
+        if category_title is not None:
+            details["category"] = category_title
+        return ConflictError(
+            f"Тип «{product_type}» уже закреплён за другой категорией",
+            details=details,
+        )

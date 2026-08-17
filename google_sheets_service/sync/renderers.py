@@ -8,6 +8,7 @@
 
 from __future__ import annotations
 
+import json
 from collections import defaultdict
 from datetime import date
 from decimal import Decimal
@@ -17,6 +18,7 @@ from google_sheets_service import constants
 from google_sheets_service.main_api.dto import (
     Category,
     CategoryDailyTotal,
+    Check,
     Record,
     Source,
     SourceBalance,
@@ -114,6 +116,37 @@ def render_operations(
     return SheetPayload(rows=[row for _, _, row in entries])
 
 
+def render_checks(checks: list[Check]) -> SheetPayload:
+    """Строит лист-архив чеков месяца: номер и расшифровка целиком.
+
+    Порядок по номеру: он устойчив между перерисовками, и строка не прыгает под
+    курсором. Позиции чека в реестре ссылаются сюда тем же номером.
+    """
+    rows = [
+        [values.int_cell(check.id), values.text_cell(_check_json(check))]
+        for check in sorted(checks, key=lambda item: item.id)
+    ]
+    return SheetPayload(rows=rows)
+
+
+def _check_json(check: Check) -> str:
+    """Расшифровка чека одной строкой, обрезанная под лимит ячейки.
+
+    Компактный JSON без пробелов и без экранирования кириллицы: ячейка тем
+    самым остаётся читаемой глазами, а разбор обратно — возможным.
+
+    Чек длиннее лимита обрезается с пометкой, а не отбрасывается и не роняет
+    задачу. Отказ Google на слишком длинном значении — 400, то есть ошибка
+    терминальная: одна оптовая закупка останавливала бы лист навсегда. Обрезка
+    ломает JSON, и пометка прямо говорит, где лежит целое.
+    """
+    text = json.dumps(check.raw_payload, ensure_ascii=False, separators=(",", ":"))
+    if len(text) <= constants.CELL_TEXT_LIMIT:
+        return text
+    suffix = constants.CHECK_TRUNCATED_SUFFIX.format(check_id=check.id)
+    return text[: constants.CELL_TEXT_LIMIT - len(suffix)] + suffix
+
+
 def render_statistics(
     categories: list[Category],
     totals: list[CategoryDailyTotal],
@@ -169,7 +202,11 @@ def _record_row(
     category_titles: dict[int, str],
     source_titles: dict[int, str],
 ) -> list[dict[str, Any]]:
-    """Строка реестра для операции."""
+    """Строка реестра для операции.
+
+    В колонке `Check` стоит номер чека, а не отметка о его существовании: по
+    нему пользователь находит строку на листе-архиве, где лежит сам чек.
+    """
     return [
         values.int_cell(record.id),
         values.date_cell(record.added_at),
@@ -179,7 +216,7 @@ def _record_row(
         values.text_cell(record.product_type or ""),
         values.text_cell(record.notes),
         values.text_cell(source_titles.get(record.source_id, "")),
-        values.text_cell(constants.CHECK_MARK if record.from_check else ""),
+        values.text_cell("") if record.check_id is None else values.int_cell(record.check_id),
     ]
 
 

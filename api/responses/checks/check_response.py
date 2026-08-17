@@ -11,7 +11,12 @@ from api.enums import CheckKind
 
 
 class CheckResponse(BaseModel):
-    """Сохранённый чек. Разбирает его отдельный шаг, api пока только хранит."""
+    """Сохранённый чек: сырьё и отметка о разборе.
+
+    `raw_payload` отдаётся целиком: позиции из него достаёт бот, и решать за
+    него, какие поля формата понадобятся, api не может — форматов будет больше
+    одного.
+    """
 
     model_config = ConfigDict(from_attributes=True)
 
@@ -21,4 +26,5 @@ class CheckResponse(BaseModel):
     external_key: str
     raw_payload: dict[str, Any]
     fetched_at: datetime
+    processed_at: datetime | None
     created_at: datetime

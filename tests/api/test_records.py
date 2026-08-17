@@ -31,7 +31,7 @@ async def test_expense_and_income_get_their_sign(
     )
     assert spent.status_code == 201
     assert spent.json()["data"]["amount"] == "-100.50"
-    assert spent.json()["data"]["from_check"] is False
+    assert spent.json()["data"]["check_id"] is None
 
     earned = await client.post(
         base,
@@ -57,35 +57,40 @@ async def test_negative_amount_is_rejected_by_schema(
     assert response.status_code == 422
 
 
-async def test_receipt_json_is_not_exposed_in_list(
+async def test_check_reference_is_exposed_in_list(
     client: AsyncClient,
     session: AsyncSession,
 ) -> None:
-    """Сырой чек наружу не выдаётся, вместо него — признак `from_check`.
+    """Операция несёт номер чека, а не признак «из чека».
 
-    Иначе список операций за месяц вырос бы до нескольких мегабайт: JSON лежит в
-    каждой позиции чека целиком.
+    В колонке `Check` реестра печатается именно номер: по нему пользователь
+    находит строку на листе-архиве, где лежит сам чек. Сворачивать его в
+    галочку больше не во что.
     """
     spreadsheet = await factories.create_spreadsheet(session, ready=True)
     category = await factories.create_category(session, spreadsheet)
     source = await factories.create_source(session, spreadsheet)
+    check = await factories.create_check(session, spreadsheet)
     await session.commit()
 
-    base = f"/api/v1/spreadsheets/{spreadsheet.id}/records"
+    base = f"/api/v1/spreadsheets/{spreadsheet.id}"
     await client.post(
-        base,
+        f"{base}/records",
+        json={"category_id": category.id, "source_id": source.id, "amount": "10.00"},
+    )
+    await client.post(
+        f"{base}/checks/commit",
         json={
-            "category_id": category.id,
+            "check_id": check.id,
             "source_id": source.id,
-            "amount": "10.00",
-            "product_name": "молоко",
-            "check_json": "{\"very\": \"long\"}",
+            "items": [
+                {"product_name": "молоко", "category_id": category.id, "amount": "89.90"}
+            ],
         },
     )
 
-    items = (await client.get(base)).json()["items"]
-    assert [item["from_check"] for item in items] == [True]
-    assert "check_json" not in items[0]
+    items = (await client.get(f"{base}/records")).json()["items"]
+    assert [item["check_id"] for item in items] == [None, check.id]
 
 
 async def test_last_route_is_declared_before_id_route(

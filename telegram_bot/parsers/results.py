@@ -41,6 +41,20 @@ class ParsedTransfer(BaseModel):
     notes: str
 
 
+class ParsedCheckEdit(BaseModel):
+    """Одна правка разбора чека: «1,3 - молочка».
+
+    `numbers` — номера позиций так, как их видит пользователь: с единицы и в
+    том же порядке, в каком напечатан список. Перевод в индексы делает команда,
+    и делает его в одном месте.
+    """
+
+    model_config = ConfigDict(frozen=True)
+
+    numbers: tuple[int, ...]
+    value: str
+
+
 class ParseError(Exception):
     """Ввод разобрать не удалось; текст уже готов для пользователя.
 

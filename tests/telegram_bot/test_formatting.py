@@ -8,7 +8,9 @@ from decimal import Decimal
 import pytest
 
 from telegram_bot.api_client.models import Category, Record, Source, Spreadsheet, Transfer
+from telegram_bot.checks.draft import CheckDraft, DraftItem
 from telegram_bot.formatting import (
+    CheckFormatter,
     MoneyFormatter,
     RecordFormatter,
     TableFormatter,
@@ -187,3 +189,119 @@ class TestTableFormatter:
 
         assert "создаётся" in text
         assert "docs.google.com" not in text
+
+
+def _draft(*items: DraftItem) -> CheckDraft:
+    """Черновик разбора с указанными позициями."""
+    return CheckDraft(check_id=1, total=Decimal("100.00"), items=list(items))
+
+
+class TestCheckFormatter:
+    """Списки сопоставления «товар → тип» и «товар → категория»."""
+
+    def test_known_and_suggested_are_split_by_blank_line(self) -> None:
+        """Сверху то, что бот знает, снизу то, что предложила модель.
+
+        Разделение существеннее, чем кажется: проверять глазами надо только
+        нижний блок, и без него список из полусотни позиций пришлось бы читать
+        целиком.
+        """
+        text = CheckFormatter.types(
+            _draft(
+                DraftItem(
+                    name="молоко",
+                    amount=Decimal("89.90"),
+                    product_type="молочка",
+                    cached_type="молочка",
+                ),
+                DraftItem(name="конфеты", amount=Decimal("40.00"), product_type="сладости"),
+            ),
+            {"молочка", "сладости"},
+        )
+
+        known, suggested = text.split("\n\n")
+        assert known == "1) молоко\n    <b>молочка</b>"
+        assert suggested == "2) конфеты\n    <b>сладости</b>"
+
+    def test_new_type_is_shouted(self) -> None:
+        """Тип, которого нет ни у одной категории, печатается капсом.
+
+        Единственный способ увидеть до записи, что тип будет заведён.
+        """
+        text = CheckFormatter.types(
+            _draft(DraftItem(name="конфеты", amount=Decimal("40.00"), product_type="сладости")),
+            {"молочка"},
+        )
+        assert "<b>СЛАДОСТИ</b>" in text
+
+    def test_every_line_is_numbered(self) -> None:
+        """Номер стоит и у позиции из кэша.
+
+        В старой версии его там не было, и правку типа у уже знакомого товара
+        нельзя было даже адресовать — она терялась молча.
+        """
+        text = CheckFormatter.types(
+            _draft(
+                DraftItem(
+                    name="молоко",
+                    amount=Decimal("89.90"),
+                    product_type="молочка",
+                    cached_type="молочка",
+                )
+            ),
+            {"молочка"},
+        )
+        assert text.startswith("1) молоко")
+
+    def test_markup_in_product_name_is_escaped(self) -> None:
+        """Название из чека не может сломать разметку сообщения.
+
+        Товары приезжают из внешнего источника: «M&S <b>» в названии иначе
+        съел бы половину списка или уронил отправку целиком.
+        """
+        text = CheckFormatter.types(
+            _draft(
+                DraftItem(name="M&S <b>чай</b>", amount=Decimal("1.00"), product_type="чай")
+            ),
+            {"чай"},
+        )
+        assert "M&amp;S &lt;b&gt;чай&lt;/b&gt;" in text
+        assert text.count("<b>") == 1
+
+    def test_item_without_value_shows_dash(self) -> None:
+        """Позиция без типа не выглядит пустой строкой."""
+        text = CheckFormatter.types(
+            _draft(DraftItem(name="загадка", amount=Decimal("1.00"))), set()
+        )
+        assert "<b>—</b>" in text
+
+    def test_categories_split_confirmed_from_suggested(self) -> None:
+        """Категория, выведенная типом, стоит выше подсказанной моделью."""
+        text = CheckFormatter.categories(
+            _draft(
+                DraftItem(
+                    name="молоко",
+                    amount=Decimal("89.90"),
+                    category_title="Еда",
+                    category_confirmed=True,
+                ),
+                DraftItem(name="конфеты", amount=Decimal("40.00"), category_title="Еда"),
+            )
+        )
+        known, suggested = text.split("\n\n")
+        assert known == "1) молоко\n    <b>Еда</b>"
+        assert suggested == "2) конфеты\n    <b>Еда</b>"
+
+    def test_single_block_has_no_trailing_gap(self) -> None:
+        """Чек, где все товары знакомы, не печатается с пустым хвостом."""
+        text = CheckFormatter.categories(
+            _draft(
+                DraftItem(
+                    name="молоко",
+                    amount=Decimal("89.90"),
+                    category_title="Еда",
+                    category_confirmed=True,
+                )
+            )
+        )
+        assert "\n\n" not in text
