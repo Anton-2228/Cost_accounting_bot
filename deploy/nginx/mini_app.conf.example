@@ -12,15 +12,17 @@
 # чтение файлов и +x на КАЖДЫЙ каталог пути, включая сам домашний.
 #
 # Домашние каталоги обычно закрыты (750 или 700), а nginx работает не от
-# владельца, — поэтому из /home статика без отдельной выдачи прав отвечает 403.
-# Выдать их точечно, не открывая дом всему миру:
+# владельца, — поэтому из /home статика без отдельной выдачи прав отвечает 403
+# при живом /api, что читается как «сломалась страница». Выдать права точечно,
+# не открывая дом всей машине:
 #
 #   setfacl -m u:www-data:--x /home/user
 #   setfacl -R -m u:www-data:rX /home/user/Cost_accounting_bot/mini_app
 #
 # Имя пользователя проверить по `ps -o user= -C nginx | sort -u`: в сборках не
-# из Debian это `nginx`, а не `www-data`. Грубая замена без ACL —
-# `chmod o+x /home/user && chmod -R o+rX .../mini_app`.
+# из Debian это `nginx`, а не `www-data`. Проверка результата —
+# `sudo -u www-data cat /home/user/Cost_accounting_bot/mini_app/index.html`.
+# Грубая замена без ACL: `chmod o+x /home/user && chmod -R o+rX .../mini_app`.
 root /home/user/Cost_accounting_bot/mini_app;
 index index.html;
 
