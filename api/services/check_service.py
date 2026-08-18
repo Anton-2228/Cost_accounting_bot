@@ -109,12 +109,18 @@ class CheckService(BaseSpreadsheetService):
         return await self._checks.list_by_spreadsheet(spreadsheet_id, unprocessed=unprocessed)
 
     async def delete_check(self, spreadsheet_id: int, check_id: int) -> None:
-        """Физически удаляет неразобранный чек.
+        """Мягко удаляет неразобранный чек.
 
-        Удаление физическое, а не мягкое: строка `checks` — это сырьё, которое
-        ещё ни во что не превратилось, и хранить его «удалённым» незачем.
-        Разобранный чек удалить нельзя — на него ссылаются операции реестра, и
-        отвязать их значило бы потерять источник каждой из них.
+        Удаление мягкое, как и всюду в таблице: два механизма удаления на одну
+        строку значили бы два разных ответа на вопрос «что стало с чеком».
+        Сырьё остаётся, из всех выборок чек пропадает, а ту же бумажку
+        разрешено отсканировать заново — уникальность ключа частичная и живых
+        строк с ним больше нет.
+
+        Разобранный чек этим путём не убрать — 409. Он уходит следом за своими
+        операциями (`RecordService.delete`), и заводить второй вход в то же
+        состояние незачем: пользователь, удаливший чек, но не его операции,
+        получил бы реестр со строками из ниоткуда.
         """
         await self._get(spreadsheet_id)
         check = await self._checks.get_for_spreadsheet(check_id, spreadsheet_id)
@@ -127,7 +133,7 @@ class CheckService(BaseSpreadsheetService):
             )
 
         assert check.id is not None
-        await self._checks.delete(check.id)
+        await self._checks.soft_delete(check.id, at=datetime.now(UTC))
         await self._commit()
         logger.info("Чек %s удалён из документа %s", check_id, spreadsheet_id)
 

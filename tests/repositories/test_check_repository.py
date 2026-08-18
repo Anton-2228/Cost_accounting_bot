@@ -6,6 +6,7 @@ from datetime import UTC, date, datetime
 from decimal import Decimal
 
 import pytest
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from api.domain.check import Check
@@ -190,12 +191,13 @@ async def test_period_archive_holds_only_checks_of_that_month(session: AsyncSess
     assert [item.id for item in archive] == [parsed.id]
 
 
-async def test_period_archive_survives_deletion_of_its_records(session: AsyncSession) -> None:
-    """Чек остаётся в архиве, даже когда все его операции удалены.
+async def test_period_archive_survives_deletion_of_one_record(session: AsyncSession) -> None:
+    """Чек остаётся в архиве, пока жив сам, — удалённые операции не в счёт.
 
-    Пользователь, удаливший строку реестра, не отзывал чек. Зависеть от
-    `deleted_at` значило бы: удалил последнюю позицию — и чек молча пропал из
-    архива, ради которого лист и существует.
+    Пользователь, удаливший одну строку реестра, не отзывал чек. Считай выборка
+    только живые операции — правка одной позиции молча выносила бы чек из
+    архива, ради которого лист и существует. Исчезает чек по собственной метке
+    удаления, а её ставит уход **последней** его операции.
     """
     spreadsheet = await factories.create_spreadsheet(session, ready=True)
     period = await factories.create_period(session, spreadsheet)
@@ -208,6 +210,42 @@ async def test_period_archive_survives_deletion_of_its_records(session: AsyncSes
     check = await repository.add(_check(spreadsheet.id, "ключ"))
     await session.commit()
 
+    first = await factories.create_record(
+        session, spreadsheet, period, category, source,
+        amount=Decimal("-89.90"), check_id=check.id,
+    )
+    await factories.create_record(
+        session, spreadsheet, period, category, source,
+        amount=Decimal("-10.00"), check_id=check.id,
+    )
+    await session.commit()
+    assert first.id is not None
+
+    await RecordRepository(session).soft_delete(first.id, at=_LATER)
+    await session.commit()
+
+    archive = await repository.list_processed_for_period(spreadsheet.id, period.id)
+    assert [item.id for item in archive] == [check.id]
+
+
+async def test_deleted_check_disappears_from_archive_and_list(session: AsyncSession) -> None:
+    """Мягко удалённый чек пропадает и из архива месяца, и из списка документа.
+
+    Операции при этом остаются на месте — удалёнными, со ссылкой на чек. Именно
+    поэтому чек нельзя стирать физически: ссылке было бы не на что смотреть.
+    """
+    spreadsheet = await factories.create_spreadsheet(session, ready=True)
+    period = await factories.create_period(session, spreadsheet)
+    category = await factories.create_category(session, spreadsheet)
+    source = await factories.create_source(session, spreadsheet)
+    await session.commit()
+    assert spreadsheet.id is not None and period.id is not None
+
+    repository = CheckRepository(session)
+    check = await repository.add(_check(spreadsheet.id, "ключ"))
+    await session.commit()
+    assert check.id is not None
+
     record = await factories.create_record(
         session, spreadsheet, period, category, source,
         amount=Decimal("-89.90"), check_id=check.id,
@@ -215,15 +253,26 @@ async def test_period_archive_survives_deletion_of_its_records(session: AsyncSes
     await session.commit()
     assert record.id is not None
 
-    await RecordRepository(session).soft_delete(record.id, at=_LATER)
+    records = RecordRepository(session)
+    await records.soft_delete(record.id, at=_LATER)
+    await repository.soft_delete(check.id, at=_LATER)
     await session.commit()
 
-    archive = await repository.list_processed_for_period(spreadsheet.id, period.id)
-    assert [item.id for item in archive] == [check.id]
+    assert await repository.list_processed_for_period(spreadsheet.id, period.id) == []
+    assert await repository.list_by_spreadsheet(spreadsheet.id) == []
+    assert await repository.get_for_spreadsheet(check.id, spreadsheet.id) is None
+
+    orphan = await records.get_for_spreadsheet(record.id, spreadsheet.id, include_deleted=True)
+    assert orphan is not None and orphan.check_id == check.id
 
 
-async def test_check_is_deleted_physically(session: AsyncSession) -> None:
-    """Удаление чека физическое: мягкого удаления у сырья нет."""
+async def test_check_deletion_is_soft(session: AsyncSession) -> None:
+    """Удаление чека мягкое: строка остаётся, повтор ничего не меняет.
+
+    Сырьё — единственный след покупки, и стирать его вместе с меткой удаления
+    незачем; повторный вызов возвращает `False`, потому что второе удаление уже
+    ничего не удаляет.
+    """
     spreadsheet = await factories.create_spreadsheet(session)
     await session.commit()
     assert spreadsheet.id is not None
@@ -233,8 +282,46 @@ async def test_check_is_deleted_physically(session: AsyncSession) -> None:
     await session.commit()
     assert saved.id is not None
 
-    assert await repository.delete(saved.id) is True
+    assert await repository.soft_delete(saved.id, at=_LATER) is True
     await session.commit()
 
     assert await repository.list_by_spreadsheet(spreadsheet.id) == []
-    assert await repository.delete(saved.id) is False
+    assert await repository.soft_delete(saved.id, at=_PROCESSED_AT) is False
+
+    stored = await repository.get_by_id(saved.id, include_deleted=True)
+    assert stored is not None
+    assert stored.deleted_at == _LATER
+    assert stored.raw_payload["data"]["json"]["items"][0]["sum"] == 8990
+
+
+async def test_same_paper_is_scannable_again_after_deletion(session: AsyncSession) -> None:
+    """Ключ занимает только живой чек: удалённый не мешает новому.
+
+    Уникальность частичная (`WHERE deleted_at IS NULL`). Пока чек жив, второй с
+    тем же ключом невыразим; после удаления та же бумажка принимается как новый
+    чек — иначе мягкое удаление означало бы «чек исчез, и вернуть его нечем».
+    """
+    spreadsheet = await factories.create_spreadsheet(session)
+    await session.commit()
+    assert spreadsheet.id is not None
+
+    repository = CheckRepository(session)
+    first = await repository.add(_check(spreadsheet.id, "ключ"))
+    await session.commit()
+    assert first.id is not None
+
+    with pytest.raises(IntegrityError):
+        # `add` делает flush, поэтому нарушение всплывает здесь, а не на commit.
+        await repository.add(_check(spreadsheet.id, "ключ"))
+    await session.rollback()
+
+    assert await repository.soft_delete(first.id, at=_LATER) is True
+    await session.commit()
+
+    second = await repository.add(_check(spreadsheet.id, "ключ"))
+    await session.commit()
+
+    assert second.id is not None and second.id != first.id
+    assert [item.id for item in await repository.list_by_spreadsheet(spreadsheet.id)] == [
+        second.id
+    ]

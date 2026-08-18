@@ -21,6 +21,7 @@ class CheckMapper(BaseMapper[CheckORM, Check]):
             raw_payload=orm.raw_payload,
             fetched_at=orm.fetched_at,
             processed_at=orm.processed_at,
+            deleted_at=orm.deleted_at,
             created_at=orm.created_at,
             updated_at=orm.updated_at,
         )
@@ -35,4 +36,5 @@ class CheckMapper(BaseMapper[CheckORM, Check]):
             raw_payload=domain.raw_payload,
             fetched_at=domain.fetched_at,
             processed_at=domain.processed_at,
+            deleted_at=domain.deleted_at,
         )

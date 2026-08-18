@@ -85,6 +85,7 @@ def get_record_service(
     sources: SourceRepository = Depends(get_source_repository),
     records: RecordRepository = Depends(get_record_repository),
     cashed_records: CashedRecordRepository = Depends(get_cashed_record_repository),
+    checks: CheckRepository = Depends(get_check_repository),
     tasks: SheetSyncTaskRepository = Depends(get_sheet_sync_task_repository),
 ) -> RecordService:
     """Сервис операций реестра."""
@@ -96,6 +97,7 @@ def get_record_service(
         sources=sources,
         records=records,
         cashed_records=cashed_records,
+        checks=checks,
         tasks=tasks,
     )
 

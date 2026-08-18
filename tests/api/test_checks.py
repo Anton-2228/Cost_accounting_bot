@@ -273,7 +273,7 @@ async def test_processed_check_is_not_deleted(
     client: AsyncClient,
     session: AsyncSession,
 ) -> None:
-    """Разобранный чек удалить нельзя: на него ссылаются операции реестра."""
+    """Разобранный чек этим путём не убрать: он уходит вслед за своими операциями."""
     spreadsheet = await factories.create_spreadsheet(session, ready=True)
     category = await factories.create_category(session, spreadsheet, title="Еда")
     source = await factories.create_source(session, spreadsheet)

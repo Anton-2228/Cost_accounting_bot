@@ -14,6 +14,7 @@ from api.enums import CategoryKind, SheetTarget, SyncTaskKind
 from api.exceptions.base import BusinessRuleError, NotFoundError
 from api.repositories.cashed_record_repository import CashedRecordRepository
 from api.repositories.category_repository import CategoryRepository
+from api.repositories.check_repository import CheckRepository
 from api.repositories.period_repository import PeriodRepository
 from api.repositories.record_repository import RecordRepository
 from api.repositories.sheet_sync_task_repository import SheetSyncTaskRepository, TaskKey
@@ -38,6 +39,7 @@ class RecordService(BaseSpreadsheetService):
         sources: SourceRepository,
         records: RecordRepository,
         cashed_records: CashedRecordRepository,
+        checks: CheckRepository,
         tasks: SheetSyncTaskRepository,
     ) -> None:
         super().__init__(session, spreadsheets)
@@ -46,6 +48,7 @@ class RecordService(BaseSpreadsheetService):
         self._sources = sources
         self._records = records
         self._cashed_records = cashed_records
+        self._checks = checks
         self._tasks = tasks
 
     async def list_by_period(
@@ -123,6 +126,13 @@ class RecordService(BaseSpreadsheetService):
 
         Удаление мягкое: разобраться в спорном балансе после ошибочного `/del`
         иначе нечем. Баланс счёта пересчитается сам — он не хранится.
+
+        Вместе с последней живой операцией чека умирает и сам чек. Иначе он
+        оставался бы навсегда: разобранный, он не вернётся в очередь `/check`,
+        занимает `external_key` — ту же бумажку нельзя отсканировать заново — и
+        продолжает висеть строкой на листе-архиве месяца, хотя в реестре от него
+        ничего не осталось. Удаление чека тоже мягкое и той же меткой времени:
+        это одно событие, а не два.
         """
         spreadsheet = await self._get_ready(spreadsheet_id)
         record = await self._pick(spreadsheet, record_id)
@@ -133,9 +143,8 @@ class RecordService(BaseSpreadsheetService):
             raise NotFoundError("period")
         assert_open(period)
 
-        await self._records.soft_delete(
-            record.id, at=now_in_timezone(spreadsheet.timezone)
-        )
+        at = now_in_timezone(spreadsheet.timezone)
+        await self._records.soft_delete(record.id, at=at)
         if record.product_name:
             # Кэш «товар → тип» учится на подтверждённых операциях. Если
             # операцию удалили, подтверждения больше нет, и следующий чек должен
@@ -144,7 +153,22 @@ class RecordService(BaseSpreadsheetService):
                 spreadsheet_id, record.product_name
             )
 
-        await self._tasks.enqueue_many(_affected_sheets(spreadsheet_id, record.period_id))
+        keys = _affected_sheets(spreadsheet_id, record.period_id)
+        if record.check_id is not None and not await self._records.exists_by_check(
+            record.check_id
+        ):
+            await self._checks.soft_delete(record.check_id, at=at)
+            # Лист-архив месяца потерял строку — его тоже надо перерисовать.
+            keys.append(
+                (spreadsheet_id, SyncTaskKind.REDRAW, SheetTarget.CHECKS, record.period_id)
+            )
+            logger.info(
+                "Чек %s удалён вместе с последней своей операцией в документе %s",
+                record.check_id,
+                spreadsheet_id,
+            )
+
+        await self._tasks.enqueue_many(keys)
         await self._commit()
         logger.info("Операция %s удалена из документа %s", record.id, spreadsheet_id)
         return record

@@ -117,3 +117,16 @@ class RecordRepository(BaseRepository[RecordORM, Record]):
             .limit(1)
         )
         return found is not None
+
+    async def exists_by_check(self, check_id: int) -> bool:
+        """Есть ли живые операции у чека.
+
+        На этом стоит удаление чека вслед за последней его операцией: пока хоть
+        одна позиция жива, чек продолжает существовать.
+        """
+        found = await self._session.scalar(
+            select(RecordORM.id)
+            .where(RecordORM.check_id == check_id, RecordORM.deleted_at.is_(None))
+            .limit(1)
+        )
+        return found is not None

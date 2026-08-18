@@ -13,6 +13,7 @@ from api.domain.cashed_record import CashedRecord
 from api.enums import CategoryKind, SheetTarget
 from api.exceptions.base import BusinessRuleError, NotFoundError
 from api.repositories.cashed_record_repository import CashedRecordRepository
+from api.repositories.check_repository import CheckRepository
 from api.repositories.period_repository import PeriodRepository
 from api.repositories.record_repository import RecordRepository
 from api.repositories.sheet_sync_task_repository import SheetSyncTaskRepository
@@ -267,6 +268,114 @@ async def test_delete_is_soft_and_balance_recovers(
     balance = await sources.balance_of(source.id)
     assert balance is not None
     assert balance.balance == Decimal("1000.00")
+
+
+async def test_last_record_of_check_takes_the_check_with_it(
+    session: AsyncSession,
+    record_service: RecordService,
+) -> None:
+    """Ушла последняя операция чека — ушёл и чек, и лист-архив устарел.
+
+    Иначе чек оставался бы навсегда: разобранный, он не вернётся в очередь
+    `/check`, занимает `external_key` и продолжает висеть строкой архива, хотя в
+    реестре от него ничего не осталось.
+    """
+    spreadsheet = await factories.create_spreadsheet(session, ready=True)
+    period = await factories.create_period(session, spreadsheet)
+    category = await factories.create_category(session, spreadsheet)
+    source = await factories.create_source(session, spreadsheet)
+    check = await factories.create_check(session, spreadsheet)
+    await session.commit()
+    assert spreadsheet.id is not None and check.id is not None
+
+    record = await factories.create_record(
+        session, spreadsheet, period, category, source,
+        amount=Decimal("-89.90"), check_id=check.id,
+    )
+    await session.commit()
+    assert record.id is not None
+
+    await record_service.delete(spreadsheet.id, record.id)
+
+    checks = CheckRepository(session)
+    assert await checks.get_for_spreadsheet(check.id, spreadsheet.id) is None
+    stored = await checks.get_by_id(check.id, include_deleted=True)
+    assert stored is not None and stored.deleted_at is not None
+
+    targets = {
+        task.target
+        for task in await SheetSyncTaskRepository(session).list_by_spreadsheet(spreadsheet.id)
+    }
+    assert SheetTarget.CHECKS in targets
+
+
+async def test_check_outlives_deletion_of_one_of_its_records(
+    session: AsyncSession,
+    record_service: RecordService,
+) -> None:
+    """Пока жива хоть одна позиция, чек жив, и архив перерисовывать незачем."""
+    spreadsheet = await factories.create_spreadsheet(session, ready=True)
+    period = await factories.create_period(session, spreadsheet)
+    category = await factories.create_category(session, spreadsheet)
+    source = await factories.create_source(session, spreadsheet)
+    check = await factories.create_check(session, spreadsheet)
+    await session.commit()
+    assert spreadsheet.id is not None and check.id is not None
+
+    first = await factories.create_record(
+        session, spreadsheet, period, category, source,
+        amount=Decimal("-89.90"), check_id=check.id,
+    )
+    await factories.create_record(
+        session, spreadsheet, period, category, source,
+        amount=Decimal("-10.00"), check_id=check.id,
+    )
+    await session.commit()
+    assert first.id is not None
+
+    await record_service.delete(spreadsheet.id, first.id)
+
+    alive = await CheckRepository(session).get_for_spreadsheet(check.id, spreadsheet.id)
+    assert alive is not None and alive.deleted_at is None
+
+    targets = {
+        task.target
+        for task in await SheetSyncTaskRepository(session).list_by_spreadsheet(spreadsheet.id)
+    }
+    assert SheetTarget.CHECKS not in targets
+
+
+async def test_delete_of_ordinary_record_touches_no_check(
+    session: AsyncSession,
+    record_service: RecordService,
+) -> None:
+    """Операция без чека удаляется как раньше: архив ни при чём."""
+    spreadsheet = await factories.create_spreadsheet(session, ready=True)
+    category = await factories.create_category(session, spreadsheet)
+    source = await factories.create_source(session, spreadsheet)
+    check = await factories.create_check(session, spreadsheet)
+    await session.commit()
+    assert spreadsheet.id is not None and check.id is not None
+    assert category.id is not None and source.id is not None
+
+    record = await record_service.create(
+        spreadsheet.id,
+        category_id=category.id,
+        source_id=source.id,
+        amount=Decimal("10.00"),
+    )
+    assert record.id is not None and record.check_id is None
+
+    await record_service.delete(spreadsheet.id, record.id)
+
+    alive = await CheckRepository(session).get_for_spreadsheet(check.id, spreadsheet.id)
+    assert alive is not None and alive.deleted_at is None
+
+    targets = {
+        task.target
+        for task in await SheetSyncTaskRepository(session).list_by_spreadsheet(spreadsheet.id)
+    }
+    assert targets == {SheetTarget.OPERATIONS, SheetTarget.STATISTICS, SheetTarget.BILLS}
 
 
 async def test_record_of_closed_period_is_not_deletable(

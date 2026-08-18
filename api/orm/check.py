@@ -11,11 +11,11 @@ from sqlalchemy.orm import Mapped, mapped_column
 
 from api.db.base import Base
 from api.db.column_types import CHECK_KIND
-from api.db.mixins import PkMixin, TimestampMixin
+from api.db.mixins import PkMixin, SoftDeleteMixin, TimestampMixin
 from api.enums import CheckKind
 
 
-class CheckORM(PkMixin, TimestampMixin, Base):
+class CheckORM(PkMixin, TimestampMixin, SoftDeleteMixin, Base):
     """Чек целиком в том виде, в каком он приехал: QR-строка и расшифровка.
 
     Ни даты, ни суммы, ни валюты отдельными колонками здесь нет намеренно.
@@ -28,6 +28,10 @@ class CheckORM(PkMixin, TimestampMixin, Base):
     `external_key` вычисляет парсер формата (для ФНС — «ФН:ФД:ФП»). Уникальность
     `(spreadsheet_id, kind, external_key)` делает повторное добавление того же
     чека невыразимым состоянием, при том что БД не знает ни одного формата.
+    Уникальность **частичная**, среди живых строк: жить может только один
+    экземпляр бумажки, а сколько их было в истории документа — не ограничено.
+    Иначе однажды удалённый чек занимал бы ключ навсегда и ту же бумажку нельзя
+    было бы отсканировать заново.
 
     `raw_payload` заполнен всегда: чек сохраняется только после успешной
     расшифровки. Отказ внешнего сервиса — ошибка пользователю, а не строка со
@@ -38,15 +42,25 @@ class CheckORM(PkMixin, TimestampMixin, Base):
     статуса нет намеренно: разбор либо записал операции и проставил метку одной
     транзакцией, либо не сделал ни того, ни другого. Промежуточных значений,
     которые пришлось бы чинить руками, не существует.
+
+    Удаление **мягкое**, как у операций. Физическое стёрло бы `raw_payload` —
+    единственный след покупки в системе; к тому же операции, вышедшие из чека,
+    удаляются мягко и продолжают на него ссылаться, а строка, на которую
+    ссылаются, обязана существовать. Чек умирает вслед за последней своей живой
+    операцией (`RecordService.delete`) — и по `/check_del`, пока не разобран.
     """
 
     __tablename__ = "checks"
     __table_args__ = (
-        UniqueConstraint(
+        # Уникальность частичная, поэтому индекс, а не констрейнт: `UNIQUE` без
+        # условия распространялся бы и на удалённые чеки.
+        Index(
+            "uq_checks_spreadsheet_id_kind_external_key",
             "spreadsheet_id",
             "kind",
             "external_key",
-            name="uq_checks_spreadsheet_id_kind_external_key",
+            unique=True,
+            postgresql_where="deleted_at IS NULL",
         ),
         # Данные это не ограничивает: id уже первичный ключ. Констрейнт нужен,
         # чтобы стал возможен составной внешний ключ `records → checks`:
@@ -56,12 +70,13 @@ class CheckORM(PkMixin, TimestampMixin, Base):
         Index("ix_checks_spreadsheet_id", "spreadsheet_id", "id"),
         # Очередь разбора: «самый старый неразобранный чек документа». Индекс
         # партиальный, потому что разобранные чеки в этой выборке не нужны
-        # никогда, а их со временем становится большинство.
+        # никогда, а их со временем становится большинство. Удалённые — тем
+        # более: очередь не должна показывать то, чего в документе больше нет.
         Index(
             "ix_checks_unprocessed",
             "spreadsheet_id",
             "id",
-            postgresql_where="processed_at IS NULL",
+            postgresql_where="processed_at IS NULL AND deleted_at IS NULL",
         ),
     )
 

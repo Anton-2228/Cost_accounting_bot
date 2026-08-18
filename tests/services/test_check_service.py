@@ -17,6 +17,7 @@ from api.exceptions.base import ConflictError, NotFoundError
 from api.orm.record import RecordORM
 from api.repositories.cashed_record_repository import CashedRecordRepository
 from api.repositories.category_repository import CategoryRepository
+from api.repositories.check_repository import CheckRepository
 from api.repositories.sheet_sync_task_repository import SheetSyncTaskRepository
 from api.services.check_service import CheckService
 from tests import factories
@@ -526,7 +527,11 @@ async def test_processed_check_cannot_be_deleted(
     session: AsyncSession,
     check_service: CheckService,
 ) -> None:
-    """Разобранный чек не удалить: на него ссылаются операции реестра."""
+    """Разобранный чек не удалить: 409, его убирают удалением его операций.
+
+    Второй вход в то же состояние заводить незачем: удалив чек, но не операции,
+    пользователь получил бы реестр со строками из ниоткуда.
+    """
     spreadsheet = await factories.create_spreadsheet(session, ready=True)
     category = await factories.create_category(session, spreadsheet)
     source = await factories.create_source(session, spreadsheet)
@@ -554,7 +559,7 @@ async def test_unprocessed_check_is_deleted(
     session: AsyncSession,
     check_service: CheckService,
 ) -> None:
-    """Неразобранный чек удаляется физически: хранить сырьё «удалённым» незачем."""
+    """Неразобранный чек удаляется мягко: из выборок пропал, сырьё осталось."""
     spreadsheet = await factories.create_spreadsheet(session, ready=True)
     check = await factories.create_check(session, spreadsheet)
     await session.commit()
@@ -563,5 +568,61 @@ async def test_unprocessed_check_is_deleted(
     await check_service.delete_check(spreadsheet.id, check.id)
     assert await check_service.list_checks(spreadsheet.id) == []
 
+    stored = await CheckRepository(session).get_by_id(check.id, include_deleted=True)
+    assert stored is not None and stored.deleted_at is not None
+
     with pytest.raises(NotFoundError):
         await check_service.delete_check(spreadsheet.id, check.id)
+
+
+async def test_deleted_check_cannot_be_committed(
+    session: AsyncSession,
+    check_service: CheckService,
+) -> None:
+    """Разбор удалённого чека — 404, а не пачка операций из ниоткуда.
+
+    Между показом чека в боте и подтверждением разбора помещается `/check_del`
+    с другого устройства, поэтому проверка нужна на записи, а не только на
+    выдаче очереди.
+    """
+    spreadsheet = await factories.create_spreadsheet(session, ready=True)
+    category = await factories.create_category(session, spreadsheet)
+    source = await factories.create_source(session, spreadsheet)
+    check = await factories.create_check(session, spreadsheet)
+    await session.commit()
+    assert spreadsheet.id is not None and category.id is not None
+    assert source.id is not None and check.id is not None
+
+    await check_service.delete_check(spreadsheet.id, check.id)
+
+    with pytest.raises(NotFoundError):
+        await check_service.commit_check(
+            spreadsheet.id,
+            check_id=check.id,
+            source_id=source.id,
+            items=[
+                CheckItem(product_name="молоко", category_id=category.id, amount=Decimal("1.00"))
+            ],
+        )
+
+
+async def test_same_paper_is_saved_again_after_deletion(
+    session: AsyncSession,
+    check_service: CheckService,
+) -> None:
+    """Ту же бумажку после удаления принимаем как новый чек.
+
+    Уникальность ключа частичная: удалённый чек его не занимает. Иначе `/check_del`
+    означал бы «чек исчез, и вернуть его нечем».
+    """
+    spreadsheet = await factories.create_spreadsheet(session, ready=True)
+    await session.commit()
+    assert spreadsheet.id is not None
+
+    first = await _save(check_service, spreadsheet.id)
+    assert first.id is not None
+    await check_service.delete_check(spreadsheet.id, first.id)
+
+    second = await _save(check_service, spreadsheet.id)
+    assert second.id is not None and second.id != first.id
+    assert [check.id for check in await check_service.list_checks(spreadsheet.id)] == [second.id]

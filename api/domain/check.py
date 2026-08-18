@@ -19,6 +19,8 @@ class Check(BaseModel):
     бы зашить один формат в общую модель.
 
     `processed_at` — метка разбора: пусто, значит чек ждёт своей очереди.
+    `deleted_at` — метка мягкого удаления: чек умирает вслед за последней своей
+    живой операцией, а сырьё покупки остаётся.
     """
 
     model_config = ConfigDict(from_attributes=True)
@@ -31,5 +33,6 @@ class Check(BaseModel):
     raw_payload: dict[str, Any]
     fetched_at: datetime
     processed_at: datetime | None = None
+    deleted_at: datetime | None = None
     created_at: datetime | None = None
     updated_at: datetime | None = None

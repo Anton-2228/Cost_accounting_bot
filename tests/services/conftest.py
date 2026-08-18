@@ -63,6 +63,7 @@ def record_service(session: AsyncSession) -> RecordService:
         sources=SourceRepository(session),
         records=RecordRepository(session),
         cashed_records=CashedRecordRepository(session),
+        checks=CheckRepository(session),
         tasks=SheetSyncTaskRepository(session),
     )
 
