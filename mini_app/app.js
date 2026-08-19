@@ -7,6 +7,10 @@
 // Сканер — штатный `showScanQrPopup` Telegram: ноль зависимостей и ноль возни
 // с разрешениями камеры. Следствие принятое сознательно: на Telegram Desktop
 // сканера нет, приложение мобильное.
+//
+// Сканер открывается сам при запуске: сканирование — единственный сценарий
+// приложения, и лишний тап по кнопке ничего не решает. Кнопка остаётся путём
+// повтора — после отмены сканера, ошибки или добавленного чека.
 
 (function () {
     "use strict";
@@ -181,27 +185,40 @@
         }
     }
 
-    function onScanClick() {
+    function scannerUnavailable() {
+        setStatus(
+            "Сканер доступен только в мобильном Telegram — откройте приложение с телефона.",
+            true
+        );
+    }
+
+    function openScanner() {
         setStatus("", false);
         resetCard();
 
-        if (!tg || typeof tg.showScanQrPopup !== "function") {
-            setStatus(
-                "Сканер доступен только в мобильном Telegram — откройте приложение с телефона.",
-                true
-            );
+        // Проверяем версию, а не наличие метода: `showScanQrPopup` в SDK
+        // определён всегда и на неподдерживающем клиенте бросает, а не молчит.
+        if (!tg || !tg.isVersionAtLeast || !tg.isVersionAtLeast("6.4")) {
+            scannerUnavailable();
             return;
         }
 
-        tg.showScanQrPopup({ text: "QR-код с чека" }, function (text) {
-            // Возврат true закрывает окно сканера. Без этого оно осталось бы
-            // висеть поверх результата.
-            tg.closeScanQrPopup();
-            if (text) {
-                onScanned(text);
-            }
-            return true;
-        });
+        try {
+            tg.showScanQrPopup({ text: "QR-код с чека" }, function (text) {
+                // Возврат true закрывает окно сканера. Без этого оно осталось бы
+                // висеть поверх результата.
+                tg.closeScanQrPopup();
+                if (text) {
+                    onScanned(text);
+                }
+                return true;
+            });
+        } catch (error) {
+            // Сюда попадает клиент, который версию заявил, а метод не тянет.
+            // Ловим потому, что этот вызов теперь стоит на старте приложения:
+            // непойманный бросок оборвал бы всё, что идёт после него.
+            scannerUnavailable();
+        }
     }
 
     function init() {
@@ -213,12 +230,17 @@
             els.scan.disabled = true;
             return;
         }
-        els.scan.addEventListener("click", onScanClick);
+        els.scan.addEventListener("click", openScanner);
         els.confirm.addEventListener("click", onConfirm);
         els.cancel.addEventListener("click", function () {
             resetCard();
             setStatus("", false);
         });
+
+        // Сканер поднимаем последним и отдельным тиком: слушатели к этому
+        // моменту уже на месте, а страница успевает отрисоваться — иначе
+        // закрывший сканер видит, как экран появляется только сейчас.
+        setTimeout(openScanner, 0);
     }
 
     init();
