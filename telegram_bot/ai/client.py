@@ -12,20 +12,27 @@
 * **валидация ответа схемой** — форма ответа проверяется, а не предполагается;
 * **типизированные ошибки** — отказ модели становится сообщением пользователю,
   а не исключением мимо обработчика.
+
+Наружу вместе с ответом уезжает :class:`LlmUsage` — во что вызов обошёлся.
+Писать замер в базу отсюда было бы неверно: у пакета `ai` нет и не должно быть
+знания о путях api, ровно как у `api_client` нет знания об OpenAI. Клиент
+отдаёт замер данными, а отправляет его тот, кто звал.
 """
 
 from __future__ import annotations
 
 import json
 from collections.abc import Sequence
+from decimal import Decimal, InvalidOperation
 from typing import Any
 
 from openai import APIError, AsyncOpenAI, OpenAIError
+from openai.types.chat import ChatCompletion
 from pydantic import ValidationError
 
 from telegram_bot import constants
 from telegram_bot.ai.errors import AiResponseError, AiUnavailableError
-from telegram_bot.ai.models import CategorySuggestions, TypeSuggestions
+from telegram_bot.ai.models import CategorySuggestions, LlmUsage, TypeSuggestions
 from telegram_bot.logging import get_logger
 from telegram_bot.resources.prompts import (
     CATEGORIES_SYSTEM_PROMPT,
@@ -71,14 +78,16 @@ class AiClient:
         self,
         products: Sequence[str],
         known_types: Sequence[str],
-    ) -> dict[int, str]:
-        """Тип для каждого товара: номер позиции → тип.
+    ) -> tuple[dict[int, str], LlmUsage | None]:
+        """Тип для каждого товара: номер позиции → тип, и замер вызова.
 
         Номера — позиции во входном списке, начиная с единицы. Позиции, о
         которых модель промолчала, в ответе просто отсутствуют: разбор покажет
         их пустыми и даст поправить руками, а не откажется целиком.
+
+        Замер пуст, если провайдер не прислал `usage`: учитывать нечего.
         """
-        raw = await self._invoke(
+        raw, usage = await self._invoke(
             TYPES_SYSTEM_PROMPT,
             TYPES_USER_PROMPT.format(
                 products=_numbered(products),
@@ -86,20 +95,21 @@ class AiClient:
             ),
         )
         answer = _validate(raw, TypeSuggestions)
-        return {item.id: item.type.strip().lower() for item in answer.items if item.id > 0}
+        types = {item.id: item.type.strip().lower() for item in answer.items if item.id > 0}
+        return types, usage
 
     async def suggest_categories(
         self,
         product_types: Sequence[str],
         categories: Sequence[str],
-    ) -> dict[int, str]:
-        """Категория для каждого типа товара: номер типа → название категории.
+    ) -> tuple[dict[int, str], LlmUsage | None]:
+        """Категория для каждого типа: номер типа → название, и замер вызова.
 
         Спрашивается именно про типы, а не про позиции: категорию определяет
         тип, и два одинаковых типа в одном чеке не должны разъехаться по разным
         категориям из-за того, что модель ответила о них по отдельности.
         """
-        raw = await self._invoke(
+        raw, usage = await self._invoke(
             CATEGORIES_SYSTEM_PROMPT.format(
                 default_category=constants.DEFAULT_EXPENSE_CATEGORY
             ),
@@ -109,10 +119,16 @@ class AiClient:
             ),
         )
         answer = _validate(raw, CategorySuggestions)
-        return {item.id: item.category.strip() for item in answer.items if item.id > 0}
+        suggestions = {item.id: item.category.strip() for item in answer.items if item.id > 0}
+        return suggestions, usage
 
-    async def _invoke(self, system_prompt: str, user_prompt: str) -> str:
-        """Один вызов модели; возвращает содержимое ответа как текст."""
+    async def _invoke(self, system_prompt: str, user_prompt: str) -> tuple[str, LlmUsage | None]:
+        """Один вызов модели; возвращает текст ответа и замер.
+
+        `extra_body` просит провайдера положить в `usage` стоимость вызова.
+        Поле специфично для OpenRouter и на официальном OpenAI просто
+        игнорируется — тогда замер приедет без цены, но с токенами.
+        """
         try:
             response = await self._client.chat.completions.create(
                 model=self._model,
@@ -124,6 +140,7 @@ class AiClient:
                 n=1,
                 response_format={"type": "json_object"},
                 max_tokens=constants.AI_MAX_TOKENS,
+                extra_body={"usage": {"include": True}},
             )
         except APIError as error:
             logger.warning("Модель ответила ошибкой: %s", error)
@@ -138,7 +155,42 @@ class AiClient:
         content = choices[0].message.content if choices else None
         if not content:
             raise AiResponseError("Модель вернула пустой ответ")
-        return content
+        return content, _usage_of(response)
+
+
+def _usage_of(response: ChatCompletion) -> LlmUsage | None:
+    """Замер из ответа провайдера или `None`, если его там нет.
+
+    Модель берётся из ответа, а не из настроек: маршрутизация OpenRouter может
+    отдать ответ другой модели, и заплачено будет за неё.
+
+    Стоимость приходит нестандартным полем `usage.cost` и лежит в `model_extra`.
+    В `Decimal` она переводится через строку: `Decimal(0.000123)` от `float`
+    даёт хвост из двоичного представления, который потом уедет в БД.
+    """
+    usage = response.usage
+    if usage is None:
+        return None
+
+    raw = usage.model_dump()
+    return LlmUsage(
+        model=response.model or "",
+        prompt_tokens=usage.prompt_tokens,
+        completion_tokens=usage.completion_tokens,
+        total_tokens=usage.total_tokens,
+        cost=_cost(raw.get("cost")),
+        raw=raw,
+    )
+
+
+def _cost(value: Any) -> Decimal | None:
+    """Стоимость вызова как `Decimal`; `None`, если провайдер её не прислал."""
+    if value is None or isinstance(value, bool):
+        return None
+    try:
+        return Decimal(str(value))
+    except (InvalidOperation, ValueError):
+        return None
 
 
 def _validate[T: (TypeSuggestions, CategorySuggestions)](raw: str, schema: type[T]) -> T:

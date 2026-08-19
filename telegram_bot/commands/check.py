@@ -31,12 +31,18 @@ from aiogram.fsm.context import FSMContext
 from aiogram.types import CallbackQuery, InlineKeyboardMarkup, Message
 
 from telegram_bot import constants
-from telegram_bot.ai import AiClient, AiError
+from telegram_bot.ai import AiClient, AiError, LlmUsage
 from telegram_bot.aiogram_wrapper import AiogramWrapper
 from telegram_bot.api_client import ApiGateway
 from telegram_bot.api_client.checks import CommitItem, NewProductType
-from telegram_bot.api_client.errors import ApiConflictError
-from telegram_bot.api_client.models import Category, Check, Spreadsheet
+from telegram_bot.api_client.errors import ApiConflictError, ApiError
+from telegram_bot.api_client.models import (
+    Category,
+    Check,
+    LlmEntityKind,
+    LlmOperation,
+    Spreadsheet,
+)
 from telegram_bot.checks import ReceiptError, ReceiptExtractor
 from telegram_bot.checks.draft import CheckDraft, DraftItem
 from telegram_bot.commands.base_command import BaseCommand
@@ -234,6 +240,7 @@ class CheckCommand(BaseCommand):
             categories,
             chat_id=chat_id,
             state=state,
+            spreadsheet_id=spreadsheet.id,
         )
         if not suggested:
             return
@@ -250,6 +257,7 @@ class CheckCommand(BaseCommand):
         *,
         chat_id: int,
         state: FSMContext,
+        spreadsheet_id: int,
     ) -> bool:
         """Спрашивает модель о товарах, которых нет в кэше.
 
@@ -262,7 +270,7 @@ class CheckCommand(BaseCommand):
 
         known_types = sorted(_product_types(categories))
         try:
-            answer = await self.ai.suggest_types(
+            answer, usage = await self.ai.suggest_types(
                 [draft.items[number - 1].name for number in unknown],
                 known_types,
             )
@@ -272,6 +280,13 @@ class CheckCommand(BaseCommand):
             await self.aiogram.send_message(chat_id, CHECK_AI_UNAVAILABLE_MESSAGE)
             return False
 
+        await self._report_usage(
+            usage,
+            spreadsheet_id=spreadsheet_id,
+            operation=LlmOperation.SUGGEST_PRODUCT_TYPES,
+            check_id=draft.check_id,
+        )
+
         for position, number in enumerate(unknown, 1):
             suggested = answer.get(position)
             if suggested:
@@ -279,6 +294,37 @@ class CheckCommand(BaseCommand):
                     : constants.PRODUCT_TYPE_MAX_LENGTH
                 ]
         return True
+
+    async def _report_usage(
+        self,
+        usage: LlmUsage | None,
+        *,
+        spreadsheet_id: int,
+        operation: LlmOperation,
+        check_id: int,
+    ) -> None:
+        """Записывает, во что обошёлся вызов модели.
+
+        Ошибка учёта глушится логом: деньги уже потрачены, а разбор чека —
+        то, ради чего пользователь здесь, и ронять его из-за не записанной
+        строки статистики нельзя.
+
+        Пустой замер означает, что провайдер не прислал `usage`: учитывать
+        нечего.
+        """
+        if usage is None:
+            logger.warning("Провайдер не прислал usage для операции %s", operation)
+            return
+        try:
+            await self.api.llm_usages.record(
+                spreadsheet_id,
+                usage=usage,
+                operation=operation,
+                entity_kind=LlmEntityKind.CHECK,
+                entity_id=check_id,
+            )
+        except ApiError as error:
+            logger.warning("Замер обращения к модели не записан: %s", error)
 
     # --- Стадия 1: типы --------------------------------------------------
 
@@ -368,7 +414,7 @@ class CheckCommand(BaseCommand):
         suggested: dict[str, str] = {}
         if unknown_types:
             try:
-                answer = await self.ai.suggest_categories(
+                answer, usage = await self.ai.suggest_categories(
                     unknown_types,
                     [category.title for category in categories],
                 )
@@ -377,6 +423,14 @@ class CheckCommand(BaseCommand):
                 await self.aiogram.clear_state(state)
                 await self.aiogram.send_message(chat_id, CHECK_AI_UNAVAILABLE_MESSAGE)
                 return
+
+            await self._report_usage(
+                usage,
+                spreadsheet_id=spreadsheet.id,
+                operation=LlmOperation.SUGGEST_CATEGORIES,
+                check_id=draft.check_id,
+            )
+
             for position, product_type in enumerate(unknown_types, 1):
                 title = answer.get(position)
                 if title:

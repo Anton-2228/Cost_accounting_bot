@@ -235,24 +235,70 @@ async def test_import_and_redraw_of_one_sheet_do_not_collapse(
     }
 
 
-async def test_delete_removes_document_with_owner(
+async def test_delete_unlinks_document_and_keeps_owner(
     session: AsyncSession,
     spreadsheet_service: SpreadsheetService,
 ) -> None:
-    """Удаление документа сносит и пользователя, и всё содержимое.
+    """Отвязывание прячет документ, но не стирает ни его, ни пользователя.
 
-    Каскад проходит целиком благодаря отложенным составным ключам: порядок между
-    каскадами не определён, и немедленная проверка уронила бы удаление.
+    Содержимое остаётся в БД намеренно: физическое удаление шло каскадом и
+    уносило вместе с документом всю историю, включая учёт потраченных на модель
+    денег, — а они потрачены независимо от того, ведёт ли пользователь учёт
+    дальше.
     """
     spreadsheet = await spreadsheet_service.create(telegram_id=560, title="Т", reset_day=5)
     assert spreadsheet.id is not None
 
     await spreadsheet_service.delete(spreadsheet.id)
 
-    assert await UserRepository(session).get_by_telegram_id(560) is None
+    assert await UserRepository(session).get_by_telegram_id(560) is not None
     with pytest.raises(NotFoundError):
         await spreadsheet_service.get(spreadsheet.id)
-    assert await CategoryRepository(session).list_by_spreadsheet(spreadsheet.id) == []
+    with pytest.raises(NotFoundError):
+        await spreadsheet_service.get_by_telegram_id(560)
+    assert await CategoryRepository(session).list_by_spreadsheet(spreadsheet.id) != []
+
+
+async def test_unlinked_document_frees_user_for_the_next_one(
+    spreadsheet_service: SpreadsheetService,
+) -> None:
+    """После отвязывания `/start` заводит новый документ рядом со старым.
+
+    Ради этого уникальность `user_id` и стала частичной: обычный `UNIQUE`
+    держал бы место за отвязанным документом навсегда, и вернувшийся
+    пользователь не смог бы завести таблицу вообще никогда.
+    """
+    first = await spreadsheet_service.create(telegram_id=561, title="Первая", reset_day=5)
+    assert first.id is not None
+    await spreadsheet_service.delete(first.id)
+
+    second = await spreadsheet_service.create(telegram_id=561, title="Вторая", reset_day=5)
+
+    assert second.id != first.id
+    assert (await spreadsheet_service.get_by_telegram_id(561)).id == second.id
+
+
+async def test_unlink_clears_queue_and_undelivered_notifications(
+    session: AsyncSession,
+    spreadsheet_service: SpreadsheetService,
+) -> None:
+    """Хвосты гасятся: каскад, делавший это раньше, больше не срабатывает.
+
+    Иначе `google_sheets_service` продолжал бы перерисовывать листы отвязанной
+    таблицы, а бот — досылать по ней сообщения.
+    """
+    spreadsheet = await spreadsheet_service.create(telegram_id=562, title="Т", reset_day=5)
+    assert spreadsheet.id is not None
+    await UserNotificationRepository(session).notify(
+        spreadsheet.id, NotificationKind.TABLE_READY, "готово"
+    )
+    await session.commit()
+    assert await SheetSyncTaskRepository(session).list_by_spreadsheet(spreadsheet.id) != []
+
+    await spreadsheet_service.delete(spreadsheet.id)
+
+    assert await SheetSyncTaskRepository(session).list_by_spreadsheet(spreadsheet.id) == []
+    assert await UserNotificationRepository(session).list_undelivered(spreadsheet.id) == []
 
 
 async def test_get_by_telegram_id_of_unknown_user(

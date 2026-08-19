@@ -24,11 +24,20 @@ from aiogram.types import CallbackQuery, Chat, InlineKeyboardMarkup, Message
 from aiogram.types import User as TelegramUser
 
 from telegram_bot.access import AccessGuard
-from telegram_bot.ai import AiClient, AiUnavailableError
+from telegram_bot.ai import AiClient, AiUnavailableError, LlmUsage
 from telegram_bot.aiogram_wrapper import AiogramWrapper
 from telegram_bot.api_client import ApiGateway
 from telegram_bot.api_client.checks import CommitItem, NewProductType
-from telegram_bot.api_client.models import CashedRecord, Category, Check, Record, Source
+from telegram_bot.api_client.errors import ApiUnavailableError
+from telegram_bot.api_client.models import (
+    CashedRecord,
+    Category,
+    Check,
+    LlmEntityKind,
+    LlmOperation,
+    Record,
+    Source,
+)
 from telegram_bot.commands.check import CheckCommand
 from telegram_bot.commands.check_delete import CheckDeleteCommand
 from telegram_bot.commands.check_skip import CheckSkipCommand
@@ -206,17 +215,68 @@ class FakeChecks:
         ]
 
 
+class FakeLlmUsages:
+    """Учёт обращений к модели: запоминает замеры либо отказывает."""
+
+    def __init__(self, *, broken: bool = False) -> None:
+        self.broken = broken
+        self.recorded: list[dict[str, Any]] = []
+
+    async def record(
+        self,
+        spreadsheet_id: int,
+        *,
+        usage: LlmUsage,
+        operation: LlmOperation,
+        entity_kind: LlmEntityKind | None = None,
+        entity_id: int | None = None,
+    ) -> None:
+        if self.broken:
+            raise ApiUnavailableError("api недоступен")
+        self.recorded.append(
+            {
+                "spreadsheet_id": spreadsheet_id,
+                "operation": operation,
+                "entity_kind": entity_kind,
+                "entity_id": entity_id,
+                "usage": usage,
+            }
+        )
+
+
 class FakeApi:
     """Шлюз api целиком."""
 
-    def __init__(self, checks: FakeChecks, catalog: FakeCatalog) -> None:
+    def __init__(
+        self,
+        checks: FakeChecks,
+        catalog: FakeCatalog,
+        llm_usages: FakeLlmUsages | None = None,
+    ) -> None:
         self.spreadsheets = FakeSpreadsheets()
         self.catalog = catalog
         self.checks = checks
+        self.llm_usages = llm_usages or FakeLlmUsages()
+
+
+def make_usage(total_tokens: int = 30, cost: str | None = "0.0004212") -> LlmUsage:
+    """Замер, какой отдал бы провайдер."""
+    return LlmUsage(
+        model="anthropic/claude-sonnet-4.5",
+        prompt_tokens=total_tokens - 10,
+        completion_tokens=10,
+        total_tokens=total_tokens,
+        cost=Decimal(cost) if cost is not None else None,
+        raw={"total_tokens": total_tokens, "cost": cost},
+    )
 
 
 class FakeAi:
-    """Модель: заранее заданные ответы либо отказ."""
+    """Модель: заранее заданные ответы либо отказ.
+
+    Отдаёт пару «ответ + замер» ровно как настоящий клиент: замер уезжает в
+    учёт наружу, а не пишется внутри клиента.
+    """
 
     def __init__(
         self,
@@ -224,24 +284,34 @@ class FakeAi:
         categories: dict[int, str] | None = None,
         *,
         broken: bool = False,
+        usage: LlmUsage | None = None,
     ) -> None:
         self.types = types or {}
         self.categories = categories or {}
         self.broken = broken
+        self.usage = usage if usage is not None else make_usage()
         self.type_calls: list[list[str]] = []
         self.category_calls: list[list[str]] = []
 
-    async def suggest_types(self, products: Any, known_types: Any) -> dict[int, str]:
+    async def suggest_types(
+        self,
+        products: Any,
+        known_types: Any,
+    ) -> tuple[dict[int, str], LlmUsage | None]:
         if self.broken:
             raise AiUnavailableError("нет связи")
         self.type_calls.append(list(products))
-        return dict(self.types)
+        return dict(self.types), self.usage
 
-    async def suggest_categories(self, product_types: Any, categories: Any) -> dict[int, str]:
+    async def suggest_categories(
+        self,
+        product_types: Any,
+        categories: Any,
+    ) -> tuple[dict[int, str], LlmUsage | None]:
         if self.broken:
             raise AiUnavailableError("нет связи")
         self.category_calls.append(list(product_types))
-        return dict(self.categories)
+        return dict(self.categories), self.usage
 
 
 class FakeCatchUp:
@@ -283,12 +353,14 @@ class Harness:
         cached: dict[str, str] | None = None,
         ai: FakeAi | None = None,
         categories: list[Category] | None = None,
+        llm_usages: FakeLlmUsages | None = None,
     ) -> None:
         self.aiogram = FakeAiogram()
         self.checks = FakeChecks(checks, cached or {})
         self.catalog = FakeCatalog(categories or [_FOOD, _BASKET], [_CARD])
         self.ai = ai or FakeAi()
-        api = cast("ApiGateway", FakeApi(self.checks, self.catalog))
+        self.llm_usages = llm_usages or FakeLlmUsages()
+        api = cast("ApiGateway", FakeApi(self.checks, self.catalog, self.llm_usages))
         catch_up = cast("NotificationCatchUp", FakeCatchUp())
 
         self.manager = Manager(AccessGuard(frozenset({_USER_ID})), self.aiogram)
@@ -380,6 +452,99 @@ async def test_whole_check_reaches_commit() -> None:
         NewProductType(category_id=_FOOD.id, product_type="сладости")
     ]
     assert harness.aiogram.said("Записано операций: 2")
+    assert await harness.current_state() is None
+
+
+async def test_both_model_calls_are_accounted() -> None:
+    """Каждый вызов модели уезжает в учёт отдельной строкой.
+
+    Две стадии — два разных вопроса с разной ценой, и складывать их в одну
+    строку значило бы потерять единственное различие, ради которого учёт и
+    ведётся. Замер привязывается к разбираемому чеку: записей реестра в этот
+    момент ещё не существует.
+    """
+    harness = Harness(
+        checks=[_check(1, ("конфеты", 4000))],
+        ai=FakeAi(types={1: "сладости"}, categories={1: "Еда"}),
+    )
+
+    await _walk_to_commit(harness)
+
+    recorded = harness.llm_usages.recorded
+    assert [item["operation"] for item in recorded] == [
+        LlmOperation.SUGGEST_PRODUCT_TYPES,
+        LlmOperation.SUGGEST_CATEGORIES,
+    ]
+    assert {item["entity_kind"] for item in recorded} == {LlmEntityKind.CHECK}
+    assert {item["entity_id"] for item in recorded} == {1}
+    assert recorded[0]["spreadsheet_id"] == 10
+    assert recorded[0]["usage"].cost == Decimal("0.0004212")
+
+
+async def test_check_is_parsed_even_if_accounting_fails() -> None:
+    """Отказ учёта не роняет разбор: деньги уже потрачены, чек важнее.
+
+    Строка статистики — единственное, что теряется; пользователь не должен
+    узнать об этом вовсе.
+    """
+    harness = Harness(
+        checks=[_check(1, ("конфеты", 4000))],
+        ai=FakeAi(types={1: "сладости"}, categories={1: "Еда"}),
+        llm_usages=FakeLlmUsages(broken=True),
+    )
+
+    await _walk_to_commit(harness)
+
+    assert harness.llm_usages.recorded == []
+    assert len(harness.checks.committed) == 1
+    assert harness.aiogram.said("Записано операций: 1")
+
+
+async def test_usage_without_cost_is_still_accounted() -> None:
+    """Провайдер без цены учитывается по токенам, а не пропускается.
+
+    Пустая стоимость означает «неизвестно»: выбрасывать такую строку значило бы
+    занижать сумму ровно на неизвестное.
+    """
+    harness = Harness(
+        checks=[_check(1, ("конфеты", 4000))],
+        ai=FakeAi(
+            types={1: "сладости"},
+            categories={1: "Еда"},
+            usage=make_usage(cost=None),
+        ),
+    )
+
+    await _walk_to_commit(harness)
+
+    assert len(harness.llm_usages.recorded) == 2
+    assert harness.llm_usages.recorded[0]["usage"].cost is None
+
+
+async def test_missing_usage_is_not_recorded() -> None:
+    """Ответ без `usage` не порождает строку учёта: учитывать нечего."""
+    harness = Harness(
+        checks=[_check(1, ("конфеты", 4000))],
+        ai=FakeAi(types={1: "сладости"}, categories={1: "Еда"}),
+    )
+    harness.ai.usage = None
+
+    await _walk_to_commit(harness)
+
+    assert harness.llm_usages.recorded == []
+    assert len(harness.checks.committed) == 1
+
+
+async def test_unavailable_model_is_not_accounted() -> None:
+    """Несостоявшийся вызов в учёт не попадает: провайдер за него не выставит счёт."""
+    harness = Harness(
+        checks=[_check(1, ("конфеты", 4000))],
+        ai=FakeAi(broken=True),
+    )
+
+    await harness.send("/check")
+
+    assert harness.llm_usages.recorded == []
     assert await harness.current_state() is None
 
 

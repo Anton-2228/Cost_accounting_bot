@@ -16,6 +16,7 @@ from telegram_bot.api_client.errors import (
     ApiValidationError,
 )
 from telegram_bot.api_client.http import ApiHttpClient
+from telegram_bot.api_client.llm_usages import LlmUsagesClient
 from telegram_bot.api_client.notifications import NotificationsClient
 from telegram_bot.api_client.records import RecordsClient
 from telegram_bot.api_client.spreadsheets import SpreadsheetsClient
@@ -33,6 +34,7 @@ class ApiGateway:
         self.transfers = TransfersClient(self._http)
         self.checks = ChecksClient(self._http)
         self.notifications = NotificationsClient(self._http)
+        self.llm_usages = LlmUsagesClient(self._http)
 
     async def aclose(self) -> None:
         """Закрывает соединение с api."""
@@ -49,6 +51,7 @@ __all__ = [
     "CatalogClient",
     "ChecksClient",
     "CommitItem",
+    "LlmUsagesClient",
     "NewProductType",
     "NotificationsClient",
     "RecordsClient",

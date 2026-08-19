@@ -53,7 +53,7 @@ class CommandName(StrEnum):
     TABLE = "table"
     TABLE_SYNC = "table_sync"
     TABLE_EMAIL = "table_email"
-    TABLE_DELETE = "table_delete"
+    TABLE_UNLINK = "table_unlink"
 
     CHECK = "check"
     CHECK_SKIP = "check_skip"

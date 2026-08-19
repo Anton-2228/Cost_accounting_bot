@@ -73,7 +73,7 @@ _MENU = [
     BotCommand(command=CommandName.TABLE, description="Ссылка на таблицу"),
     BotCommand(command=CommandName.TABLE_SYNC, description="Вчитать правки из таблицы"),
     BotCommand(command=CommandName.TABLE_EMAIL, description="Открыть доступ почте"),
-    BotCommand(command=CommandName.TABLE_DELETE, description="Отвязать таблицу"),
+    BotCommand(command=CommandName.TABLE_UNLINK, description="Отвязать таблицу"),
     BotCommand(command=CommandName.CHECK, description="Разобрать чек"),
     BotCommand(command=CommandName.CHECK_SKIP, description="Отложить чек"),
     BotCommand(command=CommandName.CHECK_DEL, description="Удалить чек"),
@@ -114,14 +114,14 @@ def _register_handlers() -> None:
             *_CREATE_TABLE_STATES,
             *_CHECK_STATES,
             States.ADD_EMAIL,
-            States.CONFIRM_DELETE_TABLE,
+            States.CONFIRM_UNLINK_TABLE,
         ),
         F.text.startswith("/"),
     )
 
     router.message.register(_on_create_table_step, StateFilter(*_CREATE_TABLE_STATES))
     router.message.register(_on_add_email_step, StateFilter(States.ADD_EMAIL))
-    router.message.register(_on_delete_table_step, StateFilter(States.CONFIRM_DELETE_TABLE))
+    router.message.register(_on_unlink_table_step, StateFilter(States.CONFIRM_UNLINK_TABLE))
     router.message.register(_on_check_step, StateFilter(*_CHECK_STATES))
 
     # Кнопка «Готово» живёт только внутри разбора: без фильтра по состоянию
@@ -136,7 +136,7 @@ def _register_handlers() -> None:
     router.message.register(_on_check, Command(CommandName.CHECK), StateFilter(None))
     router.message.register(_on_table_email, Command(CommandName.TABLE_EMAIL), StateFilter(None))
     router.message.register(
-        _on_table_delete, Command(CommandName.TABLE_DELETE), StateFilter(None)
+        _on_table_unlink, Command(CommandName.TABLE_UNLINK), StateFilter(None)
     )
 
     for name in _SIMPLE_COMMANDS:
@@ -167,9 +167,9 @@ async def _on_add_email_step(message: Message, state: FSMContext) -> None:
     await MANAGER.launch(CommandName.TABLE_EMAIL, message, state)
 
 
-async def _on_delete_table_step(message: Message, state: FSMContext) -> None:
+async def _on_unlink_table_step(message: Message, state: FSMContext) -> None:
     """Подтверждение отвязки таблицы."""
-    await MANAGER.launch(CommandName.TABLE_DELETE, message, state)
+    await MANAGER.launch(CommandName.TABLE_UNLINK, message, state)
 
 
 async def _on_check_step(message: Message, state: FSMContext) -> None:
@@ -207,9 +207,9 @@ async def _on_table_email(message: Message, state: FSMContext) -> None:
     await MANAGER.launch(CommandName.TABLE_EMAIL, message, state)
 
 
-async def _on_table_delete(message: Message, state: FSMContext) -> None:
+async def _on_table_unlink(message: Message, state: FSMContext) -> None:
     """Начало отвязки таблицы."""
-    await MANAGER.launch(CommandName.TABLE_DELETE, message, state)
+    await MANAGER.launch(CommandName.TABLE_UNLINK, message, state)
 
 
 def _make_simple_handler(name: str):  # type: ignore[no-untyped-def]

@@ -16,6 +16,7 @@ from api.dependencies.repositories import (
     get_cashed_record_repository,
     get_category_repository,
     get_check_repository,
+    get_llm_usage_repository,
     get_period_repository,
     get_record_repository,
     get_sheet_mapping_repository,
@@ -30,6 +31,7 @@ from api.dependencies.repositories import (
 from api.repositories.cashed_record_repository import CashedRecordRepository
 from api.repositories.category_repository import CategoryRepository
 from api.repositories.check_repository import CheckRepository
+from api.repositories.llm_usage_repository import LlmUsageRepository
 from api.repositories.period_repository import PeriodRepository
 from api.repositories.record_repository import RecordRepository
 from api.repositories.sheet_mapping_repository import SheetMappingRepository
@@ -42,6 +44,7 @@ from api.repositories.user_notification_repository import UserNotificationReposi
 from api.repositories.user_repository import UserRepository
 from api.services.category_import_service import CategoryImportService
 from api.services.check_service import CheckService
+from api.services.llm_usage_service import LlmUsageService
 from api.services.notification_service import NotificationService
 from api.services.period_service import PeriodService
 from api.services.record_service import RecordService
@@ -144,6 +147,15 @@ def get_check_service(
         checks=checks,
         tasks=tasks,
     )
+
+
+def get_llm_usage_service(
+    session: AsyncSession = Depends(get_session),
+    spreadsheets: SpreadsheetRepository = Depends(get_spreadsheet_repository),
+    usages: LlmUsageRepository = Depends(get_llm_usage_repository),
+) -> LlmUsageService:
+    """Сервис учёта обращений к модели."""
+    return LlmUsageService(session, spreadsheets, usages=usages)
 
 
 def get_period_service(

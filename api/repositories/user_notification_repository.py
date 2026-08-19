@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from datetime import datetime
 
-from sqlalchemy import select, update
+from sqlalchemy import delete, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from api.domain.pending_notification import PendingNotification
@@ -91,6 +91,22 @@ class UserNotificationRepository(BaseRepository[UserNotificationORM, UserNotific
             )
             for row in rows
         ]
+
+    async def delete_undelivered(self, spreadsheet_id: int) -> int:
+        """Убирает недоставленные сообщения документа; возвращает их число.
+
+        Зовётся при отвязывании документа: рассказывать пользователю про
+        таблицу, которую он только что отвязал, бессмысленно. Уже доставленные
+        остаются — они история, а не работа.
+        """
+        result = await self._session.execute(
+            delete(UserNotificationORM).where(
+                UserNotificationORM.spreadsheet_id == spreadsheet_id,
+                UserNotificationORM.delivered_at.is_(None),
+            )
+        )
+        await self._session.flush()
+        return affected_rows(result)
 
     async def mark_delivered(
         self,

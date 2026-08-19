@@ -22,6 +22,8 @@ from api.enums import (
     CategoryKind,
     CheckKind,
     EntityStatus,
+    LlmEntityKind,
+    LlmOperation,
     NotificationKind,
     PeriodStatus,
     SheetTarget,
@@ -30,6 +32,10 @@ from api.enums import (
 
 #: Денежная колонка. Точность согласована с :mod:`api.core.constants`.
 MONEY = Numeric(constants.MONEY_MAX_DIGITS, constants.MONEY_DECIMAL_PLACES)
+
+#: Стоимость обращения к модели. Отдельно от `MONEY`: вызов стоит доли цента, и
+#: двух знаков после запятой хватило бы ровно на то, чтобы записать ноль.
+LLM_COST = Numeric(constants.LLM_COST_MAX_DIGITS, constants.LLM_COST_DECIMAL_PLACES)
 
 ENTITY_STATUS = SAEnum(
     EntityStatus,
@@ -76,5 +82,17 @@ SYNC_TASK_KIND = SAEnum(
 NOTIFICATION_KIND = SAEnum(
     NotificationKind,
     name="notification_kind",
+    metadata=Base.metadata,
+)
+
+LLM_OPERATION = SAEnum(
+    LlmOperation,
+    name="llm_operation",
+    metadata=Base.metadata,
+)
+
+LLM_ENTITY_KIND = SAEnum(
+    LlmEntityKind,
+    name="llm_entity_kind",
     metadata=Base.metadata,
 )

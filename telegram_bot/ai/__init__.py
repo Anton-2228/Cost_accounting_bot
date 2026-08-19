@@ -12,6 +12,7 @@ from telegram_bot.ai.errors import AiError, AiResponseError, AiUnavailableError
 from telegram_bot.ai.models import (
     CategorySuggestion,
     CategorySuggestions,
+    LlmUsage,
     TypeSuggestion,
     TypeSuggestions,
 )
@@ -23,6 +24,7 @@ __all__ = [
     "AiUnavailableError",
     "CategorySuggestion",
     "CategorySuggestions",
+    "LlmUsage",
     "TypeSuggestion",
     "TypeSuggestions",
 ]

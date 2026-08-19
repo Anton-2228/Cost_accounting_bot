@@ -16,9 +16,9 @@ from telegram_bot.commands.record_add import RecordAddCommand
 from telegram_bot.commands.record_delete import RecordDeleteCommand
 from telegram_bot.commands.start import StartCommand
 from telegram_bot.commands.table import TableCommand
-from telegram_bot.commands.table_delete import TableDeleteCommand
 from telegram_bot.commands.table_email import TableEmailCommand
 from telegram_bot.commands.table_sync import TableSyncCommand
+from telegram_bot.commands.table_unlink import TableUnlinkCommand
 from telegram_bot.commands.transfer_add import TransferAddCommand
 from telegram_bot.commands.transfer_delete import TransferDeleteCommand
 from telegram_bot.enums import CommandName
@@ -54,7 +54,7 @@ def get_commands(
         CommandName.TABLE: TableCommand(*arguments),
         CommandName.TABLE_SYNC: TableSyncCommand(*arguments),
         CommandName.TABLE_EMAIL: TableEmailCommand(*arguments),
-        CommandName.TABLE_DELETE: TableDeleteCommand(*arguments),
+        CommandName.TABLE_UNLINK: TableUnlinkCommand(*arguments),
         CommandName.CHECK: check,
         CommandName.CHECK_SKIP: CheckSkipCommand(*arguments, check),
         CommandName.CHECK_DEL: CheckDeleteCommand(*arguments, check),

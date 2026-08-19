@@ -12,6 +12,9 @@
 
 from __future__ import annotations
 
+from decimal import Decimal
+from typing import Any
+
 from pydantic import BaseModel, ConfigDict, Field
 
 
@@ -47,3 +50,27 @@ class CategorySuggestions(BaseModel):
     model_config = ConfigDict(extra="ignore")
 
     items: list[CategorySuggestion] = []
+
+
+class LlmUsage(BaseModel):
+    """Во что обошёлся один вызов модели.
+
+    `model` — та, что названа в **ответе**, а не запрошенная: маршрутизация
+    провайдера может отдать ответ другой модели, и счёт придёт за неё.
+
+    `cost` необязателен: его присылает не всякий провайдер, и пустое значение
+    означает «неизвестно», а не «бесплатно».
+
+    `raw` — блок `usage` целиком. Кэшированные и reasoning-токены у разных
+    провайдеров лежат по-своему, и раскладывать их по колонкам значило бы
+    выбирать формат одного провайдера навсегда.
+    """
+
+    model_config = ConfigDict(frozen=True)
+
+    model: str
+    prompt_tokens: int
+    completion_tokens: int
+    total_tokens: int
+    cost: Decimal | None
+    raw: dict[str, Any]

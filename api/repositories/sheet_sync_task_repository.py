@@ -216,6 +216,23 @@ class SheetSyncTaskRepository(BaseRepository[SheetSyncTaskORM, SheetSyncTask]):
         await self._session.flush()
         return None if orm is None else self._mapper.to_domain(orm)
 
+    async def delete_by_spreadsheet(self, spreadsheet_id: int) -> int:
+        """Убирает из очереди все задачи документа; возвращает число снятых.
+
+        Зовётся при отвязывании документа. Раньше задачи умирали каскадом вместе
+        со строкой документа; теперь строка остаётся, и без явного гашения
+        `google_sheets_service` продолжал бы перерисовывать листы в таблице,
+        которую пользователь считает отвязанной.
+
+        Взятые в работу задачи снимаются наравне с ожидающими: перерисовка
+        безвредна сама по себе, а вот оставить очередь вечно непустой нельзя.
+        """
+        result = await self._session.execute(
+            delete(SheetSyncTaskORM).where(SheetSyncTaskORM.spreadsheet_id == spreadsheet_id)
+        )
+        await self._session.flush()
+        return affected_rows(result)
+
     async def list_by_spreadsheet(self, spreadsheet_id: int) -> Sequence[SheetSyncTask]:
         """Возвращает задачи документа. Нужно для диагностики и тестов."""
         rows = (

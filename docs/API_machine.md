@@ -157,7 +157,7 @@ new_version/
 | Таблица | Ключевое |
 |---|---|
 | `users` | `telegram_id` UNIQUE |
-| `spreadsheets` | `user_id` FK UNIQUE (один пользователь — одна таблица); `google_spreadsheet_id` **nullable** UNIQUE; `reset_day` SMALLINT CHECK 1..28; `timezone` VARCHAR default `Europe/Moscow` |
+| `spreadsheets` | `user_id` FK, партиальный UNIQUE `WHERE deleted_at IS NULL` (одна **живая** таблица на пользователя, отвязанных сколько угодно); `google_spreadsheet_id` **nullable** UNIQUE (глобально: отвязанный документ держит свой файл навсегда); `reset_day` SMALLINT CHECK 1..28; `timezone` VARCHAR default `Europe/Moscow`; `deleted_at` |
 | `spreadsheet_accesses` | `(spreadsheet_id, email)` UNIQUE, `granted_at` NULL = «выдать предстоит» |
 | `periods` | UNIQUE `(spreadsheet_id, start_date)`; UNIQUE `(id, spreadsheet_id)`; CHECK `end_date > start_date` |
 | `categories` | `kind`, `status`, `title`; партиальный UNIQUE `(spreadsheet_id, lower(title)) WHERE deleted_at IS NULL` |
@@ -169,6 +169,7 @@ new_version/
 | `transfers` | `from_source_id`/`to_source_id`, `amount` CHECK `> 0`, CHECK `from <> to` |
 | `cashed_records` | UNIQUE `(spreadsheet_id, product_name)` |
 | `checks` | сырьё чека: `kind`, `qr_raw`, `external_key`, `raw_payload` JSONB, `fetched_at`, `processed_at`, `deleted_at`; партиальный UNIQUE `(spreadsheet_id, kind, external_key) WHERE deleted_at IS NULL`; UNIQUE `(id, spreadsheet_id)`; партиальный индекс очереди `WHERE processed_at IS NULL AND deleted_at IS NULL` |
+| `llm_usages` | учёт денег на модель: `operation`, `model` (возвращённая провайдером), три счётчика токенов, `cost NUMERIC(18,10)` nullable («неизвестно» ≠ ноль), `raw_usage` JSONB, полиморфная пара `entity_kind`/`entity_id` **без FK** с CHECK «обе или ни одной»; индекс `(spreadsheet_id, created_at)`. Пишутся только состоявшиеся вызовы |
 | `sheet_sync_tasks` | очередь, см. §5 |
 | `sheet_mappings` | `(spreadsheet_id, target, period_id) → google_sheet_id, title` |
 | `user_notifications` | исходящие сообщения, `delivered_at`; партиальный индекс по недоставленным |
@@ -250,8 +251,12 @@ backoff перестал бы работать.
 7. **Псевдонимы нормализованы** валидатором доменной модели (`normalize_terms`).
    `CHECK` в БД не пропустит ненормализованное значение никаким путём.
 8. **Удаление мягкое** (`deleted_at`), и `soft_delete` идемпотентен за счёт
-   условия `deleted_at IS NULL`. Единственное исключение — удаление документа:
-   оно физическое, каскадом от `users`.
+   условия `deleted_at IS NULL`. Документ не исключение: `DELETE
+   /spreadsheets/{id}` — это отвязывание, оно проставляет `deleted_at`, гасит
+   очередь листов и недоставленные уведомления, а пользователя не трогает вовсе.
+   Отсюда частичная уникальность `spreadsheets.user_id` (только среди живых):
+   отвязанные документы того же пользователя остаются в таблице, и следующий
+   `/start` заводит новый рядом с ними.
 9. **Схема меняется только миграцией.** `create_all` живёт исключительно в
    тестах. Партиальные, GIN- и выражательные индексы Alembic autogenerate **не
    видит** — писать руками и дублировать в `__table_args__`, иначе тесты будут
@@ -290,7 +295,7 @@ backoff перестал бы работать.
 |---|---|
 | `POST /spreadsheets` | создать таблицу (`/start`), 201; повтор — 409 |
 | `GET /spreadsheets/by-telegram/{telegram_id}` | таблица пользователя (объявлен **до** `/{id}`) |
-| `GET /spreadsheets/{id}` · `DELETE /spreadsheets/{id}` | чтение, удаление (204) |
+| `GET /spreadsheets/{id}` · `DELETE /spreadsheets/{id}` | чтение, отвязывание (204, мягко: `deleted_at`, гашение очереди листов и недоставленных уведомлений; пользователь не удаляется) |
 | `GET /spreadsheets/{id}/categories` · `sources` · `balances` | справочники, `?only_active=` |
 | `GET/POST /spreadsheets/{id}/accesses` · `POST .../accesses/{id}/granted` | доступы; `?pending_only=` |
 | `POST /spreadsheets/{id}/sync` | попросить вчитать листы, 202 |
@@ -301,6 +306,7 @@ backoff перестал бы работать.
 | `GET/POST /spreadsheets/{id}/checks` | сохранённые чеки, `?unprocessed=` (очередь разбора) либо `?period_id=` (архив месяца для листа чеков); оба фильтра сразу — 422; повтор — 409 `check_already_saved` |
 | `DELETE /spreadsheets/{id}/checks/{check_id}` | убрать неразобранный чек (204, мягко); разобранный — 409 `check_already_processed`, он уходит вслед за своими операциями |
 | `GET /spreadsheets/{id}/cashed-records` · `POST .../checks/commit` | кэш типов, запись разобранного чека |
+| `POST /spreadsheets/{id}/llm-usages` | записать, во что обошёлся вызов модели (201). Парного чтения нет: сводки считаются запросами к базе |
 | `GET /spreadsheets/{id}/notifications` · `POST .../notifications/{id}/delivered` | сообщения боту |
 | `POST /spreadsheets/{id}/import/categories` · `.../import/bills` | лист → БД (для gsheets) |
 | `GET/POST /spreadsheets/{id}/sheet-mappings` | где лежит лист (для gsheets) |

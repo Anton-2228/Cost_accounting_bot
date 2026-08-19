@@ -6,6 +6,8 @@ from api.enums.access_role import AccessRole
 from api.enums.category_kind import CategoryKind
 from api.enums.check_kind import CheckKind
 from api.enums.entity_status import EntityStatus
+from api.enums.llm_entity_kind import LlmEntityKind
+from api.enums.llm_operation import LlmOperation
 from api.enums.notification_kind import NotificationKind
 from api.enums.period_status import PeriodStatus
 from api.enums.sheet_target import SheetTarget
@@ -16,6 +18,8 @@ __all__ = [
     "CategoryKind",
     "CheckKind",
     "EntityStatus",
+    "LlmEntityKind",
+    "LlmOperation",
     "NotificationKind",
     "PeriodStatus",
     "SheetTarget",

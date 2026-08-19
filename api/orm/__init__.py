@@ -11,6 +11,7 @@ from api.orm.category import CategoryORM
 from api.orm.category_association import CategoryAssociationORM
 from api.orm.category_product_type import CategoryProductTypeORM
 from api.orm.check import CheckORM
+from api.orm.llm_usage import LlmUsageORM
 from api.orm.period import PeriodORM
 from api.orm.record import RecordORM
 from api.orm.sheet_mapping import SheetMappingORM
@@ -29,6 +30,7 @@ __all__ = [
     "CategoryORM",
     "CategoryProductTypeORM",
     "CheckORM",
+    "LlmUsageORM",
     "PeriodORM",
     "RecordORM",
     "SheetMappingORM",

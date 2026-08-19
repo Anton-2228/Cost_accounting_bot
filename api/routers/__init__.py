@@ -17,6 +17,7 @@ from api.core.config import settings
 from api.routers import (
     checks,
     imports,
+    llm_usages,
     notifications,
     periods,
     records,
@@ -34,6 +35,7 @@ api_router.include_router(records.router)
 api_router.include_router(transfers.router)
 api_router.include_router(periods.router)
 api_router.include_router(checks.router)
+api_router.include_router(llm_usages.router)
 api_router.include_router(notifications.router)
 api_router.include_router(imports.router)
 api_router.include_router(sheet_mappings.router)

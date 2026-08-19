@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import logging
+from collections.abc import Sequence
+from typing import Any
 
 from fastapi import FastAPI, Request, status
 from fastapi.encoders import jsonable_encoder
@@ -26,6 +28,22 @@ def _error_response(
     return JSONResponse(status_code=status_code, content=jsonable_encoder(payload))
 
 
+def _serializable_errors(errors: Sequence[Any]) -> list[dict[str, Any]]:
+    """Ошибки валидации, пригодные для JSON.
+
+    В `ctx` ошибки, поднятой валидатором схемы, pydantic кладёт **сам объект
+    исключения**. `jsonable_encoder` сериализовать его не умеет и падает уже
+    внутри обработчика — то есть нарушение схемы превращалось бы в 500 вместо
+    422, ровно там, где клиенту нужен внятный ответ.
+    """
+    return [
+        {**error, "ctx": {key: str(value) for key, value in error["ctx"].items()}}
+        if isinstance(error.get("ctx"), dict)
+        else dict(error)
+        for error in errors
+    ]
+
+
 def register_exception_handlers(app: FastAPI) -> None:
     """Регистрирует обработчики доменных и инфраструктурных исключений."""
 
@@ -39,7 +57,7 @@ def register_exception_handlers(app: FastAPI) -> None:
             status.HTTP_422_UNPROCESSABLE_CONTENT,
             "validation_error",
             "Некорректный запрос",
-            details=exc.errors(),
+            details=_serializable_errors(exc.errors()),
         )
 
     @app.exception_handler(IntegrityError)

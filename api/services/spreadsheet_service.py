@@ -313,15 +313,35 @@ class SpreadsheetService(BaseSpreadsheetService):
         await self._commit()
 
     async def delete(self, spreadsheet_id: int) -> None:
-        """Удаляет документ вместе с пользователем и всем содержимым.
+        """Отвязывает документ от бота: мягкое удаление и гашение хвостов.
+
+        Удаление **мягкое**, и это не осторожность, а необходимость: физическое
+        шло каскадом от `users` и стирало вместе с документом всю историю, в том
+        числе учёт потраченных на модель денег. Деньги потрачены независимо от
+        того, ведёт ли пользователь учёт дальше, и сумма за прошлый месяц не
+        должна меняться задним числом.
+
+        Пользователь не удаляется вовсе: он тот же человек, и следующий `/start`
+        заводит ему новый документ рядом со старым — уникальность `user_id`
+        действует только среди живых.
+
+        Хвосты гасятся здесь же, одной транзакцией: задачи очереди листов и
+        недоставленные уведомления. Каскад, который делал это раньше, больше не
+        срабатывает, а перерисовывать листы отвязанного документа и слать по
+        нему сообщения — работа, которой не должно существовать.
 
         Google-таблица остаётся у пользователя: она — его архив, и удалять её
         молча система права не имеет. Так было и раньше.
         """
         spreadsheet = await self._get(spreadsheet_id)
-        await self._users.delete(spreadsheet.user_id)
+        await self._tasks.delete_by_spreadsheet(spreadsheet_id)
+        await self._notifications.delete_undelivered(spreadsheet_id)
+        await self._spreadsheets.soft_delete(
+            spreadsheet_id,
+            at=now_in_timezone(spreadsheet.timezone),
+        )
         await self._commit()
-        logger.info("Удалён документ %s", spreadsheet_id)
+        logger.info("Отвязан документ %s", spreadsheet_id)
 
     # --- служебное ---
 

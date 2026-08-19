@@ -21,40 +21,53 @@ class SpreadsheetRepository(BaseRepository[SpreadsheetORM, Spreadsheet]):
         super().__init__(session, SpreadsheetMapper())
 
     async def get_by_user_id(self, user_id: int) -> Spreadsheet | None:
-        """Находит таблицу пользователя. Она ровно одна: `user_id` уникален."""
+        """Находит живую таблицу пользователя.
+
+        Она ровно одна: `user_id` уникален среди живых документов. Фильтр по
+        живости здесь не украшение — отвязанные документы того же пользователя
+        никуда не делись, и без него `.one_or_none()` упал бы на втором `/start`.
+        """
         orm = (
             await self._session.scalars(
-                select(SpreadsheetORM).where(SpreadsheetORM.user_id == user_id)
+                select(SpreadsheetORM).where(SpreadsheetORM.user_id == user_id, *self._alive())
             )
         ).one_or_none()
         return None if orm is None else self._mapper.to_domain(orm)
 
     async def get_by_telegram_id(self, telegram_id: int) -> Spreadsheet | None:
-        """Находит таблицу по telegram_id владельца."""
+        """Находит живую таблицу по telegram_id владельца."""
         orm = (
             await self._session.scalars(
                 select(SpreadsheetORM)
                 .join(UserORM, UserORM.id == SpreadsheetORM.user_id)
-                .where(UserORM.telegram_id == telegram_id)
+                .where(UserORM.telegram_id == telegram_id, *self._alive())
             )
         ).one_or_none()
         return None if orm is None else self._mapper.to_domain(orm)
 
     async def get_by_google_id(self, google_spreadsheet_id: str) -> Spreadsheet | None:
-        """Находит таблицу по идентификатору Google-документа."""
+        """Находит живую таблицу по идентификатору Google-документа.
+
+        Отвязанный документ продолжает держать свой `google_spreadsheet_id` —
+        иначе тот же файл можно было бы привязать вторично, — но работой для
+        `google_sheets_service` он больше не является.
+        """
         orm = (
             await self._session.scalars(
                 select(SpreadsheetORM).where(
-                    SpreadsheetORM.google_spreadsheet_id == google_spreadsheet_id
+                    SpreadsheetORM.google_spreadsheet_id == google_spreadsheet_id,
+                    *self._alive(),
                 )
             )
         ).one_or_none()
         return None if orm is None else self._mapper.to_domain(orm)
 
     async def list_all(self) -> list[Spreadsheet]:
-        """Возвращает все таблицы. Нужен ролловеру для обхода документов."""
+        """Возвращает живые таблицы. Нужен ролловеру для обхода документов."""
         rows = (
-            await self._session.scalars(select(SpreadsheetORM).order_by(SpreadsheetORM.id))
+            await self._session.scalars(
+                select(SpreadsheetORM).where(*self._alive()).order_by(SpreadsheetORM.id)
+            )
         ).all()
         return self._mapper.to_domain_list(rows)
 

@@ -42,6 +42,19 @@ class NotificationKind(StrEnum):
     ROLLOVER = "ROLLOVER"
 
 
+class LlmOperation(StrEnum):
+    """О чём спрашивали модель. Различает две стадии разбора чека."""
+
+    SUGGEST_PRODUCT_TYPES = "SUGGEST_PRODUCT_TYPES"
+    SUGGEST_CATEGORIES = "SUGGEST_CATEGORIES"
+
+
+class LlmEntityKind(StrEnum):
+    """К строке какой таблицы относится замер обращения к модели."""
+
+    CHECK = "CHECK"
+
+
 class Spreadsheet(BaseModel):
     """Учётная таблица."""
 
