@@ -35,8 +35,21 @@ class PeriodService(BaseSpreadsheetService):
         self._records = records
 
     async def list_all(self, spreadsheet_id: int) -> list[Period]:
-        """Все периоды документа по возрастанию даты начала."""
-        await self._get_ready(spreadsheet_id)
+        """Все периоды документа по возрастанию даты начала, в том числе отвязанного.
+
+        Документ ищется с `include_deleted=True` и без проверки готовности — по
+        той же причине, что и в чтении замеров модели: отвязывание мягкое, и
+        `_get_ready` отдавал бы 404 ровно на том случае, ради которого чтение
+        всей истории и нужно. Отчёт о тратах на модель раскладывает их по
+        периодам **всех** таблиц пользователя, включая отвязанные, и на первой
+        же такой таблице получал «Сначала создайте таблицу» вместо отчёта.
+
+        Периоды при этом законны и у неготового документа: первый заводится
+        вместе с самой таблицей, задолго до того, как `google_sheets_service`
+        создаст Google-документ.
+        """
+        if await self._spreadsheets.get_by_id(spreadsheet_id, include_deleted=True) is None:
+            raise NotFoundError("spreadsheet")
         return await self._periods.list_by_spreadsheet(spreadsheet_id)
 
     async def current(self, spreadsheet_id: int) -> Period:

@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from datetime import timedelta
+from datetime import UTC, datetime, timedelta
 from decimal import Decimal
 
 import pytest
@@ -12,6 +12,7 @@ from api.core.period import today_in_timezone
 from api.enums import CategoryKind
 from api.exceptions.base import NotFoundError
 from api.repositories.period_repository import PeriodRepository
+from api.repositories.spreadsheet_repository import SpreadsheetRepository
 from api.services.period_service import PeriodService
 from tests import factories
 
@@ -54,6 +55,41 @@ async def test_periods_are_listed_in_order(
 
     current = await period_service.current(spreadsheet.id)
     assert current.contains(today)
+
+
+async def test_periods_of_unlinked_spreadsheet_are_still_listed(
+    session: AsyncSession,
+    period_service: PeriodService,
+) -> None:
+    """Отвязанный документ отдаёт свои периоды, а не 404.
+
+    Ровно этим чтением отчёт о тратах на модель раскладывает их по учётным
+    периодам, а траты считаются по **всем** таблицам пользователя, включая
+    отвязанные: деньги потрачены независимо от того, ведёт ли он учёт дальше.
+    Пока чтение шло через проверку живости, админ получал на первой же такой
+    таблице «Сначала создайте таблицу» вместо отчёта.
+    """
+    spreadsheet = await factories.create_spreadsheet(session, ready=True, timezone=_TIMEZONE)
+    today = today_in_timezone(_TIMEZONE)
+    await factories.create_period(session, spreadsheet, day=today)
+    await session.commit()
+    assert spreadsheet.id is not None
+
+    await SpreadsheetRepository(session).soft_delete(
+        spreadsheet.id, at=datetime.now(tz=UTC)
+    )
+    await session.commit()
+
+    periods = await period_service.list_all(spreadsheet.id)
+    assert len(periods) == 1
+
+
+async def test_periods_of_unknown_spreadsheet_are_404(
+    period_service: PeriodService,
+) -> None:
+    """Несуществующий документ по-прежнему 404: терпимость только к мягкому удалению."""
+    with pytest.raises(NotFoundError):
+        await period_service.list_all(10_000)
 
 
 async def test_daily_totals_keep_kopecks_and_sign(
