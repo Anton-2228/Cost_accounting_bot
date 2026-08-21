@@ -13,6 +13,7 @@ from telegram_bot.commands.check_delete import CheckDeleteCommand
 from telegram_bot.commands.check_skip import CheckSkipCommand
 from telegram_bot.commands.help import HelpCommand
 from telegram_bot.commands.manager import Manager
+from telegram_bot.commands.menu import MenuCommand
 from telegram_bot.commands.record_add import RecordAddCommand
 from telegram_bot.commands.record_delete import RecordDeleteCommand
 from telegram_bot.commands.settings import SettingsCommand
@@ -45,6 +46,8 @@ def get_commands(
     логики: очередь и черновик живут в одном месте, и показать следующий чек
     умеет только оно. Тем же способом собран `/settings`: админская ветка
     получает сам экран настроек, потому что возвращается к нему после отчёта.
+    И так же `/start` получает `/menu`: меню рисуется в конце мастера и вместо
+    приветствия тому, у кого таблица уже есть.
 
     `AccessGuard` нужен ровно одной команде — экрану настроек, который выбирает
     по роли текст. Право на админскую ветку здесь не проверяется: оно объявлено
@@ -53,8 +56,10 @@ def get_commands(
     arguments = (manager, api, aiogram_wrapper, catch_up)
     check = CheckCommand(*arguments, ai)
     settings = SettingsCommand(*arguments, access)
+    menu = MenuCommand(*arguments)
     return {
-        CommandName.START: StartCommand(*arguments),
+        CommandName.START: StartCommand(*arguments, menu),
+        CommandName.MENU: menu,
         CommandName.HELP: HelpCommand(*arguments),
         CommandName.CANCEL: CancelCommand(*arguments),
         CommandName.ADD: RecordAddCommand(*arguments),

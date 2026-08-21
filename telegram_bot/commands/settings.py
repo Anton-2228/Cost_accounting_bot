@@ -5,7 +5,7 @@ from __future__ import annotations
 from typing import Any
 
 from aiogram.fsm.context import FSMContext
-from aiogram.types import Message
+from aiogram.types import CallbackQuery, Message
 
 from telegram_bot.access import AccessGuard
 from telegram_bot.aiogram_wrapper import AiogramWrapper
@@ -23,9 +23,9 @@ LLM_COSTS_BUTTON = ("Траты на LLM", "settings_llm:costs")
 class SettingsCommand(BaseCommand):
     """Показывает настройки.
 
-    Команда общая: `requires_admin` не переопределяется, потому что `/settings`
-    доступна всем. Разной у ролей будет не доступность, а содержимое экрана — у
-    обычного пользователя здесь пока нечего менять.
+    Ветка общая: `requires_admin` не переопределяется, потому что кнопка
+    «Настройки» есть в меню у всех. Разной у ролей будет не доступность, а
+    содержимое экрана — у обычного пользователя здесь пока нечего менять.
 
     Сама команда ничего не решает о правах: кнопка ведёт в отдельную команду, и
     именно та объявлена админской. Проверять роль дважды — здесь для показа и
@@ -47,6 +47,19 @@ class SettingsCommand(BaseCommand):
     async def execute(self, message: Message, state: FSMContext, **kwargs: Any) -> None:
         """Отправляет экран настроек."""
         await self.show(chat_id=message.chat.id, telegram_id=self.user_id(message))
+
+    async def handle_callback(
+        self,
+        callback: CallbackQuery,
+        state: FSMContext,
+        **kwargs: Any,
+    ) -> None:
+        """Кнопка «Настройки» в меню."""
+        target = await self.callback_target(callback)
+        if target is None:
+            return
+        chat_id, telegram_id = target
+        await self.show(chat_id=chat_id, telegram_id=telegram_id)
 
     async def show(self, *, chat_id: int, telegram_id: int) -> None:
         """Рисует экран в произвольном чате.

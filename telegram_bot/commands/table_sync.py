@@ -5,7 +5,7 @@ from __future__ import annotations
 from typing import Any
 
 from aiogram.fsm.context import FSMContext
-from aiogram.types import Message
+from aiogram.types import CallbackQuery, Message
 
 from telegram_bot.commands.base_command import BaseCommand
 from telegram_bot.resources.messages import SYNC_REQUESTED_MESSAGE
@@ -26,9 +26,26 @@ class TableSyncCommand(BaseCommand):
 
     async def execute(self, message: Message, state: FSMContext, **kwargs: Any) -> None:
         """Ставит задачу на чтение листов."""
-        spreadsheet = await self.spreadsheet(message)
+        await self.request(chat_id=message.chat.id, telegram_id=self.user_id(message))
+
+    async def handle_callback(
+        self,
+        callback: CallbackQuery,
+        state: FSMContext,
+        **kwargs: Any,
+    ) -> None:
+        """Кнопка «Синхронизировать таблицу» в меню."""
+        target = await self.callback_target(callback)
+        if target is None:
+            return
+        chat_id, telegram_id = target
+        await self.request(chat_id=chat_id, telegram_id=telegram_id)
+
+    async def request(self, *, chat_id: int, telegram_id: int) -> None:
+        """Ставит задачу по явным идентификаторам."""
+        spreadsheet = await self.spreadsheet_for(user_id=telegram_id, chat_id=chat_id)
         if spreadsheet is None:
             return
 
         await self.api.spreadsheets.request_sync(spreadsheet.id)
-        await self.aiogram.answer_message(message, SYNC_REQUESTED_MESSAGE)
+        await self.aiogram.send_message(chat_id, SYNC_REQUESTED_MESSAGE)

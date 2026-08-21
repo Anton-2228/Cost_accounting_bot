@@ -52,11 +52,28 @@ class BaseCommand(ABC):
     ) -> None:
         """Обрабатывает нажатие кнопки.
 
-        Кнопки есть только у разбора чека; для остальных команд нажатие может
-        прийти лишь от кнопки, оставшейся в переписке от другой версии бота, и
-        тихо проглатывать такое нельзя — это ошибка сборки, а не ввода.
+        Кнопки есть не у всех команд; там, где их нет, нажатие может прийти
+        лишь от кнопки, оставшейся в переписке от другой версии бота, и тихо
+        проглатывать такое нельзя — это ошибка сборки, а не ввода.
         """
         raise NotImplementedError(f"{type(self).__name__} не работает с кнопками")
+
+    async def callback_target(self, callback: CallbackQuery) -> tuple[int, int] | None:
+        """Гасит «часики» и отдаёт пару «чат, автор нажатия».
+
+        Одно место на все кнопочные ветки, потому что ошибиться здесь можно
+        дважды и обе ошибки молчаливые. Первая: не ответить на callback —
+        кнопка у пользователя крутится до таймаута Telegram. Вторая: взять
+        пользователя из `callback.message` — его автор бот, и команда искала бы
+        таблицу по идентификатору самого бота.
+
+        `None` означает, что отвечать некуда: к сообщению старше суток Telegram
+        не прикладывает `message`, и продолжать нечем.
+        """
+        await self.aiogram.answer_callback(callback)
+        if callback.message is None:
+            return None
+        return callback.message.chat.id, callback.from_user.id
 
     @staticmethod
     def user_id(message: Message) -> int:
@@ -95,9 +112,23 @@ class BaseCommand(ABC):
         прийти нажатием кнопки, и `callback.message` принадлежит боту, а не
         человеку — искать по нему документ значило бы повторить старую ошибку с
         `chat.id` вместо `from_user.id`.
+        """
+        spreadsheet = await self.find_spreadsheet(user_id=user_id, chat_id=chat_id)
+        if spreadsheet is None:
+            await self.aiogram.send_message(chat_id, NO_TABLE_MESSAGE)
+        return spreadsheet
 
-        Ловится только 404 по ресурсу `spreadsheet`: старая версия отвечала
-        «Сначала создайте таблицу» на любой 404, включая «нет такой операции».
+    async def find_spreadsheet(self, *, user_id: int, chat_id: int) -> Spreadsheet | None:
+        """Таблица пользователя или `None` — молча, без подсказки.
+
+        Отдельно от `spreadsheet_for`, потому что для входа в бота отсутствие
+        таблицы — рабочий случай, а не ошибка: `/start` на него показывает
+        приветствие с кнопкой, и «Сначала создайте таблицу» перед этим
+        приветствием было бы ответом на вопрос, которого никто не задавал.
+
+        Ловится только 404 по ресурсам `spreadsheet` и `user`: старая версия
+        отвечала «Сначала создайте таблицу» на любой 404, включая «нет такой
+        операции».
 
         Здесь же — единственная точка дочитки уведомлений: это ровно тот
         момент, когда бот и знает документ, и разговаривает с его владельцем.
@@ -107,7 +138,6 @@ class BaseCommand(ABC):
         except ApiNotFoundError as error:
             if error.resource not in {"spreadsheet", "user"}:
                 raise
-            await self.aiogram.send_message(chat_id, NO_TABLE_MESSAGE)
             return None
 
         await self.catch_up.deliver(spreadsheet.id, chat_id)

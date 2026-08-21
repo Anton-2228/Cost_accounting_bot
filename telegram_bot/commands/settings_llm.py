@@ -57,15 +57,16 @@ class SettingsLlmCostsCommand(BaseCommand):
         **kwargs: Any,
     ) -> None:
         """Нажатие кнопки «Траты на LLM»: спрашивает, чьи именно."""
-        await self.aiogram.answer_callback(callback)
-        if callback.message is None:
+        target = await self.callback_target(callback)
+        if target is None:
             # Сообщение старше суток Telegram к кнопке не прикладывает. Отвечать
             # некуда, а состояние без вопроса оставило бы админа гадать, чего от
             # него ждут.
             return
+        chat_id, _ = target
 
         await self.aiogram.set_state(state, States.SETTINGS_ASK_TELEGRAM_ID)
-        await self.aiogram.send_message(callback.message.chat.id, ASK_LLM_TELEGRAM_ID_MESSAGE)
+        await self.aiogram.send_message(chat_id, ASK_LLM_TELEGRAM_ID_MESSAGE)
 
     async def execute(self, message: Message, state: FSMContext, **kwargs: Any) -> None:
         """Шаг ввода id: показывает отчёт и возвращает экран настроек.
