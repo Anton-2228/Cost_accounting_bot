@@ -6,13 +6,24 @@ from telegram_bot import constants
 from telegram_bot.ai import LlmUsage
 from telegram_bot.api_client.http import ApiHttpClient
 from telegram_bot.api_client.models import LlmEntityKind, LlmOperation
+from telegram_bot.api_client.models import LlmUsage as RecordedLlmUsage
 
 
 class LlmUsagesClient:
-    """Запись замеров: во что обошёлся вызов модели."""
+    """Запись и чтение замеров: во что обошёлся вызов модели."""
 
     def __init__(self, http: ApiHttpClient) -> None:
         self._http = http
+
+    async def list_for_spreadsheet(self, spreadsheet_id: int) -> list[RecordedLlmUsage]:
+        """Все замеры документа в хронологическом порядке.
+
+        Возвращаются сами замеры, а не сумма: раскладывать их по учётным
+        периодам умеет только тот, кто знает границы периодов и часовой пояс
+        документа, — то есть отчёт, а не api.
+        """
+        items = await self._http.get_items(f"/spreadsheets/{spreadsheet_id}/llm-usages")
+        return [RecordedLlmUsage.model_validate(item) for item in items]
 
     async def record(
         self,

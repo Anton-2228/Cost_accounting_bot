@@ -71,6 +71,19 @@ class SpreadsheetService(BaseSpreadsheetService):
             raise NotFoundError("spreadsheet")
         return spreadsheet
 
+    async def list_by_telegram_id(self, telegram_id: int) -> list[Spreadsheet]:
+        """Все документы пользователя за всё время, включая отвязанные.
+
+        Неизвестный `telegram_id` — это 404 по ресурсу `user`, а не пустой
+        список: спутать «такого человека нет» с «он ничего не тратил» значит
+        молча принять опечатку в идентификаторе за ответ. Пустой список у
+        существующего пользователя, наоборот, законен — он мог не завести
+        документ ни разу.
+        """
+        if not await self._users.exists_by_telegram_id(telegram_id):
+            raise NotFoundError("user")
+        return await self._spreadsheets.list_by_telegram_id(telegram_id)
+
     async def list_categories(
         self,
         spreadsheet_id: int,

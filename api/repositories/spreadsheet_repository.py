@@ -62,6 +62,29 @@ class SpreadsheetRepository(BaseRepository[SpreadsheetORM, Spreadsheet]):
         ).one_or_none()
         return None if orm is None else self._mapper.to_domain(orm)
 
+    async def list_by_telegram_id(self, telegram_id: int) -> list[Spreadsheet]:
+        """Возвращает **все** таблицы владельца, включая отвязанные.
+
+        Отсутствие фильтра живости здесь — суть метода, а не упущение. Соседний
+        `get_by_telegram_id` ищет документ, с которым работают дальше, и потому
+        отбрасывает отвязанные; этот отвечает на вопрос об истории пользователя,
+        а история включает документы, от которых он отказался: деньги, ушедшие
+        на модель, потрачены независимо от того, ведёт ли он учёт до сих пор.
+
+        Порядок по `id` — это порядок появления документов: `Identity` растёт
+        монотонно, и отдельная сортировка по `created_at` дала бы то же самое
+        ценой неоднозначности на документах одной секунды.
+        """
+        rows = (
+            await self._session.scalars(
+                select(SpreadsheetORM)
+                .join(UserORM, UserORM.id == SpreadsheetORM.user_id)
+                .where(UserORM.telegram_id == telegram_id)
+                .order_by(SpreadsheetORM.id)
+            )
+        ).all()
+        return self._mapper.to_domain_list(rows)
+
     async def list_all(self) -> list[Spreadsheet]:
         """Возвращает живые таблицы. Нужен ролловеру для обхода документов."""
         rows = (

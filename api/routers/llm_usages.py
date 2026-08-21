@@ -7,6 +7,7 @@ from fastapi import APIRouter, Depends, status
 from api.dependencies.services import get_llm_usage_service
 from api.requests.llm_usages.record_llm_usage_request import RecordLlmUsageRequest
 from api.responses.common.data_response import DataResponse
+from api.responses.common.items_response import ItemsResponse
 from api.responses.llm_usages.llm_usage_response import LlmUsageResponse
 from api.services.llm_usage_service import LlmUsageService
 
@@ -28,9 +29,6 @@ async def record_llm_usage(
     Замер приезжает от того, кто звал модель: ключ провайдера есть только у него,
     и api по-прежнему не делает ни одного внешнего вызова. Пишутся лишь
     состоявшиеся вызовы — то, за что провайдер выставил счёт.
-
-    Парного эндпоинта чтения нет намеренно: сводки по этой таблице считаются
-    запросами к базе, и разрезы заранее не известны.
     """
     usage = await service.record(
         spreadsheet_id,
@@ -45,3 +43,22 @@ async def record_llm_usage(
         raw_usage=payload.raw_usage,
     )
     return DataResponse(data=LlmUsageResponse.model_validate(usage))
+
+
+@router.get("/llm-usages", response_model=ItemsResponse[LlmUsageResponse])
+async def list_llm_usages(
+    spreadsheet_id: int,
+    service: LlmUsageService = Depends(get_llm_usage_service),
+) -> ItemsResponse[LlmUsageResponse]:
+    """Все замеры документа в хронологическом порядке.
+
+    Отдаются сами замеры, а не сумма: траты показываются разложенными по учётным
+    периодам, а границы периода — это даты в часовом поясе документа. Считать их
+    здесь значило бы завести в этой таблице вторую копию календарной логики,
+    которая уже живёт в `periods`.
+
+    Отвязанный документ читается наравне с живым: расход на модель не отменяется
+    тем, что учёт по документу больше не ведут.
+    """
+    usages = await service.list_for_spreadsheet(spreadsheet_id)
+    return ItemsResponse(items=[LlmUsageResponse.model_validate(item) for item in usages])

@@ -51,6 +51,7 @@ _SIMPLE_COMMANDS = (
     CommandName.HELP,
     CommandName.TABLE,
     CommandName.TABLE_SYNC,
+    CommandName.SETTINGS,
 )
 
 #: Команды, разбирающие аргументы строки.
@@ -78,6 +79,10 @@ _MENU = [
     BotCommand(command=CommandName.CHECK_SKIP, description="Отложить чек"),
     BotCommand(command=CommandName.CHECK_DEL, description="Удалить чек"),
     BotCommand(command=CommandName.CANCEL, description="Прервать диалог"),
+    # Меню в Telegram одно на всех: команда есть у каждого, разным будет только
+    # её содержимое. Раздавать разные меню по скоупам значило бы сообщать
+    # клиенту роль, которую бот и так проверяет на каждом обращении.
+    BotCommand(command=CommandName.SETTINGS, description="Настройки"),
     BotCommand(command=CommandName.HELP, description="Справка"),
 ]
 
@@ -115,6 +120,7 @@ def _register_handlers() -> None:
             *_CHECK_STATES,
             States.ADD_EMAIL,
             States.CONFIRM_UNLINK_TABLE,
+            States.SETTINGS_ASK_TELEGRAM_ID,
         ),
         F.text.startswith("/"),
     )
@@ -123,6 +129,9 @@ def _register_handlers() -> None:
     router.message.register(_on_add_email_step, StateFilter(States.ADD_EMAIL))
     router.message.register(_on_unlink_table_step, StateFilter(States.CONFIRM_UNLINK_TABLE))
     router.message.register(_on_check_step, StateFilter(*_CHECK_STATES))
+    router.message.register(
+        _on_settings_llm_step, StateFilter(States.SETTINGS_ASK_TELEGRAM_ID)
+    )
 
     # Кнопка «Готово» живёт только внутри разбора: без фильтра по состоянию
     # кнопка от предыдущего чека оставалась бы живой и применялась к текущему.
@@ -130,6 +139,15 @@ def _register_handlers() -> None:
         _on_check_done,
         StateFilter(*_CHECK_STATES),
         F.data.startswith("check_done:"),
+    )
+
+    # Кнопка экрана настроек. `StateFilter(None)` — чтобы нажатие посреди
+    # другого диалога не начинало второй: состояние в FSM одно на пользователя,
+    # и вопрос про id затёр бы незаконченный разбор чека.
+    router.callback_query.register(
+        _on_settings_llm_button,
+        StateFilter(None),
+        F.data.startswith("settings_llm:"),
     )
 
     router.message.register(_on_start, Command(CommandName.START), StateFilter(None))
@@ -187,6 +205,16 @@ async def _on_check_delete(message: Message, state: FSMContext) -> None:
     await MANAGER.launch(CommandName.CHECK_DEL, message, state)
 
 
+async def _on_settings_llm_step(message: Message, state: FSMContext) -> None:
+    """Введённый telegram id, чьи траты показать."""
+    await MANAGER.launch(CommandName.SETTINGS_LLM, message, state)
+
+
+async def _on_settings_llm_button(callback: CallbackQuery, state: FSMContext) -> None:
+    """Кнопка «Траты на LLM» на экране настроек."""
+    await MANAGER.launch_callback(CommandName.SETTINGS_LLM, callback, state)
+
+
 async def _on_check_done(callback: CallbackQuery, state: FSMContext) -> None:
     """Кнопка «Готово» на стадии разбора чека."""
     await MANAGER.launch_callback(CommandName.CHECK, callback, state)
@@ -240,7 +268,11 @@ async def main() -> None:
     setup_logging()
     _register_handlers()
     await BOT.set_my_commands(_MENU)
-    logger.info("Бот запущен, разрешённых пользователей: %s", len(settings.allowed_telegram_ids))
+    logger.info(
+        "Бот запущен, разрешённых пользователей: %s, из них админов: %s",
+        len(settings.permitted_telegram_ids),
+        len(settings.admin_telegram_ids),
+    )
 
     notify_config = uvicorn.Config(
         NotifyServer(AIOGRAM_WRAPPER).build_app(),

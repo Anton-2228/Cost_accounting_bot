@@ -58,3 +58,10 @@ class CommandName(StrEnum):
     CHECK = "check"
     CHECK_SKIP = "check_skip"
     CHECK_DEL = "check_del"
+
+    SETTINGS = "settings"
+    #: Ветка настроек, доступная только админу. Отдельная команда, а не ветка
+    #: внутри `settings`: право проверяется по команде, и вынесенная ветка не
+    #: может оказаться доступной обычному пользователю ни кнопкой, ни шагом
+    #: диалога.
+    SETTINGS_LLM = "settings_llm"

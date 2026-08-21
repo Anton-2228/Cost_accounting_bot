@@ -70,7 +70,9 @@ cp env/google_sheets_service.env.example env/google_sheets_service.env
 cp env/telegram_bot.env.example env/telegram_bot.env
 cp env/checks_service.env.example env/checks_service.env
 # заполнить пароли, положить ключ сервисного аккаунта в secrets/google_sa.json,
-# указать TELEGRAM_BOT_TOKEN, ALLOWED_TELEGRAM_IDS и PROVERKACHEKA_API_TOKEN
+# указать TELEGRAM_BOT_TOKEN, PROVERKACHEKA_API_TOKEN и списки доступа —
+# ALLOWED_TELEGRAM_IDS и ADMIN_TELEGRAM_IDS (одинаково боту и checks_service;
+# доступ = объединение списков, дублировать админов в первом не нужно)
 docker compose up -d --build
 curl -s localhost:8010/health          # api
 curl -s localhost:8011/health          # отчёт последнего прохода по очереди

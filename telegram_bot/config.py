@@ -58,11 +58,17 @@ class Settings(BaseSettings):
     ai_timeout_seconds: float = constants.DEFAULT_AI_TIMEOUT_SECONDS
     ai_temperature: float = constants.DEFAULT_AI_TEMPERATURE
 
-    # Список telegram_id, которым разрешено пользоваться ботом. Пустой список
-    # означает «никому»: бот заводит документы в Google на общий сервисный
-    # аккаунт, квота которого одна на проект, поэтому открытый по умолчанию
-    # доступ был бы способом её исчерпать чужими руками.
+    # Список telegram_id обычных пользователей. Пустой список означает
+    # «никому»: бот заводит документы в Google на общий сервисный аккаунт,
+    # квота которого одна на проект, поэтому открытый по умолчанию доступ был
+    # бы способом её исчерпать чужими руками.
     allowed_telegram_ids: Annotated[frozenset[int], NoDecode] = frozenset()
+
+    # Список telegram_id админов. Дублировать их в `allowed_telegram_ids` не
+    # нужно: доступ — это объединение списков. Требовать присутствия в обоих
+    # значило бы завести состояние «админ без доступа», в котором роль есть, а
+    # выполнить ею нечего.
+    admin_telegram_ids: Annotated[frozenset[int], NoDecode] = frozenset()
 
     app_name: str = "Cost Accounting Telegram Bot"
     log_level: str = "INFO"
@@ -81,7 +87,7 @@ class Settings(BaseSettings):
             return None
         return value
 
-    @field_validator("allowed_telegram_ids", mode="before")
+    @field_validator("allowed_telegram_ids", "admin_telegram_ids", mode="before")
     @classmethod
     def _split_ids(cls, value: object) -> object:
         """Принимает список id строкой через запятую.
@@ -94,6 +100,11 @@ class Settings(BaseSettings):
         if isinstance(value, str):
             return [part.strip() for part in value.split(",") if part.strip()]
         return value
+
+    @property
+    def permitted_telegram_ids(self) -> frozenset[int]:
+        """Все, кому разрешено обращаться к боту: пользователи и админы."""
+        return self.allowed_telegram_ids | self.admin_telegram_ids
 
     @property
     def redis_url(self) -> str:

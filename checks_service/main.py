@@ -55,7 +55,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     logger.info(
         "Сервис запущен, api по адресу %s, разрешённых пользователей: %s",
         settings.api_base_url,
-        len(settings.allowed_telegram_ids),
+        len(settings.permitted_telegram_ids),
     )
     try:
         yield

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from telegram_bot.access import AccessGuard
 from telegram_bot.ai import AiClient
 from telegram_bot.aiogram_wrapper import AiogramWrapper
 from telegram_bot.api_client import ApiGateway
@@ -14,6 +15,8 @@ from telegram_bot.commands.help import HelpCommand
 from telegram_bot.commands.manager import Manager
 from telegram_bot.commands.record_add import RecordAddCommand
 from telegram_bot.commands.record_delete import RecordDeleteCommand
+from telegram_bot.commands.settings import SettingsCommand
+from telegram_bot.commands.settings_llm import SettingsLlmCostsCommand
 from telegram_bot.commands.start import StartCommand
 from telegram_bot.commands.table import TableCommand
 from telegram_bot.commands.table_email import TableEmailCommand
@@ -31,6 +34,7 @@ def get_commands(
     aiogram_wrapper: AiogramWrapper,
     catch_up: NotificationCatchUp,
     ai: AiClient,
+    access: AccessGuard,
 ) -> dict[str, BaseCommand]:
     """Собирает реестр команд.
 
@@ -39,10 +43,16 @@ def get_commands(
 
     `/check_skip` и `/check_del` получают саму команду разбора, а не копию её
     логики: очередь и черновик живут в одном месте, и показать следующий чек
-    умеет только оно.
+    умеет только оно. Тем же способом собран `/settings`: админская ветка
+    получает сам экран настроек, потому что возвращается к нему после отчёта.
+
+    `AccessGuard` нужен ровно одной команде — экрану настроек, который выбирает
+    по роли текст. Право на админскую ветку здесь не проверяется: оно объявлено
+    у самой ветки и проверяется `Manager`.
     """
     arguments = (manager, api, aiogram_wrapper, catch_up)
     check = CheckCommand(*arguments, ai)
+    settings = SettingsCommand(*arguments, access)
     return {
         CommandName.START: StartCommand(*arguments),
         CommandName.HELP: HelpCommand(*arguments),
@@ -58,6 +68,8 @@ def get_commands(
         CommandName.CHECK: check,
         CommandName.CHECK_SKIP: CheckSkipCommand(*arguments, check),
         CommandName.CHECK_DEL: CheckDeleteCommand(*arguments, check),
+        CommandName.SETTINGS: settings,
+        CommandName.SETTINGS_LLM: SettingsLlmCostsCommand(*arguments, settings),
     }
 
 

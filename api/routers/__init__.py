@@ -26,10 +26,12 @@ from api.routers import (
     spreadsheets,
     system,
     transfers,
+    users,
 )
 
 api_router = APIRouter(prefix=settings.api_v1_prefix)
 
+api_router.include_router(users.router)
 api_router.include_router(spreadsheets.router)
 api_router.include_router(records.router)
 api_router.include_router(transfers.router)

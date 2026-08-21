@@ -217,8 +217,11 @@ loopback не возвращается. Оба обслуживает один s
 
 ## 7. Ручные шаги
 
-1. `env/checks_service.env` из `.example`: токен бота, `ALLOWED_TELEGRAM_IDS`
-   (тот же список, что у бота), `PROVERKACHEKA_API_TOKEN`.
+1. `env/checks_service.env` из `.example`: токен бота, `ALLOWED_TELEGRAM_IDS` и
+   `ADMIN_TELEGRAM_IDS` (те же списки, что у бота), `PROVERKACHEKA_API_TOKEN`.
+   Доступ здесь — **объединение** списков; роль сервис не различает, чеки
+   добавляют все одинаково. Второй список нужен затем, что админ, заведённый
+   только в нём, иначе пользовался бы ботом, но получал отказ в Mini App.
 2. nginx хоста: конфиг из
    [deploy/nginx/mini_app.conf.example](../deploy/nginx/mini_app.conf.example)
    в `sites-available`, линк в `sites-enabled`, `nginx -t && systemctl reload nginx`.

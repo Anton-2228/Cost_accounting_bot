@@ -57,6 +57,6 @@ AI = AiClient(
     temperature=settings.ai_temperature,
 )
 
-ACCESS = AccessGuard(settings.allowed_telegram_ids)
+ACCESS = AccessGuard(settings.allowed_telegram_ids, settings.admin_telegram_ids)
 MANAGER = Manager(ACCESS, AIOGRAM_WRAPPER)
-MANAGER.register(get_commands(MANAGER, API, AIOGRAM_WRAPPER, CATCH_UP, AI))
+MANAGER.register(get_commands(MANAGER, API, AIOGRAM_WRAPPER, CATCH_UP, AI, ACCESS))

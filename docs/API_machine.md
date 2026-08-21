@@ -89,7 +89,7 @@ new_version/
 │   ├── requests/                # подпакет на домен, extra="forbid"
 │   ├── responses/               # common (DataResponse, ItemsResponse, Page, Error) + по домену
 │   ├── dependencies/            # repositories.py, services.py
-│   ├── routers/                 # system + 9 доменных, 34 маршрута
+│   ├── routers/                 # system + 11 доменных, 41 маршрут
 │   └── alembic/versions/  # c05740c0de01 (схема) + 7f3c1d9a4b02 (аренда задачи)
 │                           # + b1e6a4c7d905 (чеки) + d4c7b2e910a3 (разбор чека)
 │                           # + e5a1f83b2c47 (лист чеков, подтверждение импорта)
@@ -294,7 +294,8 @@ backoff перестал бы работать.
 | Метод и путь | Назначение |
 |---|---|
 | `POST /spreadsheets` | создать таблицу (`/start`), 201; повтор — 409 |
-| `GET /spreadsheets/by-telegram/{telegram_id}` | таблица пользователя (объявлен **до** `/{id}`) |
+| `GET /spreadsheets/by-telegram/{telegram_id}` | **живая** таблица пользователя (объявлен **до** `/{id}`) |
+| `GET /users/{telegram_id}/spreadsheets` | вся история таблиц пользователя, **включая отвязанные** (`deleted_at`); неизвестный id — 404 `user` |
 | `GET /spreadsheets/{id}` · `DELETE /spreadsheets/{id}` | чтение, отвязывание (204, мягко: `deleted_at`, гашение очереди листов и недоставленных уведомлений; пользователь не удаляется) |
 | `GET /spreadsheets/{id}/categories` · `sources` · `balances` | справочники, `?only_active=` |
 | `GET/POST /spreadsheets/{id}/accesses` · `POST .../accesses/{id}/granted` | доступы; `?pending_only=` |
@@ -306,7 +307,8 @@ backoff перестал бы работать.
 | `GET/POST /spreadsheets/{id}/checks` | сохранённые чеки, `?unprocessed=` (очередь разбора) либо `?period_id=` (архив месяца для листа чеков); оба фильтра сразу — 422; повтор — 409 `check_already_saved` |
 | `DELETE /spreadsheets/{id}/checks/{check_id}` | убрать неразобранный чек (204, мягко); разобранный — 409 `check_already_processed`, он уходит вслед за своими операциями |
 | `GET /spreadsheets/{id}/cashed-records` · `POST .../checks/commit` | кэш типов, запись разобранного чека |
-| `POST /spreadsheets/{id}/llm-usages` | записать, во что обошёлся вызов модели (201). Парного чтения нет: сводки считаются запросами к базе |
+| `POST /spreadsheets/{id}/llm-usages` | записать, во что обошёлся вызов модели (201); по отвязанному документу — 404 |
+| `GET /spreadsheets/{id}/llm-usages` | замеры документа по времени, **включая отвязанный**. Без агрегации: траты раскладываются по учётным периодам, а границы периода — даты в часовом поясе документа, и считает их бот |
 | `GET /spreadsheets/{id}/notifications` · `POST .../notifications/{id}/delivered` | сообщения боту |
 | `POST /spreadsheets/{id}/import/categories` · `.../import/bills` | лист → БД (для gsheets) |
 | `GET/POST /spreadsheets/{id}/sheet-mappings` | где лежит лист (для gsheets) |

@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from abc import ABC, abstractmethod
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, ClassVar
 
 from aiogram.fsm.context import FSMContext
 from aiogram.types import CallbackQuery, Message
@@ -21,6 +21,12 @@ if TYPE_CHECKING:
 
 class BaseCommand(ABC):
     """Общее для всех команд: доступ к api, обёртке aiogram и менеджеру."""
+
+    #: Требует ли команда роли админа. Проверяет `Manager` — там же, где
+    #: проверяется сам доступ, и на обоих входах сразу. Команда о роли не знает
+    #: ничего: иначе каждая следующая админская кнопка помнила бы о проверке
+    #: вручную, и первая забытая молча открыла бы ветку всем.
+    requires_admin: ClassVar[bool] = False
 
     def __init__(
         self,

@@ -48,6 +48,18 @@ class SpreadsheetsClient:
         data = await self._http.get_data(f"/spreadsheets/by-telegram/{telegram_id}")
         return Spreadsheet.model_validate(data)
 
+    async def list_by_telegram_id(self, telegram_id: int) -> list[Spreadsheet]:
+        """Все таблицы пользователя за всё время, включая отвязанные.
+
+        Другой маршрут, а не флаг у `by_telegram_id`: тот отвечает «с какой
+        таблицей работать сейчас» и обязан оставаться единственным способом это
+        узнать. Здесь же отвязанные — это цель запроса: траты на модель по ним
+        остаются тратами пользователя. 404 по ресурсу `user` означает, что
+        такого человека в базе нет вовсе.
+        """
+        items = await self._http.get_items(f"/users/{telegram_id}/spreadsheets")
+        return [Spreadsheet.model_validate(item) for item in items]
+
     async def delete(self, spreadsheet_id: int) -> None:
         """Отвязывает таблицу от бота (сам Google-документ остаётся у владельца)."""
         await self._http.delete(f"/spreadsheets/{spreadsheet_id}")

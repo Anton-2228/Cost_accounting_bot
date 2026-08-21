@@ -18,7 +18,12 @@ logger = get_logger(__name__)
 
 
 class Manager:
-    """Находит команду по ключу, проверяет доступ и ловит всё, что упало.
+    """Находит команду по ключу, проверяет доступ и роль, ловит всё, что упало.
+
+    Право на админское действие объявляет сама команда (`requires_admin`), а
+    проверяется оно здесь — там же, где доступ, и на обоих входах сразу. Иначе
+    каждая следующая админская ветка помнила бы о проверке вручную, и первая
+    забытая открыла бы её всем.
 
     Граница ошибок здесь **одна и всеобъемлющая**. В старой версии ловились
     только ошибки api, а `ValueError`, `KeyError` и `TypeError` уходили в
@@ -51,12 +56,18 @@ class Manager:
         **kwargs: Any,
     ) -> None:
         """Выполняет команду, превращая любую ошибку в ответ пользователю."""
-        if not self._access.is_allowed(message.from_user.id if message.from_user else None):
+        telegram_id = message.from_user.id if message.from_user else None
+        if not self._access.is_allowed(telegram_id):
+            await self._aiogram.answer_message(message, ACCESS_DENIED_MESSAGE)
+            return
+
+        command = self.get(name)
+        if command.requires_admin and not self._access.is_admin(telegram_id):
             await self._aiogram.answer_message(message, ACCESS_DENIED_MESSAGE)
             return
 
         try:
-            await self.get(name).execute(message, state, **kwargs)
+            await command.execute(message, state, **kwargs)
         except ApiError as error:
             logger.warning("Команда «%s» не удалась: %s", name, error)
             await self._answer_safely(message, ApiErrorPresenter.present(error))
@@ -76,13 +87,24 @@ class Manager:
         Отдельный вход, а не `launch` по `callback.message`: у того сообщения
         автор — бот, и проверка доступа по нему отказала бы законному
         пользователю, а поиск документа ушёл бы не туда.
+
+        Роль проверяется и здесь. Одной проверки в `launch` не хватило бы:
+        кнопка живёт в переписке дольше команды, её `callback_data` видна
+        клиенту, и админская ветка, защищённая только со стороны команды,
+        осталась бы доступна нажатием.
         """
-        if not self._access.is_allowed(callback.from_user.id if callback.from_user else None):
+        telegram_id = callback.from_user.id if callback.from_user else None
+        if not self._access.is_allowed(telegram_id):
+            await self._aiogram.answer_callback(callback, ACCESS_DENIED_MESSAGE)
+            return
+
+        command = self.get(name)
+        if command.requires_admin and not self._access.is_admin(telegram_id):
             await self._aiogram.answer_callback(callback, ACCESS_DENIED_MESSAGE)
             return
 
         try:
-            await self.get(name).handle_callback(callback, state, **kwargs)
+            await command.handle_callback(callback, state, **kwargs)
         except ApiError as error:
             logger.warning("Кнопка команды «%s» не сработала: %s", name, error)
             await self._answer_callback_safely(callback, ApiErrorPresenter.present(error))

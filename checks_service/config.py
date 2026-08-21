@@ -47,6 +47,11 @@ class ChecksServiceSettings(BaseSettings):
     #: Пустой список означает «никому»: сервис, случайно поднятый без
     #: настройки, не должен оказаться открытым.
     allowed_telegram_ids: Annotated[frozenset[int], NoDecode] = frozenset()
+    #: Админы — тот же список, что у бота. Сервис не различает роли: чеки
+    #: добавляют все одинаково. Список нужен затем, что доступ считается
+    #: объединением, и без него админ, заведённый только в `ADMIN_TELEGRAM_IDS`,
+    #: пользовался бы ботом, но получал отказ в Mini App.
+    admin_telegram_ids: Annotated[frozenset[int], NoDecode] = frozenset()
     #: Возраст `initData`, после которого она считается протухшей. Подпись
     #: бессрочна сама по себе, поэтому без ограничения перехваченная строка
     #: работала бы вечно.
@@ -57,7 +62,12 @@ class ChecksServiceSettings(BaseSettings):
     debug: bool = False
     log_level: str = "INFO"
 
-    @field_validator("allowed_telegram_ids", mode="before")
+    @property
+    def permitted_telegram_ids(self) -> frozenset[int]:
+        """Все, кому разрешено добавлять чеки: пользователи и админы."""
+        return self.allowed_telegram_ids | self.admin_telegram_ids
+
+    @field_validator("allowed_telegram_ids", "admin_telegram_ids", mode="before")
     @classmethod
     def _split_ids(cls, value: object) -> object:
         """Принимает список id строкой через запятую.

@@ -65,6 +65,18 @@ class Spreadsheet(BaseModel):
     title: str
     reset_day: int
     timezone: str
+    #: Метка отвязывания. У живой таблицы пуста; заполнена — только в истории
+    #: пользователя, единственном месте, где отвязанные вообще показываются.
+    deleted_at: datetime | None = None
+
+    @property
+    def is_unlinked(self) -> bool:
+        """Таблица отвязана от бота.
+
+        Учёт по ней не ведут, но записи и траты на модель остались: отвязывание
+        мягкое.
+        """
+        return self.deleted_at is not None
 
     @property
     def is_ready(self) -> bool:
@@ -176,3 +188,52 @@ class UserNotification(BaseModel):
     id: int
     kind: NotificationKind
     text: str
+
+
+class PeriodStatus(StrEnum):
+    """Состояние учётного периода."""
+
+    OPEN = "OPEN"
+    CLOSED = "CLOSED"
+
+
+class Period(BaseModel):
+    """Учётный «месяц» документа: полуинтервал ``[start_date, end_date)``.
+
+    `end_date` **исключительна**: день, равный ей, относится уже к следующему
+    периоду. Границы — даты в часовом поясе документа, а не моменты времени.
+    """
+
+    model_config = ConfigDict(extra="ignore")
+
+    id: int
+    start_date: date
+    end_date: date
+    status: PeriodStatus
+
+    def contains(self, day: date) -> bool:
+        """Относится ли день к этому периоду."""
+        return self.start_date <= day < self.end_date
+
+
+class LlmUsage(BaseModel):
+    """Записанный замер одного обращения к модели.
+
+    Тёзка `telegram_bot.ai.LlmUsage`, и это разные вещи: там — то, что ответил
+    провайдер прямо сейчас, здесь — то, что об этом сохранено в базе.
+
+    `cost` допускает `None`, и это «неизвестно», а не «бесплатно»: стоимость
+    приезжает от провайдера и приходит не всегда. Считать пустое нулём значит
+    занижать сумму ровно на неизвестное.
+    """
+
+    model_config = ConfigDict(extra="ignore")
+
+    id: int
+    operation: LlmOperation
+    model: str
+    prompt_tokens: int
+    completion_tokens: int
+    total_tokens: int
+    cost: Decimal | None = None
+    created_at: datetime

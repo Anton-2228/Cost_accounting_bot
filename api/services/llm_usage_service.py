@@ -9,17 +9,21 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from api.domain.llm_usage import LlmUsage
 from api.enums import LlmEntityKind, LlmOperation
+from api.exceptions.base import NotFoundError
 from api.repositories.llm_usage_repository import LlmUsageRepository
 from api.repositories.spreadsheet_repository import SpreadsheetRepository
 from api.services.base import BaseSpreadsheetService
 
 
 class LlmUsageService(BaseSpreadsheetService):
-    """Запись замеров обращений к модели.
+    """Запись и чтение замеров обращений к модели.
 
-    Только запись: сводки считаются запросами к базе. Готовность документа не
-    проверяется — модель зовут при разборе чека, и наличие Google-таблицы к
-    расходу на неё отношения не имеет.
+    Готовность документа не проверяется — модель зовут при разборе чека, и
+    наличие Google-таблицы к расходу на неё отношения не имеет.
+
+    Чтение ничего не суммирует: наружу уезжают сами замеры. Итоги собирает тот,
+    кто показывает отчёт, потому что раскладываются они по учётным периодам, а
+    те считаются в часовом поясе документа.
     """
 
     def __init__(
@@ -31,6 +35,18 @@ class LlmUsageService(BaseSpreadsheetService):
     ) -> None:
         super().__init__(session, spreadsheets)
         self._usages = usages
+
+    async def list_for_spreadsheet(self, spreadsheet_id: int) -> list[LlmUsage]:
+        """Все замеры документа, в том числе отвязанного.
+
+        Документ здесь ищется с `include_deleted=True`, а не через `_get`:
+        отвязывание мягкое, и `_get` отдал бы 404 ровно на том случае, ради
+        которого чтение и появилось — на истории трат по документу, которым
+        больше не пользуются.
+        """
+        if await self._spreadsheets.get_by_id(spreadsheet_id, include_deleted=True) is None:
+            raise NotFoundError("spreadsheet")
+        return await self._usages.list_by_spreadsheet(spreadsheet_id)
 
     async def record(
         self,

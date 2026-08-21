@@ -118,3 +118,43 @@ class TestAccessGuard:
     def test_missing_user_is_denied(self) -> None:
         """Сообщение без автора (канал, служебное) не проходит."""
         assert AccessGuard([1]).is_allowed(None) is False
+
+
+class TestRoles:
+    """Админ и обычный пользователь."""
+
+    def test_admin_is_allowed_without_being_listed_twice(self) -> None:
+        """Доступ — объединение списков, дублировать id не нужно.
+
+        Требовать присутствия в обоих значило бы завести состояние «админ без
+        доступа»: роль есть, а выполнить ею нечего, — и получалось бы оно молча,
+        одной забытой правкой env.
+        """
+        guard = AccessGuard([1], [7])
+        assert guard.is_allowed(7) is True
+        assert guard.is_admin(7) is True
+
+    def test_ordinary_user_is_not_admin(self) -> None:
+        """Право пользоваться ботом само по себе роли не даёт."""
+        guard = AccessGuard([1], [7])
+        assert guard.is_allowed(1) is True
+        assert guard.is_admin(1) is False
+
+    def test_stranger_is_neither(self) -> None:
+        """Посторонний не проходит и админом не считается."""
+        guard = AccessGuard([1], [7])
+        assert guard.is_allowed(99) is False
+        assert guard.is_admin(99) is False
+
+    def test_no_admins_by_default(self) -> None:
+        """Без второго списка админов нет вовсе.
+
+        Прежние развёртывания знают только `ALLOWED_TELEGRAM_IDS`, и молча
+        произвести кого-нибудь из них в админы значило бы раздать права
+        обновлением.
+        """
+        assert AccessGuard([1, 2]).is_admin(1) is False
+
+    def test_missing_user_is_not_admin(self) -> None:
+        """Обращение без автора роли не получает."""
+        assert AccessGuard([1], [7]).is_admin(None) is False

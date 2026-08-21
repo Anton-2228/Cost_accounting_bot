@@ -161,3 +161,88 @@ async def test_usage_for_unlinked_spreadsheet_is_404(
 
     assert (await client.post(base, json=_USAGE_BODY)).status_code == 404
     assert len((await session.scalars(select(LlmUsageORM))).all()) == 1
+
+
+async def test_usages_are_listed_in_order(
+    client: AsyncClient,
+    session: AsyncSession,
+) -> None:
+    """Чтение отдаёт замеры документа по времени.
+
+    Порядок не украшение: отчёт раскладывает их по учётным периодам, и
+    хронология — то, в чём он их и ожидает.
+    """
+    spreadsheet = await factories.create_spreadsheet(session)
+    await session.commit()
+    base = f"/api/v1/spreadsheets/{spreadsheet.id}/llm-usages"
+    assert (await client.post(base, json=_USAGE_BODY)).status_code == 201
+    assert (
+        await client.post(base, json={**_USAGE_BODY, "cost": "0.0000900"})
+    ).status_code == 201
+
+    response = await client.get(base)
+
+    assert response.status_code == 200
+    items = response.json()["items"]
+    assert [Decimal(item["cost"]) for item in items] == [
+        Decimal("0.0004212"),
+        Decimal("0.0000900"),
+    ]
+    # `raw_usage` наружу не отдаётся: он нужен будущим вопросам к базе, а
+    # клиенту — нет, он сам его и прислал.
+    assert "raw_usage" not in items[0]
+
+
+async def test_unknown_cost_stays_unknown_on_read(
+    client: AsyncClient,
+    session: AsyncSession,
+) -> None:
+    """Пустая цена доезжает как `null`, а не как ноль.
+
+    Ноль означал бы бесплатный вызов, и сумма занижалась бы ровно на
+    неизвестное — молча, без единого признака в отчёте.
+    """
+    spreadsheet = await factories.create_spreadsheet(session)
+    await session.commit()
+    base = f"/api/v1/spreadsheets/{spreadsheet.id}/llm-usages"
+    assert (await client.post(base, json={**_USAGE_BODY, "cost": None})).status_code == 201
+
+    response = await client.get(base)
+
+    assert response.json()["items"][0]["cost"] is None
+
+
+async def test_usages_of_unlinked_spreadsheet_are_readable(
+    client: AsyncClient,
+    session: AsyncSession,
+) -> None:
+    """Отвязанный документ читается наравне с живым.
+
+    Это ровно тот случай, ради которого чтение и появилось: расход на модель не
+    отменяется тем, что учёт по документу больше не ведут. Писать в такой
+    документ по-прежнему нельзя.
+    """
+    spreadsheet = await factories.create_spreadsheet(session)
+    await session.commit()
+    base = f"/api/v1/spreadsheets/{spreadsheet.id}/llm-usages"
+    assert (await client.post(base, json=_USAGE_BODY)).status_code == 201
+    assert (
+        await client.delete(f"/api/v1/spreadsheets/{spreadsheet.id}")
+    ).status_code == 204
+
+    response = await client.get(base)
+
+    assert response.status_code == 200
+    assert len(response.json()["items"]) == 1
+
+
+async def test_reading_unknown_spreadsheet_is_404(client: AsyncClient) -> None:
+    """Несуществующий документ — 404, а не пустой список.
+
+    Пустой список означал бы «этот документ ничего не тратил», и опечатка в
+    идентификаторе выглядела бы как ответ.
+    """
+    response = await client.get("/api/v1/spreadsheets/999999/llm-usages")
+
+    assert response.status_code == 404
+    assert response.json()["details"] == {"resource": "spreadsheet"}

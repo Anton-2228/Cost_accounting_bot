@@ -19,6 +19,7 @@ class SpreadsheetMapper(BaseMapper[SpreadsheetORM, Spreadsheet]):
             title=orm.title,
             reset_day=orm.reset_day,
             timezone=orm.timezone,
+            deleted_at=orm.deleted_at,
             created_at=orm.created_at,
             updated_at=orm.updated_at,
         )
@@ -31,4 +32,5 @@ class SpreadsheetMapper(BaseMapper[SpreadsheetORM, Spreadsheet]):
             title=domain.title,
             reset_day=domain.reset_day,
             timezone=domain.timezone,
+            deleted_at=domain.deleted_at,
         )

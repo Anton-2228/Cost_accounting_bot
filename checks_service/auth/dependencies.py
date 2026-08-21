@@ -24,17 +24,22 @@ def current_telegram_id(
 ) -> int:
     """Проверяет `Authorization: tma <initData>` и возвращает telegram_id.
 
-    Список разрешённых берётся из окружения, а не из api: доступ здесь не
-    предметное понятие, а свойство развёртывания — тот же список, что у бота.
+    Списки разрешённых берутся из окружения, а не из api: доступ здесь не
+    предметное понятие, а свойство развёртывания — те же списки, что у бота.
     Проверка нужна не ради приватности: расшифровка чека платная и
     лимитированная, и без неё любой, кто узнал адрес Mini App, жёг бы чужой
     лимит.
+
+    Пускается объединение обоих списков. Роль сервис не различает: чеки
+    добавляют все одинаково, — но админ, заведённый только в
+    `ADMIN_TELEGRAM_IDS`, иначе получал бы здесь отказ, продолжая пользоваться
+    ботом.
     """
     scheme, _, init_data = authorization.partition(" ")
     if scheme.lower() != constants.AUTH_SCHEME or not init_data:
         raise UnauthorizedError("Нет данных Telegram в запросе")
 
     verified = get_verifier(request).verify(init_data)
-    if verified.telegram_id not in settings.allowed_telegram_ids:
+    if verified.telegram_id not in settings.permitted_telegram_ids:
         raise ForbiddenError("Доступ запрещён")
     return verified.telegram_id
