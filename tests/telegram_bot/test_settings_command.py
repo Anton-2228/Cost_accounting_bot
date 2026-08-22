@@ -29,6 +29,7 @@ from telegram_bot.api_client.errors import ApiNotFoundError
 from telegram_bot.api_client.models import (
     LlmOperation,
     LlmUsage,
+    NotificationKind,
     Period,
     PeriodStatus,
     Spreadsheet,
@@ -133,6 +134,8 @@ class FakeAiogram(AiogramWrapper):
         super().__init__(Bot(token=_TOKEN), Router(), Dispatcher())
         self.sent: list[str] = []
         self.keyboards: list[InlineKeyboardMarkup] = []
+        #: Сообщения, у которых сняли клавиатуру.
+        self.cleared: list[int] = []
 
     async def answer_message(self, message: Message, text: str) -> Message:
         self.sent.append(text)
@@ -150,6 +153,10 @@ class FakeAiogram(AiogramWrapper):
         if keyboard is not None:
             self.keyboards.append(keyboard)
         return _message(text, user_id=chat_id)
+
+    async def clear_keyboard(self, chat_id: int, message_id: int) -> None:
+        """Гасит клавиатуру: помнит, у какого сообщения её сняли."""
+        self.cleared.append(message_id)
 
     async def answer_callback(self, callback: CallbackQuery, text: str | None = None) -> None:
         if text is not None:
@@ -217,8 +224,13 @@ class FakeApi:
 class FakeCatchUp:
     """Дочитка уведомлений: отчёту доставлять нечего."""
 
-    async def deliver(self, spreadsheet_id: int, chat_id: int) -> None:
-        return None
+    #: Что дочитка отдаёт вызывающему. По умолчанию — ничего: почти каждому
+    #: тесту доставлять нечего, а `TABLE_READY` подставляют те, кто проверяет
+    #: меню после готовности таблицы.
+    delivered: tuple[NotificationKind, ...] = ()
+
+    async def deliver(self, spreadsheet_id: int, chat_id: int) -> list[NotificationKind]:
+        return list(self.delivered)
 
 
 class Harness:

@@ -42,24 +42,21 @@ def get_commands(
     Ключ совпадает с командой Telegram без слеша, поэтому второй таблицы
     соответствий не существует и рассинхронизироваться нечему.
 
-    `/check_skip` и `/check_del` получают саму команду разбора, а не копию её
+    Кнопки «Отложить» и «Удалить» получают саму команду разбора, а не копию её
     логики: очередь и черновик живут в одном месте, и показать следующий чек
     умеет только оно. Тем же способом собран `/settings`: админская ветка
     получает сам экран настроек, потому что возвращается к нему после отчёта.
-    И так же `/start` получает `/menu`: меню рисуется в конце мастера и вместо
-    приветствия тому, у кого таблица уже есть.
 
-    `AccessGuard` нужен ровно одной команде — экрану настроек, который выбирает
-    по роли текст. Право на админскую ветку здесь не проверяется: оно объявлено
-    у самой ветки и проверяется `Manager`.
+    Экран меню никому в зависимости не передаётся, хотя нужен четверым: его
+    берут из этого же реестра через `BaseCommand.menu()`. Иначе на одну команду
+    существовали бы две ссылки — здесь и в поле каждого, кому она понадобилась.
     """
     arguments = (manager, api, aiogram_wrapper, catch_up)
     check = CheckCommand(*arguments, ai)
     settings = SettingsCommand(*arguments, access)
-    menu = MenuCommand(*arguments)
     return {
-        CommandName.START: StartCommand(*arguments, menu),
-        CommandName.MENU: menu,
+        CommandName.START: StartCommand(*arguments),
+        CommandName.MENU: MenuCommand(*arguments),
         CommandName.HELP: HelpCommand(*arguments),
         CommandName.CANCEL: CancelCommand(*arguments),
         CommandName.ADD: RecordAddCommand(*arguments),

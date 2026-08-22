@@ -5,6 +5,7 @@ from __future__ import annotations
 from telegram_bot.aiogram_wrapper import AiogramWrapper
 from telegram_bot.api_client import ApiGateway
 from telegram_bot.api_client.errors import ApiError
+from telegram_bot.api_client.models import NotificationKind
 from telegram_bot.logging import get_logger
 
 logger = get_logger(__name__)
@@ -30,15 +31,20 @@ class NotificationCatchUp:
         self._api = api
         self._aiogram = aiogram_wrapper
 
-    async def deliver(self, spreadsheet_id: int, chat_id: int) -> int:
-        """Отправляет всё недоставленное. Возвращает число отправленных."""
+    async def deliver(self, spreadsheet_id: int, chat_id: int) -> list[NotificationKind]:
+        """Отправляет всё недоставленное. Возвращает виды отправленного.
+
+        Виды, а не число: по `TABLE_READY` вызывающая сторона дорисовывает меню,
+        и узнать о нём иначе неоткуда. Число никому не было нужно — им никто не
+        пользовался.
+        """
         try:
             pending = await self._api.notifications.list_undelivered(spreadsheet_id)
         except ApiError as error:
             logger.warning("Не удалось прочитать уведомления: %s", error)
-            return 0
+            return []
 
-        delivered = 0
+        delivered: list[NotificationKind] = []
         for notification in pending:
             try:
                 await self._aiogram.send_message(chat_id, notification.text)
@@ -49,5 +55,5 @@ class NotificationCatchUp:
             except Exception:
                 logger.exception("Не удалось отправить уведомление %s", notification.id)
                 break
-            delivered += 1
+            delivered.append(notification.kind)
         return delivered

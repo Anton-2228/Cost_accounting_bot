@@ -28,7 +28,7 @@ from __future__ import annotations
 from typing import Any
 
 from aiogram.fsm.context import FSMContext
-from aiogram.types import CallbackQuery, InlineKeyboardMarkup, Message
+from aiogram.types import CallbackQuery, Message
 
 from telegram_bot import constants
 from telegram_bot.ai import AiClient, AiError, LlmUsage
@@ -46,8 +46,9 @@ from telegram_bot.api_client.models import (
 from telegram_bot.checks import ReceiptError, ReceiptExtractor
 from telegram_bot.checks.draft import CheckDraft, DraftItem
 from telegram_bot.commands.base_command import BaseCommand
+from telegram_bot.commands.cancel import BRANCH_CHECK, cancel_row
 from telegram_bot.commands.manager import Manager
-from telegram_bot.enums import FsmDataKeys
+from telegram_bot.enums import CommandName, FsmDataKeys
 from telegram_bot.errors import TYPE_TAKEN_REASON, ApiErrorPresenter
 from telegram_bot.formatting import CheckFormatter
 from telegram_bot.logging import get_logger
@@ -74,6 +75,17 @@ _DONE_BUTTON = "Готово"
 #: Префикс `callback_data`. Дальше — стадия и `check_id`: без него кнопка от
 #: предыдущего чека применилась бы к текущему, ровно как в старой версии.
 _DONE_PREFIX = "check_done"
+
+#: Кнопки судьбы чека. Команд `/check_skip` и `/check_del` больше нет: они были
+#: осмысленны ровно внутри разбора и нигде больше, а набирать их приходилось
+#: посреди кнопочного диалога.
+#:
+#: Надписи и префиксы живут здесь, рядом с клавиатурой, хотя обслуживают их
+#: отдельные команды: те импортируют `check.py` ради очереди и черновика, и
+#: обратный импорт замкнул бы круг. Префикс совпадает с ключом команды — по
+#: нему нажатие и находит обработчик.
+SKIP_BUTTON = "Отложить"
+DELETE_BUTTON = "Удалить"
 
 #: Метки стадий в `callback_data`. Короткие и свои, а не строка состояния:
 #: `States.CHECK_TYPES.state` — это «States:CHECK_TYPES», и двоеточие внутри
@@ -124,7 +136,7 @@ class CheckCommand(BaseCommand):
 
         # Сессия начинается начисто: пропущенные в прошлый раз чеки снова
         # попадают в очередь — иначе «пропустить» означало бы «удалить».
-        await self.aiogram.clear_state(state)
+        await self.finish(chat_id=chat_id, state=state)
         await self.show_next(chat_id=chat_id, state=state, spreadsheet=spreadsheet)
 
     async def handle_callback(
@@ -141,11 +153,11 @@ class CheckCommand(BaseCommand):
 
         draft = await self._draft(state)
         if draft is None:
-            await self.aiogram.clear_state(state)
+            await self.finish(chat_id=chat_id, state=state)
             await self.aiogram.send_message(chat_id, CHECK_LOST_MESSAGE)
             return
 
-        if not self._is_current(callback.data, draft):
+        if not self.is_current(callback.data, draft):
             await self.aiogram.send_message(chat_id, CHECK_STALE_BUTTON_MESSAGE)
             return
 
@@ -157,7 +169,7 @@ class CheckCommand(BaseCommand):
         if current == States.CHECK_TYPES.state:
             await self._to_categories(chat_id, state, draft, spreadsheet)
         elif current == States.CHECK_CATEGORIES.state:
-            await self._to_source(chat_id, state)
+            await self._to_source(chat_id, state, draft)
 
     # --- Очередь ---------------------------------------------------------
 
@@ -179,12 +191,15 @@ class CheckCommand(BaseCommand):
         checks = await self.api.checks.list_unprocessed(spreadsheet.id)
         pending = [check for check in checks if check.id not in skipped]
         if not pending:
-            await self.aiogram.clear_state(state)
             text = (
                 CHECK_QUEUE_EMPTY_MESSAGE
                 if not saved and not skipped
                 else CheckFormatter.finished(saved=saved, skipped=len(skipped))
             )
+            # Ветка кончилась: гасим клавиатуру последнего блока вместе со
+            # снятием состояния, иначе «Отмена» и «Удалить» остались бы живыми
+            # там, где отменять и удалять уже нечего.
+            await self.finish(chat_id=chat_id, state=state)
             await self.aiogram.send_message(chat_id, text)
             return
 
@@ -210,10 +225,19 @@ class CheckCommand(BaseCommand):
             receipt = ReceiptExtractor.extract(check.raw_payload, check.qr_raw)
         except ReceiptError as error:
             # Чек остаётся в очереди: его надо либо убрать, либо отложить, и
-            # обе команды доступны только внутри состояния разбора.
-            await self._save_draft(state, CheckDraft(check_id=check.id))
+            # обе кнопки живут только внутри состояния разбора. Текст отказа —
+            # от разбора, а не общий: он называет причину («это возврат»,
+            # «сумма не сошлась»), и подменять его общей формулировкой значило
+            # бы отнять единственное объяснение.
+            broken = CheckDraft(check_id=check.id)
+            await self._save_draft(state, broken)
             await self.aiogram.set_state(state, States.CHECK_TYPES)
-            await self.aiogram.send_message(chat_id, error.message)
+            await self.ask(
+                chat_id=chat_id,
+                state=state,
+                text=error.message,
+                rows=self.stage_rows(broken, stage=None),
+            )
             return
 
         draft = CheckDraft(
@@ -247,8 +271,12 @@ class CheckCommand(BaseCommand):
 
         await self._save_draft(state, draft)
         await self.aiogram.set_state(state, States.CHECK_TYPES)
-        await self.aiogram.send_message(chat_id, CheckFormatter.header(draft, left=left))
-        await self._show_types(chat_id, draft, categories)
+        await self.ask(
+            chat_id=chat_id,
+            state=state,
+            text=CheckFormatter.header(draft, left=left),
+        )
+        await self._show_types(chat_id, state, draft, categories)
 
     async def _suggest_types(
         self,
@@ -276,7 +304,7 @@ class CheckCommand(BaseCommand):
             )
         except AiError as error:
             logger.warning("Модель не подсказала типы: %s", error)
-            await self.aiogram.clear_state(state)
+            await self.finish(chat_id=chat_id, state=state)
             await self.aiogram.send_message(chat_id, CHECK_AI_UNAVAILABLE_MESSAGE)
             return False
 
@@ -331,32 +359,53 @@ class CheckCommand(BaseCommand):
     async def _show_types(
         self,
         chat_id: int,
+        state: FSMContext,
         draft: CheckDraft,
         categories: list[Category],
     ) -> None:
-        """Печатает список «товар → тип» и кнопку «Готово».
+        """Печатает список «товар → тип» и клавиатуру стадии.
 
         Справочник нужен не для подбора, а для показа: тип, которого нет ни у
         одной категории, печатается капсом — он будет заведён при записи чека.
+
+        Блок из двух сообщений, клавиатура — у нижнего: список бывает длинным,
+        и кнопки, приклеенные к его началу, уехали бы за край экрана.
         """
-        await self.aiogram.send_message(
-            chat_id,
-            CheckFormatter.types(draft, _product_types(categories)),
+        await self.ask(
+            chat_id=chat_id,
+            state=state,
+            text=CheckFormatter.types(draft, _product_types(categories)),
             parse_mode=_HTML,
         )
-        await self.aiogram.send_message(
-            chat_id,
-            CHECK_ASK_TYPES_MESSAGE,
-            keyboard=self._done_keyboard(_STAGE_TYPES, draft),
+        await self.ask(
+            chat_id=chat_id,
+            state=state,
+            text=CHECK_ASK_TYPES_MESSAGE,
+            rows=self.stage_rows(draft, stage=_STAGE_TYPES),
+        )
+
+    async def _show_broken(self, chat_id: int, state: FSMContext, draft: CheckDraft) -> None:
+        """Повторяет отказ разбора вместе с кнопками судьбы чека.
+
+        Отдельно от `_show_types`: у неразобранного чека нет ни списка позиций,
+        ни стадии, к которой вела бы кнопка «Готово», — только выбор, отложить
+        его или удалить.
+        """
+        await self.ask(
+            chat_id=chat_id,
+            state=state,
+            text=CHECK_BROKEN_MESSAGE,
+            rows=self.stage_rows(draft, stage=None),
         )
 
     async def _edit_types(self, message: Message, state: FSMContext) -> None:
         """Применяет правки типов и печатает список заново."""
+        chat_id = message.chat.id
         draft = await self._require_draft(message, state)
         if draft is None:
             return
         if not draft.items:
-            await self.aiogram.answer_message(message, CHECK_BROKEN_MESSAGE)
+            await self._show_broken(chat_id, state, draft)
             return
 
         text = self.text_of(message)
@@ -367,7 +416,12 @@ class CheckCommand(BaseCommand):
                 max_value_length=constants.PRODUCT_TYPE_MAX_LENGTH,
             )
         except ParseError as error:
-            await self.aiogram.answer_message(message, error.message)
+            await self.ask(
+                chat_id=chat_id,
+                state=state,
+                text=error.message,
+                rows=self.stage_rows(draft, stage=_STAGE_TYPES),
+            )
             return
 
         spreadsheet = await self.spreadsheet(message)
@@ -382,7 +436,8 @@ class CheckCommand(BaseCommand):
 
         await self._save_draft(state, draft)
         await self._show_types(
-            message.chat.id,
+            chat_id,
+            state,
             draft,
             await self.api.catalog.categories(spreadsheet.id),
         )
@@ -398,7 +453,7 @@ class CheckCommand(BaseCommand):
     ) -> None:
         """Раскладывает позиции по категориям и переходит ко второй стадии."""
         if not draft.items:
-            await self.aiogram.send_message(chat_id, CHECK_BROKEN_MESSAGE)
+            await self._show_broken(chat_id, state, draft)
             return
 
         categories = await self.api.catalog.categories(spreadsheet.id)
@@ -420,7 +475,7 @@ class CheckCommand(BaseCommand):
                 )
             except AiError as error:
                 logger.warning("Модель не подсказала категории: %s", error)
-                await self.aiogram.clear_state(state)
+                await self.finish(chat_id=chat_id, state=state)
                 await self.aiogram.send_message(chat_id, CHECK_AI_UNAVAILABLE_MESSAGE)
                 return
 
@@ -451,7 +506,7 @@ class CheckCommand(BaseCommand):
 
         await self._save_draft(state, draft)
         await self.aiogram.set_state(state, States.CHECK_CATEGORIES)
-        await self._show_categories(chat_id, draft)
+        await self._show_categories(chat_id, state, draft)
 
     @staticmethod
     def _category_for(
@@ -474,21 +529,29 @@ class CheckCommand(BaseCommand):
         title = suggested.get(item.product_type)
         return _by_title(categories, title) if title else None
 
-    async def _show_categories(self, chat_id: int, draft: CheckDraft) -> None:
-        """Печатает список «товар → категория» и кнопку «Готово»."""
-        await self.aiogram.send_message(
-            chat_id,
-            CheckFormatter.categories(draft),
+    async def _show_categories(
+        self,
+        chat_id: int,
+        state: FSMContext,
+        draft: CheckDraft,
+    ) -> None:
+        """Печатает список «товар → категория» и клавиатуру стадии."""
+        await self.ask(
+            chat_id=chat_id,
+            state=state,
+            text=CheckFormatter.categories(draft),
             parse_mode=_HTML,
         )
-        await self.aiogram.send_message(
-            chat_id,
-            CHECK_ASK_CATEGORIES_MESSAGE,
-            keyboard=self._done_keyboard(_STAGE_CATEGORIES, draft),
+        await self.ask(
+            chat_id=chat_id,
+            state=state,
+            text=CHECK_ASK_CATEGORIES_MESSAGE,
+            rows=self.stage_rows(draft, stage=_STAGE_CATEGORIES),
         )
 
     async def _edit_categories(self, message: Message, state: FSMContext) -> None:
         """Применяет правки категорий: значение ищется по псевдониму."""
+        chat_id = message.chat.id
         draft = await self._require_draft(message, state)
         if draft is None:
             return
@@ -501,16 +564,23 @@ class CheckCommand(BaseCommand):
         try:
             edits = CheckParser.parse(self.text_of(message), count=len(draft.items))
         except ParseError as error:
-            await self.aiogram.answer_message(message, error.message)
+            await self.ask(
+                chat_id=chat_id,
+                state=state,
+                text=error.message,
+                rows=self.stage_rows(draft, stage=_STAGE_CATEGORIES),
+            )
             return
 
         for edit in edits:
             category = AssociationMatcher.category(edit.value, categories)
             if category is None:
                 hint = AssociationMatcher.hint([item.title for item in categories])
-                await self.aiogram.answer_message(
-                    message,
-                    f"Категории «{edit.value}» нет, либо она выключена.\nЕсть такие: {hint}",
+                await self.ask(
+                    chat_id=chat_id,
+                    state=state,
+                    text=f"Категории «{edit.value}» нет, либо она выключена.\nЕсть такие: {hint}",
+                    rows=self.stage_rows(draft, stage=_STAGE_CATEGORIES),
                 )
                 return
             for number in edit.numbers:
@@ -521,24 +591,38 @@ class CheckCommand(BaseCommand):
                     item.category_confirmed = True
 
         await self._save_draft(state, draft)
-        await self._show_categories(message.chat.id, draft)
+        await self._show_categories(chat_id, state, draft)
 
     # --- Стадия 3: счёт и запись -----------------------------------------
 
-    async def _to_source(self, chat_id: int, state: FSMContext) -> None:
+    async def _to_source(self, chat_id: int, state: FSMContext, draft: CheckDraft) -> None:
         """Спрашивает счёт: один на весь чек."""
         await self.aiogram.set_state(state, States.CHECK_SOURCE)
-        await self.aiogram.send_message(chat_id, CHECK_ASK_SOURCE_MESSAGE)
+        await self._ask_source(chat_id, state, draft)
+
+    async def _ask_source(self, chat_id: int, state: FSMContext, draft: CheckDraft) -> None:
+        """Вопрос про счёт с клавиатурой стадии.
+
+        Кнопки «Готово» здесь нет: следующий шаг делает ответ пользователя, и
+        нажимать «Готово» было бы не над чем.
+        """
+        await self.ask(
+            chat_id=chat_id,
+            state=state,
+            text=CHECK_ASK_SOURCE_MESSAGE,
+            rows=self.stage_rows(draft, stage=None),
+        )
 
     async def _pick_source(self, message: Message, state: FSMContext) -> None:
         """Находит счёт по псевдониму и записывает чек."""
+        chat_id = message.chat.id
         draft = await self._require_draft(message, state)
         if draft is None:
             return
 
         text = self.text_of(message)
         if text is None:
-            await self.aiogram.answer_message(message, CHECK_ASK_SOURCE_MESSAGE)
+            await self._ask_source(chat_id, state, draft)
             return
 
         spreadsheet = await self.spreadsheet(message)
@@ -549,14 +633,21 @@ class CheckCommand(BaseCommand):
         source = AssociationMatcher.source(text, sources)
         if source is None:
             hint = AssociationMatcher.hint([item.title for item in sources])
-            await self.aiogram.answer_message(
-                message,
-                f"Счёта «{text.strip()}» нет, либо он выключен.\nЕсть такие: {hint}",
+            await self.ask(
+                chat_id=chat_id,
+                state=state,
+                text=f"Счёта «{text.strip()}» нет, либо он выключен.\nЕсть такие: {hint}",
+                rows=self.stage_rows(draft, stage=None),
             )
             return
 
         if any(item.category_id is None for item in draft.items):
-            await self.aiogram.answer_message(message, CHECK_NO_CATEGORY_MESSAGE)
+            await self.ask(
+                chat_id=chat_id,
+                state=state,
+                text=CHECK_NO_CATEGORY_MESSAGE,
+                rows=self.stage_rows(draft, stage=None),
+            )
             return
 
         categories = await self.api.catalog.categories(spreadsheet.id)
@@ -577,16 +668,20 @@ class CheckCommand(BaseCommand):
             # Чек не записан. Возвращаем на стадию типов: чинить надо именно
             # тип, а не счёт, о котором пользователя только что спросили.
             await self.aiogram.set_state(state, States.CHECK_TYPES)
-            await self.aiogram.answer_message(message, ApiErrorPresenter.present(error))
-            await self._show_types(message.chat.id, draft, categories)
+            await self.ask(
+                chat_id=chat_id,
+                state=state,
+                text=ApiErrorPresenter.present(error),
+            )
+            await self._show_types(chat_id, state, draft, categories)
             return
 
         await self.aiogram.send_message(
-            message.chat.id,
+            chat_id,
             CheckFormatter.saved(draft, count=len(records), source_title=source.title),
         )
         await self._bump_saved(state)
-        await self.show_next(chat_id=message.chat.id, state=state, spreadsheet=spreadsheet)
+        await self.show_next(chat_id=chat_id, state=state, spreadsheet=spreadsheet)
 
     @staticmethod
     def _commit_items(draft: CheckDraft, default_id: int | None) -> list[CommitItem]:
@@ -647,7 +742,7 @@ class CheckCommand(BaseCommand):
         """Черновик или `None` с уже отправленной подсказкой и снятым состоянием."""
         draft = await self._draft(state)
         if draft is None:
-            await self.aiogram.clear_state(state)
+            await self.finish(chat_id=message.chat.id, state=state)
             await self.aiogram.answer_message(message, CHECK_LOST_MESSAGE)
         return draft
 
@@ -681,22 +776,77 @@ class CheckCommand(BaseCommand):
         )
 
     async def current_draft(self, state: FSMContext) -> CheckDraft | None:
-        """Черновик текущего чека для `/check_skip` и `/check_del`."""
+        """Черновик текущего чека для кнопок «Отложить» и «Удалить»."""
         return await self._draft(state)
+
+    async def show_stage(
+        self,
+        *,
+        chat_id: int,
+        state: FSMContext,
+        draft: CheckDraft,
+        spreadsheet: Spreadsheet,
+    ) -> None:
+        """Перерисовывает блок текущей стадии.
+
+        Нужно отказу от удаления: подтверждение съело клавиатуру стадии, и
+        ответ «нет» обязан вернуть пользователя ровно туда, откуда он ушёл, —
+        иначе отказ от удаления оставлял бы чек без единой живой кнопки.
+        """
+        current = await self.aiogram.get_state(state)
+        if current == States.CHECK_TYPES.state:
+            if not draft.items:
+                await self._show_broken(chat_id, state, draft)
+                return
+            categories = await self.api.catalog.categories(spreadsheet.id)
+            await self._show_types(chat_id, state, draft, categories)
+        elif current == States.CHECK_CATEGORIES.state:
+            await self._show_categories(chat_id, state, draft)
+        elif current == States.CHECK_SOURCE.state:
+            await self._ask_source(chat_id, state, draft)
 
     # --- Кнопки ----------------------------------------------------------
 
-    def _done_keyboard(self, stage: str, draft: CheckDraft) -> InlineKeyboardMarkup:
-        """Кнопка «Готово» с номером чека в `callback_data`."""
-        return self.aiogram.inline_keyboard(
-            [(_DONE_BUTTON, f"{_DONE_PREFIX}:{stage}:{draft.check_id}")]
+    @staticmethod
+    def stage_rows(draft: CheckDraft, *, stage: str | None) -> list[tuple[tuple[str, str], ...]]:
+        """Клавиатура блока: переход, судьба чека и выход.
+
+        `stage` — метка стадии для кнопки «Готово»; `None` означает, что
+        переходить некуда: на счёте следующий шаг делает ответ пользователя, а
+        у неразобранного чека следующего шага нет вовсе.
+
+        «Отложить» и «Удалить» стоят рядом одним рядом и есть на каждом блоке
+        ветки: заметить «этот чек лишний» можно на любой стадии, а не только на
+        первой, и уводить за таким решением обратно в начало значило бы просить
+        пройти разбор ещё раз, чтобы от него отказаться.
+
+        `check_id` едет в каждой `callback_data`: кнопка живёт в переписке
+        дольше своего чека, и без номера нажатая на прошлом блоке «Удалить»
+        снесла бы чек, который разбирают сейчас.
+        """
+        rows: list[tuple[tuple[str, str], ...]] = []
+        if stage is not None:
+            rows.append(((_DONE_BUTTON, f"{_DONE_PREFIX}:{stage}:{draft.check_id}"),))
+        rows.append(
+            (
+                (SKIP_BUTTON, f"{CommandName.CHECK_SKIP}:{draft.check_id}"),
+                (DELETE_BUTTON, f"{CommandName.CHECK_DEL}:{draft.check_id}"),
+            )
         )
+        rows.append(cancel_row(BRANCH_CHECK))
+        return rows
 
     @staticmethod
-    def _is_current(data: str | None, draft: CheckDraft) -> bool:
-        """Относится ли нажатая кнопка к разбираемому сейчас чеку."""
+    def is_current(data: str | None, draft: CheckDraft) -> bool:
+        """Относится ли нажатая кнопка к разбираемому сейчас чеку.
+
+        Номер чека стоит последним во всех `callback_data` ветки, сколько бы
+        частей в них ни было: у «Готово» это `check_done:стадия:id`, у
+        подтверждения удаления — `check_del:yes:id`. Сверка по последней части
+        поэтому одна на все кнопки и не забывается при добавлении новой.
+        """
         parts = (data or "").split(":")
-        return len(parts) == 3 and parts[0] == _DONE_PREFIX and parts[2] == str(draft.check_id)
+        return len(parts) >= 2 and parts[-1] == str(draft.check_id)
 
 
 def _product_types(categories: list[Category]) -> set[str]:

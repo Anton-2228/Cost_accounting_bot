@@ -11,6 +11,7 @@ from telegram_bot.aiogram_wrapper import AiogramWrapper
 from telegram_bot.api_client import ApiGateway
 from telegram_bot.api_client.errors import ApiNotFoundError
 from telegram_bot.commands.base_command import BaseCommand
+from telegram_bot.commands.cancel import BRANCH_LLM, cancel_row
 from telegram_bot.commands.manager import Manager
 from telegram_bot.commands.settings import SettingsCommand
 from telegram_bot.formatting import LlmUsageFormatter, SpreadsheetUsage
@@ -21,7 +22,7 @@ from telegram_bot.resources.messages import (
 )
 from telegram_bot.states import States
 
-USER_NOT_FOUND_TEMPLATE = "Пользователь {telegram_id} не найден. Пришлите другой id или /cancel."
+USER_NOT_FOUND_TEMPLATE = "Пользователь {telegram_id} не найден. Пришлите другой id."
 
 
 class SettingsLlmCostsCommand(BaseCommand):
@@ -66,7 +67,7 @@ class SettingsLlmCostsCommand(BaseCommand):
         chat_id, _ = target
 
         await self.aiogram.set_state(state, States.SETTINGS_ASK_TELEGRAM_ID)
-        await self.aiogram.send_message(chat_id, ASK_LLM_TELEGRAM_ID_MESSAGE)
+        await self._ask(chat_id, state, ASK_LLM_TELEGRAM_ID_MESSAGE)
 
     async def execute(self, message: Message, state: FSMContext, **kwargs: Any) -> None:
         """Шаг ввода id: показывает отчёт и возвращает экран настроек.
@@ -79,7 +80,7 @@ class SettingsLlmCostsCommand(BaseCommand):
         text = self.text_of(message)
         telegram_id = None if text is None else self._parse_telegram_id(text)
         if telegram_id is None:
-            await self.aiogram.send_message(chat_id, BAD_TELEGRAM_ID_MESSAGE)
+            await self._ask(chat_id, state, BAD_TELEGRAM_ID_MESSAGE)
             return
 
         try:
@@ -87,8 +88,9 @@ class SettingsLlmCostsCommand(BaseCommand):
         except ApiNotFoundError as error:
             if error.resource != "user":
                 raise
-            await self.aiogram.send_message(
+            await self._ask(
                 chat_id,
+                state,
                 USER_NOT_FOUND_TEMPLATE.format(telegram_id=telegram_id),
             )
             return
@@ -96,8 +98,17 @@ class SettingsLlmCostsCommand(BaseCommand):
         for block in LlmUsageFormatter.report(telegram_id, items):
             await self.aiogram.send_message(chat_id, block)
 
-        await self.aiogram.clear_state(state)
+        await self.finish(chat_id=chat_id, state=state)
         await self._settings.show(chat_id=chat_id, telegram_id=self.user_id(message))
+
+    async def _ask(self, chat_id: int, state: FSMContext, text: str) -> None:
+        """Вопрос или отказ ввода — с кнопкой выхода из ветки.
+
+        Кнопку несёт и отказ: админ ошибся в числе, а не передумал, и состояние
+        поэтому остаётся, — но живая кнопка обязана переехать вниз вместе с
+        последним сообщением, иначе выход остался бы висеть над отчётом.
+        """
+        await self.ask(chat_id=chat_id, state=state, text=text, rows=[cancel_row(BRANCH_LLM)])
 
     async def _collect(self, telegram_id: int) -> list[SpreadsheetUsage]:
         """Собирает по пользователю всё, из чего считается отчёт.

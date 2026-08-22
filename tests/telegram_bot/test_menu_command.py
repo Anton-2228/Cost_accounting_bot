@@ -29,7 +29,13 @@ from telegram_bot.access import AccessGuard
 from telegram_bot.aiogram_wrapper import AiogramWrapper
 from telegram_bot.api_client import ApiGateway
 from telegram_bot.api_client.errors import ApiNotFoundError
-from telegram_bot.api_client.models import Spreadsheet
+from telegram_bot.api_client.models import NotificationKind, Spreadsheet
+from telegram_bot.commands.cancel import (
+    BRANCH_CHECK,
+    BRANCH_EMAIL,
+    CANCEL_BUTTON_TEXT,
+    CancelCommand,
+)
 from telegram_bot.commands.manager import Manager
 from telegram_bot.commands.menu import MENU_BUTTONS, MenuCommand
 from telegram_bot.commands.settings import SettingsCommand
@@ -39,9 +45,15 @@ from telegram_bot.commands.table_email import TableEmailCommand
 from telegram_bot.commands.table_sync import TableSyncCommand
 from telegram_bot.commands.table_unlink import CONFIRM_WORD, TableUnlinkCommand
 from telegram_bot.enums import CommandName
-from telegram_bot.errors import NO_TABLE_MESSAGE
+from telegram_bot.errors import NO_TABLE_MESSAGE, TABLE_CREATING_MESSAGE
 from telegram_bot.notifications import NotificationCatchUp
-from telegram_bot.resources.messages import MENU_MESSAGE, WELCOME_MESSAGE
+from telegram_bot.resources.messages import (
+    CANCEL_STALE_MESSAGE,
+    CREATING_TABLE_MESSAGE,
+    DIALOG_IN_PROGRESS_NO_EXIT_MESSAGE,
+    MENU_MESSAGE,
+    WELCOME_MESSAGE,
+)
 from telegram_bot.states import States
 
 _USER_ID = 11
@@ -99,6 +111,8 @@ class FakeAiogram(AiogramWrapper):
         self.sent: list[str] = []
         self.keyboards: list[InlineKeyboardMarkup | None] = []
         self.answered_callbacks = 0
+        #: Сообщения, у которых сняли клавиатуру.
+        self.cleared: list[int] = []
 
     async def answer_message(self, message: Message, text: str) -> Message:
         self.sent.append(text)
@@ -116,6 +130,10 @@ class FakeAiogram(AiogramWrapper):
         self.sent.append(text)
         self.keyboards.append(keyboard)
         return _message(text, user_id=chat_id)
+
+    async def clear_keyboard(self, chat_id: int, message_id: int) -> None:
+        """Гасит клавиатуру: помнит, у какого сообщения её сняли."""
+        self.cleared.append(message_id)
 
     async def answer_callback(self, callback: CallbackQuery, text: str | None = None) -> None:
         self.answered_callbacks += 1
@@ -185,8 +203,13 @@ class FakeApi:
 class FakeCatchUp:
     """Дочитка уведомлений: доставлять нечего."""
 
-    async def deliver(self, spreadsheet_id: int, chat_id: int) -> None:
-        return None
+    #: Что дочитка отдаёт вызывающему. По умолчанию — ничего: почти каждому
+    #: тесту доставлять нечего, а `TABLE_READY` подставляют те, кто проверяет
+    #: меню после готовности таблицы.
+    delivered: tuple[NotificationKind, ...] = ()
+
+    async def deliver(self, spreadsheet_id: int, chat_id: int) -> list[NotificationKind]:
+        return list(self.delivered)
 
 
 class Harness:
@@ -195,17 +218,18 @@ class Harness:
     def __init__(self, *, spreadsheet: Spreadsheet | None = None) -> None:
         self.aiogram = FakeAiogram()
         self.spreadsheets = FakeSpreadsheets(spreadsheet)
+        self.catch_up = FakeCatchUp()
         api = cast("ApiGateway", FakeApi(self.spreadsheets))
-        catch_up = cast("NotificationCatchUp", FakeCatchUp())
+        catch_up = cast("NotificationCatchUp", self.catch_up)
         access = AccessGuard(frozenset({_USER_ID, _ADMIN_ID}), frozenset({_ADMIN_ID}))
 
         self.manager = Manager(access, self.aiogram)
         arguments = (self.manager, api, self.aiogram, catch_up)
-        menu = MenuCommand(*arguments)
         self.manager.register(
             {
-                CommandName.START: StartCommand(*arguments, menu),
-                CommandName.MENU: menu,
+                CommandName.START: StartCommand(*arguments),
+                CommandName.MENU: MenuCommand(*arguments),
+                CommandName.CANCEL: CancelCommand(*arguments),
                 CommandName.TABLE: TableCommand(*arguments),
                 CommandName.TABLE_SYNC: TableSyncCommand(*arguments),
                 CommandName.TABLE_EMAIL: TableEmailCommand(*arguments),
@@ -232,6 +256,12 @@ class Harness:
         name = data.split(":", maxsplit=1)[0]
         await self.manager.launch_callback(
             name, _callback(data, user_id=user_id, with_message=with_message), self._state
+        )
+
+    async def restart(self, *, user_id: int = _USER_ID) -> None:
+        """Набирает `/start` — вход в бота и выход из любого диалога."""
+        await self.manager.launch(
+            CommandName.START, _message("/start", user_id=user_id), self._state, restart=True
         )
 
 
@@ -292,11 +322,12 @@ class TestEntrance:
         assert await harness.state.get_state() is None
         assert harness.aiogram.sent == []
 
-    async def test_wizard_ends_with_menu(self) -> None:
-        """Мастер заканчивается меню: ни ссылки, ни справки.
+    async def test_wizard_ends_with_a_promise_not_a_menu(self) -> None:
+        """Мастер заканчивается обещанием: ни ссылки, ни меню.
 
-        Ссылки у свежей таблицы всё равно нет — документ создаёт отдельный
-        сервис, и адрес приедет уведомлением.
+        Документ создаёт отдельный сервис, и до его появления не работает ни
+        одна кнопка экрана. Показать их сейчас значило бы выдать за готовность
+        то, что ею ещё не стало, — и первое же нажатие упёрлось бы в отказ.
         """
         harness = Harness()
         await harness.press(CREATE_TABLE_BUTTON[1])
@@ -304,8 +335,53 @@ class TestEntrance:
             await harness.command(CommandName.START, answer)
 
         assert harness.spreadsheets.created
-        assert harness.aiogram.sent[-1] == MENU_MESSAGE
+        assert harness.aiogram.sent[-1] == CREATING_TABLE_MESSAGE
+        assert not harness.aiogram.said(MENU_MESSAGE)
         assert await harness.state.get_state() is None
+
+    async def test_owner_of_unready_table_waits(self) -> None:
+        """Пока документа нет, `/start` обещает, а не показывает меню."""
+        harness = Harness(spreadsheet=_spreadsheet(google_id=""))
+        await harness.command(CommandName.START, "/start")
+
+        assert harness.aiogram.said(TABLE_CREATING_MESSAGE)
+        assert not harness.aiogram.said(MENU_MESSAGE)
+        assert not harness.aiogram.said(WELCOME_MESSAGE)
+
+    async def test_stale_button_on_unready_table_waits(self) -> None:
+        """И кнопка «Создать таблицу» — тоже: второй таблицы не заводится."""
+        harness = Harness(spreadsheet=_spreadsheet(google_id=""))
+        await harness.press(CREATE_TABLE_BUTTON[1])
+
+        assert harness.aiogram.said(TABLE_CREATING_MESSAGE)
+        assert await harness.state.get_state() is None
+
+    async def test_menu_arrives_when_the_table_gets_ready(self) -> None:
+        """`TABLE_READY`, приехавшее дочиткой, дорисовывает меню.
+
+        Второй путь доставки: push мог не пройти, пока бот лежал. Без этого
+        пользователь, чьё уведомление приехало дочиткой, остался бы без экрана
+        и не знал бы, что его чего-то лишили.
+        """
+        harness = Harness(spreadsheet=_spreadsheet())
+        harness.catch_up.delivered = (NotificationKind.TABLE_READY,)
+
+        await harness.command(CommandName.MENU, "/menu")
+
+        assert harness.aiogram.sent.count(MENU_MESSAGE) == 2
+
+    async def test_start_draws_the_menu_once(self) -> None:
+        """`/start` не показывает меню дважды, когда дочитка привезла готовность.
+
+        Он и сам рисует экран по готовности: без отдельного правила пользователь
+        получил бы два одинаковых меню подряд.
+        """
+        harness = Harness(spreadsheet=_spreadsheet())
+        harness.catch_up.delivered = (NotificationKind.TABLE_READY,)
+
+        await harness.command(CommandName.START, "/start")
+
+        assert harness.aiogram.sent.count(MENU_MESSAGE) == 1
 
 
 class TestMenuScreen:
@@ -325,6 +401,19 @@ class TestMenuScreen:
         await harness.command(CommandName.MENU, "/menu")
 
         assert harness.aiogram.said(NO_TABLE_MESSAGE)
+        assert harness.aiogram.buttons() == []
+
+    async def test_unready_table_menu_is_refused(self) -> None:
+        """Неготовая таблица для меню — то же, что её отсутствие.
+
+        Api за готовностью сюда не ходит вовсе: `/menu` только ищет документ.
+        Без проверки на стороне бота экран нарисовался бы весь, и каждая его
+        кнопка упёрлась бы в отказ по отдельности.
+        """
+        harness = Harness(spreadsheet=_spreadsheet(google_id=""))
+        await harness.command(CommandName.MENU, "/menu")
+
+        assert harness.aiogram.said(TABLE_CREATING_MESSAGE)
         assert harness.aiogram.buttons() == []
 
 
@@ -404,19 +493,104 @@ class TestRouting:
         for _, data in (*MENU_BUTTONS, CREATE_TABLE_BUTTON):
             assert data.startswith(_BUTTON_PREFIXES)
 
-    async def test_button_during_dialog_gets_a_hint(self, monkeypatch: Any) -> None:
-        """Нажатие посреди диалога объясняется, а не проглатывается молча."""
-        from telegram_bot import main
+    def test_cancel_is_not_blocked_as_a_menu_button(self) -> None:
+        """Префикса «Отмены» нет среди блокируемых кнопок меню.
+
+        Попади он туда — блокировщик отвечал бы «сейчас идёт другой диалог» на
+        единственную кнопку, которая должна была из этого диалога выпустить.
+        """
+        from telegram_bot.main import _BUTTON_PREFIXES
+
+        assert not f"{CommandName.CANCEL}:".startswith(_BUTTON_PREFIXES)
+
+    async def test_button_during_dialog_gets_a_hint(self) -> None:
+        """Нажатие посреди диалога объясняется и несёт выход из ветки."""
         from telegram_bot.resources.messages import DIALOG_IN_PROGRESS_MESSAGE
 
-        aiogram = FakeAiogram()
-        monkeypatch.setattr(main, "AIOGRAM_WRAPPER", aiogram)
-
-        state = FSMContext(
-            storage=MemoryStorage(),
-            key=StorageKey(bot_id=1, chat_id=_USER_ID, user_id=_USER_ID),
+        harness = Harness(spreadsheet=_spreadsheet())
+        await harness.press(MENU_BUTTONS[2][1])  # «Дать доступ к таблице»
+        await harness.manager.launch_callback(
+            CommandName.CANCEL, _callback(MENU_BUTTONS[0][1]), harness.state
         )
-        await main._on_button_during_dialog(_callback(MENU_BUTTONS[0][1]), state)
 
-        assert aiogram.said(DIALOG_IN_PROGRESS_MESSAGE)
-        assert aiogram.answered_callbacks == 1
+        assert harness.aiogram.said(DIALOG_IN_PROGRESS_MESSAGE)
+        assert CANCEL_BUTTON_TEXT in [text for text, _ in harness.aiogram.buttons()]
+        # Диалог цел: подсказка объясняет, а не отменяет за пользователя.
+        assert await harness.state.get_state() == States.ADD_EMAIL.state
+
+
+class TestCancelButton:
+    """Кнопка «Отмена» вместо прежней команды `/cancel`."""
+
+    async def test_cancel_closes_the_dialog_and_shows_menu(self) -> None:
+        """Отмена снимает состояние и возвращает туда, откуда диалог начали."""
+        harness = Harness(spreadsheet=_spreadsheet())
+        await harness.press(MENU_BUTTONS[2][1])
+
+        await harness.press(f"{CommandName.CANCEL}:{BRANCH_EMAIL}")
+
+        assert await harness.state.get_state() is None
+        assert harness.aiogram.sent[-1] == MENU_MESSAGE
+        assert harness.spreadsheets.emails == []
+
+    async def test_button_of_another_branch_keeps_the_dialog(self) -> None:
+        """Кнопка чужой ветки ничего не отменяет.
+
+        Она живёт в переписке дольше своего диалога: без сверки нажатая через
+        неделю «Отмена» от почты снесла бы недоразобранный чек.
+        """
+        harness = Harness(spreadsheet=_spreadsheet())
+        await harness.press(MENU_BUTTONS[2][1])
+
+        await harness.press(f"{CommandName.CANCEL}:{BRANCH_CHECK}")
+
+        assert await harness.state.get_state() == States.ADD_EMAIL.state
+        assert harness.aiogram.said(CANCEL_STALE_MESSAGE)
+
+    async def test_cancel_outside_any_dialog_is_explained(self) -> None:
+        """Нажатая вне диалога кнопка объясняется, а не молчит."""
+        harness = Harness(spreadsheet=_spreadsheet())
+
+        await harness.press(f"{CommandName.CANCEL}:{BRANCH_EMAIL}")
+
+        assert harness.aiogram.said(CANCEL_STALE_MESSAGE)
+        assert not harness.aiogram.said(MENU_MESSAGE)
+
+
+class TestStartAsExit:
+    """Набранный `/start` — второй выход из диалога."""
+
+    async def test_start_clears_any_dialog(self) -> None:
+        """Из ветки с кнопкой он тоже выпускает: кнопку можно и не найти."""
+        harness = Harness(spreadsheet=_spreadsheet())
+        await harness.press(MENU_BUTTONS[2][1])
+
+        await harness.restart()
+
+        assert await harness.state.get_state() is None
+        assert harness.aiogram.said(MENU_MESSAGE)
+
+    async def test_start_is_the_only_way_out_of_the_wizard(self) -> None:
+        """Мастер кнопки не несёт, и выпускает из него только `/start`."""
+        harness = Harness()
+        await harness.press(CREATE_TABLE_BUTTON[1])
+        await harness.command(CommandName.START, "Бюджет")
+
+        assert await harness.state.get_state() == States.CREATE_TABLE_RESET_DAY.state
+
+        await harness.restart()
+
+        assert await harness.state.get_state() is None
+        assert harness.aiogram.said(WELCOME_MESSAGE)
+        assert harness.spreadsheets.created == []
+
+    async def test_hint_inside_the_wizard_names_start(self) -> None:
+        """Подсказка в мастере зовёт `/start`, а не несуществующую кнопку."""
+        harness = Harness()
+        await harness.press(CREATE_TABLE_BUTTON[1])
+
+        await harness.command(CommandName.CANCEL, "/menu")
+
+        assert harness.aiogram.said(DIALOG_IN_PROGRESS_NO_EXIT_MESSAGE)
+        assert CANCEL_BUTTON_TEXT not in [text for text, _ in harness.aiogram.buttons()]
+        assert await harness.state.get_state() == States.CREATE_TABLE_TITLE.state

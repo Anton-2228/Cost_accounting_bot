@@ -8,13 +8,9 @@ from aiogram.fsm.context import FSMContext
 from aiogram.types import CallbackQuery, Message
 
 from telegram_bot import constants
-from telegram_bot.aiogram_wrapper import AiogramWrapper
-from telegram_bot.api_client import ApiGateway
 from telegram_bot.commands.base_command import BaseCommand
-from telegram_bot.commands.manager import Manager
-from telegram_bot.commands.menu import MenuCommand
 from telegram_bot.enums import CommandName, FsmDataKeys
-from telegram_bot.notifications import NotificationCatchUp
+from telegram_bot.errors import TABLE_CREATING_MESSAGE
 from telegram_bot.parsers import OnboardingParser, ParseError
 from telegram_bot.parsers.onboarding_parser import SKIP_MARKERS
 from telegram_bot.resources.messages import (
@@ -47,19 +43,24 @@ class StartCommand(BaseCommand):
     перезапуск бота вместе с состоянием, и рассинхронизироваться им не с чем.
     """
 
-    def __init__(
-        self,
-        manager: Manager,
-        api: ApiGateway,
-        aiogram_wrapper: AiogramWrapper,
-        catch_up: NotificationCatchUp,
-        menu: MenuCommand,
-    ) -> None:
-        super().__init__(manager, api, aiogram_wrapper, catch_up)
-        self._menu = menu
-
     async def execute(self, message: Message, state: FSMContext, **kwargs: Any) -> None:
-        """Ведёт пользователя по шагам мастера."""
+        """Ведёт пользователя по шагам мастера либо начинает всё заново.
+
+        `restart` означает «пришла набранная команда `/start`», а не очередной
+        ответ на вопрос шага. Различить их иначе нечем: оба входа обслуживает
+        одна команда, и без флага набранный посреди мастера `/start` ушёл бы в
+        разбор шага и получил бы «Странный ввод».
+
+        Набранный `/start` чистит состояние **любой** ветки. Это второй выход
+        из диалога, и нужен он затем, что первый — кнопка «Отмена» — живёт в
+        сообщении: его можно пролистать, а у мастера создания таблицы кнопки
+        нет вовсе, и без этой ветки он стал бы единственной ловушкой в боте.
+        """
+        if kwargs.get("restart"):
+            await self.finish(chat_id=message.chat.id, state=state)
+            await self._greet(message)
+            return
+
         current = await self.aiogram.get_state(state)
 
         if current is None:
@@ -91,20 +92,16 @@ class StartCommand(BaseCommand):
             return
         chat_id, telegram_id = target
 
-        spreadsheet = await self.find_spreadsheet(user_id=telegram_id, chat_id=chat_id)
-        if spreadsheet is not None:
-            await self._menu.show(chat_id=chat_id)
+        if await self._show_entrance(chat_id=chat_id, telegram_id=telegram_id):
             return
 
         await self.aiogram.set_state(state, States.CREATE_TABLE_TITLE)
         await self.aiogram.send_message(chat_id, ASK_TITLE_MESSAGE)
 
     async def _greet(self, message: Message) -> None:
-        """Приветствие с кнопкой либо меню, если таблица уже есть."""
+        """Вход в бота: приветствие, ожидание таблицы либо меню."""
         chat_id = message.chat.id
-        spreadsheet = await self.find_spreadsheet(user_id=self.user_id(message), chat_id=chat_id)
-        if spreadsheet is not None:
-            await self._menu.show(chat_id=chat_id)
+        if await self._show_entrance(chat_id=chat_id, telegram_id=self.user_id(message)):
             return
 
         await self.aiogram.send_message(
@@ -112,6 +109,34 @@ class StartCommand(BaseCommand):
             WELCOME_MESSAGE,
             keyboard=self.aiogram.inline_keyboard([CREATE_TABLE_BUTTON]),
         )
+
+    async def _show_entrance(self, *, chat_id: int, telegram_id: int) -> bool:
+        """Показывает экран владельцу таблицы. `False` — таблицы нет вовсе.
+
+        Состояний три, а не два, и различить их может только эта команда:
+        `spreadsheet_for` неготовую таблицу приравнивает к отсутствующей, а
+        `find_spreadsheet` не различает готовность вовсе. Разница видна
+        пользователю: «таблицы нет» — приглашение завести, «создаётся» —
+        обещание, «готова» — меню.
+
+        Меню до готовности не показывается: все его кнопки работают с
+        документом, которого ещё нет, и нажатая упёрлась бы в отказ. Экран из
+        пяти кнопок, где не работает ни одна, — это не меню.
+        """
+        spreadsheet = await self.find_spreadsheet(
+            user_id=telegram_id,
+            chat_id=chat_id,
+            # Меню по `TABLE_READY` дорисовала бы дочитка, а следом его показал
+            # бы и этот метод: два одинаковых экрана подряд.
+            menu_on_ready=False,
+        )
+        if spreadsheet is None:
+            return False
+        if not spreadsheet.is_ready:
+            await self.aiogram.send_message(chat_id, TABLE_CREATING_MESSAGE)
+            return True
+        await self.menu().show(chat_id=chat_id)
+        return True
 
     async def _on_title(self, message: Message, state: FSMContext) -> None:
         """Название таблицы."""
@@ -200,10 +225,10 @@ class StartCommand(BaseCommand):
         # Состояние снимается только после успеха: упади создание, пользователь
         # останется на последнем шаге и сможет повторить, не набирая заново
         # название, день и пояс.
-        await self.aiogram.clear_state(state)
+        await self.finish(chat_id=message.chat.id, state=state)
 
-        # Ссылки здесь нет намеренно: документ создаёт отдельный сервис, у
-        # свежей таблицы `google_spreadsheet_id` пуст, и вместо адреса вышло бы
-        # «таблица ещё создаётся» — то же самое, что и так приедет
-        # уведомлением. Меню же сразу показывает, что с таблицей можно делать.
-        await self._menu.show(chat_id=message.chat.id)
+        # Мастер заканчивается обещанием, а не экраном. Документ создаёт
+        # отдельный сервис по задаче из очереди, и до его появления не работает
+        # ни одна кнопка меню: показать их сейчас значило бы выдать за
+        # готовность то, что ею ещё не стало. Меню придёт само — вместе с
+        # уведомлением `TABLE_READY`.

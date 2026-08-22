@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+from typing import cast
 
 import uvicorn
 from aiogram import F
@@ -10,6 +11,7 @@ from aiogram.filters import Command, CommandObject, StateFilter
 from aiogram.fsm.context import FSMContext
 from aiogram.types import BotCommand, CallbackQuery, Message
 
+from telegram_bot.commands.menu import MenuCommand
 from telegram_bot.config import settings
 from telegram_bot.enums import CommandName
 from telegram_bot.init import (
@@ -24,7 +26,7 @@ from telegram_bot.init import (
 )
 from telegram_bot.logging import get_logger, setup_logging
 from telegram_bot.notify_server import NotifyServer
-from telegram_bot.resources.messages import DIALOG_IN_PROGRESS_MESSAGE, UNKNOWN_MESSAGE
+from telegram_bot.resources.messages import UNKNOWN_MESSAGE
 from telegram_bot.states import States
 
 logger = get_logger(__name__)
@@ -37,13 +39,25 @@ _CREATE_TABLE_STATES = (
     States.CREATE_TABLE_EMAIL,
 )
 
-#: Состояния разбора чека: их обслуживает одна команда, а `/check_skip` и
-#: `/check_del` осмысленны только внутри них — вне разбора нечего пропускать и
+#: Состояния разбора чека: их обслуживает одна команда, а кнопки «Отложить» и
+#: «Удалить» осмысленны только внутри них — вне разбора нечего откладывать и
 #: нечего удалять.
 _CHECK_STATES = (
     States.CHECK_TYPES,
     States.CHECK_CATEGORIES,
     States.CHECK_SOURCE,
+)
+
+#: Все состояния диалогов разом. Список нужен трижды — `/start` как выходу,
+#: подсказке про идущий диалог и блокировке кнопок меню, — и собран один раз:
+#: забытое в одном из трёх мест состояние стало бы ловушкой, из которой
+#: выпускает не то, что должно.
+_DIALOG_STATES = (
+    *_CREATE_TABLE_STATES,
+    *_CHECK_STATES,
+    States.ADD_EMAIL,
+    States.CONFIRM_UNLINK_TABLE,
+    States.SETTINGS_ASK_TELEGRAM_ID,
 )
 
 #: Команды, которым не нужен ни диалог, ни аргументы разбора состояния.
@@ -71,6 +85,10 @@ _BUTTON_COMMANDS = (
 
 #: Их же префиксы. Отдельным кортежем, потому что `str.startswith` принимает
 #: кортеж целиком, и фильтр на все кнопки сразу пишется одной строкой.
+#:
+#: Кнопки «Отмена» здесь нет намеренно: она законна **внутри** диалога, и
+#: попади её префикс в этот список — блокировщик отвечал бы «сейчас идёт другой
+#: диалог» на единственный выход из него.
 _BUTTON_PREFIXES = tuple(f"{name}:" for name in _BUTTON_COMMANDS)
 
 #: Команды, разбирающие аргументы строки.
@@ -86,13 +104,20 @@ _ARGUMENT_COMMANDS = (
 #: команд не существовало, и они отвечали «Не понимаю о чем речь».
 #:
 #: Всё, что делается с таблицей, живёт кнопками экрана `/menu`, и командами эти
-#: действия не набираются вовсе. `/start` в списке тоже нет: Telegram шлёт его
-#: сам кнопкой «Начать», а набирать его повторно незачем — вход в бота один и
-#: тот же экран.
+#: действия не набираются вовсе. Туда же ушли `/cancel`, `/check_skip` и
+#: `/check_del`: выход из диалога и судьба разбираемого чека — кнопки того
+#: блока, к которому относятся, а не слова, которые надо вспомнить посреди
+#: кнопочного диалога.
+#:
+#: `/start` в списке нет: Telegram шлёт его сам кнопкой «Начать». Набрать его
+#: при этом можно, и это второй выход из диалога — но предлагать его строкой
+#: меню значило бы звать перезапускать бота как обычное действие.
 #:
 #: Список одинаков для всех: команда есть у каждого, разным бывает только
 #: содержимое ответа. Раздавать разные списки по скоупам значило бы сообщать
-#: клиенту роль, которую бот и так проверяет на каждом обращении.
+#: клиенту роль, которую бот и так проверяет на каждом обращении, — и то же
+#: касается готовности таблицы: до неё команды не исчезают, а отвечают, что
+#: работать пока не с чем.
 _MENU = [
     BotCommand(command=CommandName.MENU, description="Меню"),
     BotCommand(command=CommandName.ADD, description="Добавить операцию"),
@@ -100,9 +125,6 @@ _MENU = [
     BotCommand(command=CommandName.ADD_TRANS, description="Перевод между счетами"),
     BotCommand(command=CommandName.DEL_TRANS, description="Удалить перевод"),
     BotCommand(command=CommandName.CHECK, description="Разобрать чек"),
-    BotCommand(command=CommandName.CHECK_SKIP, description="Отложить чек"),
-    BotCommand(command=CommandName.CHECK_DEL, description="Удалить чек"),
-    BotCommand(command=CommandName.CANCEL, description="Прервать диалог"),
     BotCommand(command=CommandName.HELP, description="Справка"),
 ]
 
@@ -112,39 +134,27 @@ def _register_handlers() -> None:
 
     Порядок существенный: aiogram отдаёт сообщение первому подошедшему.
 
-    1. `/cancel` — раньше всего и во всех состояниях, иначе диалог мог бы его
-       перехватить и разобрать как свой ответ.
-    2. Команды разбора чека — внутри его состояний и только там.
-    3. Любая другая команда, набранная посреди диалога, получает подсказку, а
-       не молчание и не разбор её текста как ответа на вопрос. В старой версии
-       `/table` внутри диалога уходил в разбор шага и получал «Странный ввод».
-    4. Шаги диалогов.
-    5. Кнопки: сначала внутри тех состояний, где они законны (кнопка «Готово»
-       разбора чека), затем блокировка кнопок меню посреди любого диалога, и
-       только потом сами кнопки — вне состояний.
-    6. Обычные команды — только вне состояний.
-    7. Всё остальное.
+    1. `/start` — раньше всего и во всех состояниях. Это второй выход из
+       диалога, и у мастера создания таблицы — единственный: попади он ниже
+       подсказки, мастер стал бы ловушкой, а внутри самого мастера ушёл бы в
+       разбор шага и получил «Странный ввод», как `/table` в старой версии.
+    2. Любая другая команда, набранная посреди диалога, получает подсказку с
+       кнопкой выхода, а не молчание и не разбор её текста как ответа.
+    3. Шаги диалогов.
+    4. Кнопки: сначала «Отмена» — она законна внутри любого диалога и обязана
+       обойти блокировку; затем кнопки разбора чека — внутри его состояний и
+       только там; затем блокировка кнопок меню посреди диалога; и только
+       потом сами кнопки меню — вне состояний.
+    5. Обычные команды — только вне состояний.
+    6. Всё остальное.
     """
     router = ROUTER
 
-    router.message.register(_on_cancel, Command(CommandName.CANCEL))
-
-    router.message.register(
-        _on_check_skip, Command(CommandName.CHECK_SKIP), StateFilter(*_CHECK_STATES)
-    )
-    router.message.register(
-        _on_check_delete, Command(CommandName.CHECK_DEL), StateFilter(*_CHECK_STATES)
-    )
+    router.message.register(_on_start, Command(CommandName.START))
 
     router.message.register(
         _on_command_during_dialog,
-        StateFilter(
-            *_CREATE_TABLE_STATES,
-            *_CHECK_STATES,
-            States.ADD_EMAIL,
-            States.CONFIRM_UNLINK_TABLE,
-            States.SETTINGS_ASK_TELEGRAM_ID,
-        ),
+        StateFilter(*_DIALOG_STATES),
         F.text.startswith("/"),
     )
 
@@ -156,12 +166,32 @@ def _register_handlers() -> None:
         _on_settings_llm_step, StateFilter(States.SETTINGS_ASK_TELEGRAM_ID)
     )
 
-    # Кнопка «Готово» живёт только внутри разбора: без фильтра по состоянию
-    # кнопка от предыдущего чека оставалась бы живой и применялась к текущему.
+    # «Отмена» — раньше блокировки кнопок: она и есть выход из идущего диалога,
+    # и ответить на неё «сейчас идёт другой диалог» значило бы запереть
+    # пользователя единственной кнопкой, которая должна была его выпустить.
+    # Фильтра по состоянию у неё нет намеренно: нажатая вне диалога кнопка
+    # объясняется («от другого диалога»), а не проваливается в «Не понимаю».
+    router.callback_query.register(
+        _on_cancel, F.data.startswith(f"{CommandName.CANCEL}:")
+    )
+
+    # Кнопки разбора живут только внутри его состояний: без фильтра кнопка от
+    # предыдущего чека оставалась бы живой и применялась к текущему. Номер чека
+    # в `callback_data` — вторая половина той же защиты, от блока к блоку.
     router.callback_query.register(
         _on_check_done,
         StateFilter(*_CHECK_STATES),
         F.data.startswith("check_done:"),
+    )
+    router.callback_query.register(
+        _on_check_skip,
+        StateFilter(*_CHECK_STATES),
+        F.data.startswith(f"{CommandName.CHECK_SKIP}:"),
+    )
+    router.callback_query.register(
+        _on_check_delete,
+        StateFilter(*_CHECK_STATES),
+        F.data.startswith(f"{CommandName.CHECK_DEL}:"),
     )
 
     # Кнопка меню, нажатая посреди диалога, получает ту же подсказку, что и
@@ -170,13 +200,7 @@ def _register_handlers() -> None:
     # FSM одно на пользователя, и вопрос про почту затёр бы недоразобранный чек.
     router.callback_query.register(
         _on_button_during_dialog,
-        StateFilter(
-            *_CREATE_TABLE_STATES,
-            *_CHECK_STATES,
-            States.ADD_EMAIL,
-            States.CONFIRM_UNLINK_TABLE,
-            States.SETTINGS_ASK_TELEGRAM_ID,
-        ),
+        StateFilter(*_DIALOG_STATES),
         # `str.startswith` принимает кортеж — отдельного фильтра на каждый
         # префикс не нужно.
         F.data.func(lambda data: data.startswith(_BUTTON_PREFIXES)),
@@ -190,7 +214,6 @@ def _register_handlers() -> None:
             _make_button_handler(name), StateFilter(None), F.data.startswith(f"{name}:")
         )
 
-    router.message.register(_on_start, Command(CommandName.START), StateFilter(None))
     router.message.register(_on_check, Command(CommandName.CHECK), StateFilter(None))
 
     for name in _SIMPLE_COMMANDS:
@@ -201,14 +224,19 @@ def _register_handlers() -> None:
     router.message.register(_on_unknown)
 
 
-async def _on_cancel(message: Message, state: FSMContext) -> None:
-    """Прерывает любой диалог."""
-    await MANAGER.launch(CommandName.CANCEL, message, state)
+async def _on_cancel(callback: CallbackQuery, state: FSMContext) -> None:
+    """Кнопка «Отмена»: выход из диалога."""
+    await MANAGER.launch_callback(CommandName.CANCEL, callback, state)
 
 
 async def _on_command_during_dialog(message: Message, state: FSMContext) -> None:
-    """Объясняет, что сейчас идёт другой диалог."""
-    await AIOGRAM_WRAPPER.answer_message(message, DIALOG_IN_PROGRESS_MESSAGE)
+    """Объясняет, что сейчас идёт другой диалог, и показывает выход.
+
+    Через `Manager`, а не прямой отправкой текста: подсказка обязана назвать
+    выход именно из этой ветки, а знает о выходах одна команда — та, что их и
+    обслуживает. Заодно на подсказку распространяется общая граница ошибок.
+    """
+    await MANAGER.launch(CommandName.CANCEL, message, state)
 
 
 async def _on_create_table_step(message: Message, state: FSMContext) -> None:
@@ -231,14 +259,14 @@ async def _on_check_step(message: Message, state: FSMContext) -> None:
     await MANAGER.launch(CommandName.CHECK, message, state)
 
 
-async def _on_check_skip(message: Message, state: FSMContext) -> None:
-    """Отложить текущий чек."""
-    await MANAGER.launch(CommandName.CHECK_SKIP, message, state)
+async def _on_check_skip(callback: CallbackQuery, state: FSMContext) -> None:
+    """Кнопка «Отложить»: текущий чек уходит в конец очереди сессии."""
+    await MANAGER.launch_callback(CommandName.CHECK_SKIP, callback, state)
 
 
-async def _on_check_delete(message: Message, state: FSMContext) -> None:
-    """Удалить текущий чек."""
-    await MANAGER.launch(CommandName.CHECK_DEL, message, state)
+async def _on_check_delete(callback: CallbackQuery, state: FSMContext) -> None:
+    """Кнопка «Удалить»: подтверждение и удаление текущего чека."""
+    await MANAGER.launch_callback(CommandName.CHECK_DEL, callback, state)
 
 
 async def _on_settings_llm_step(message: Message, state: FSMContext) -> None:
@@ -252,8 +280,13 @@ async def _on_check_done(callback: CallbackQuery, state: FSMContext) -> None:
 
 
 async def _on_start(message: Message, state: FSMContext) -> None:
-    """Начало мастера создания таблицы."""
-    await MANAGER.launch(CommandName.START, message, state)
+    """Вход в бота, он же — выход из любого диалога.
+
+    `restart` отличает набранную команду от очередного ответа на вопрос
+    мастера: обе приходят в одну команду, и без флага `/start`, набранный на
+    шаге «часовой пояс», разобрался бы как название пояса.
+    """
+    await MANAGER.launch(CommandName.START, message, state, restart=True)
 
 
 async def _on_check(message: Message, state: FSMContext) -> None:
@@ -262,14 +295,12 @@ async def _on_check(message: Message, state: FSMContext) -> None:
 
 
 async def _on_button_during_dialog(callback: CallbackQuery, state: FSMContext) -> None:
-    """Объясняет, что кнопка сейчас не сработает.
+    """Объясняет, что кнопка меню сейчас не сработает.
 
-    Сначала гасим «часики»: без ответа на callback кнопка у пользователя
-    крутится до таймаута Telegram, даже если подсказка дошла.
+    Уходит в ту же команду, что и набранная посреди диалога: подсказка одна, и
+    выход в ней тоже один. «Часики» гасит она же — `callback_target`.
     """
-    await AIOGRAM_WRAPPER.answer_callback(callback)
-    if callback.message is not None:
-        await AIOGRAM_WRAPPER.send_message(callback.message.chat.id, DIALOG_IN_PROGRESS_MESSAGE)
+    await MANAGER.launch_callback(CommandName.CANCEL, callback, state)
 
 
 def _make_button_handler(name: str):  # type: ignore[no-untyped-def]
@@ -315,8 +346,15 @@ async def main() -> None:
         len(settings.admin_telegram_ids),
     )
 
+    # Меню берётся из реестра команд, а не собирается заново: экран один, и
+    # второй его сборки, живущей отдельно, быть не должно.
+    notify_server_app = NotifyServer(
+        AIOGRAM_WRAPPER,
+        cast("MenuCommand", MANAGER.get(CommandName.MENU)),
+    ).build_app()
+
     notify_config = uvicorn.Config(
-        NotifyServer(AIOGRAM_WRAPPER).build_app(),
+        notify_server_app,
         host="0.0.0.0",  # noqa: S104 — порт доступен только внутри docker-сети
         port=settings.notify_port,
         log_config=None,

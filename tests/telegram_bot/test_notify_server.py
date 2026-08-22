@@ -46,11 +46,29 @@ class _FakeWrapper:
         return None
 
 
-def _client(error: Exception | None = None) -> tuple[TestClient, _FakeWrapper]:
-    """Клиент поверх notify-сервера с подменённой обёрткой."""
+class _FakeMenu:
+    """Подмена экрана меню: помнит, кому его нарисовали, и падает по сценарию."""
+
+    def __init__(self, error: Exception | None = None) -> None:
+        self._error = error
+        self.shown: list[int] = []
+
+    async def show(self, *, chat_id: int) -> None:
+        """Повторяет форму настоящего метода."""
+        self.shown.append(chat_id)
+        if self._error is not None:
+            raise self._error
+
+
+def _client(
+    error: Exception | None = None,
+    menu_error: Exception | None = None,
+) -> tuple[TestClient, _FakeWrapper, _FakeMenu]:
+    """Клиент поверх notify-сервера с подменёнными обёрткой и меню."""
     wrapper = _FakeWrapper(error)
-    server = NotifyServer(wrapper)  # type: ignore[arg-type]
-    return TestClient(server.build_app()), wrapper
+    menu = _FakeMenu(menu_error)
+    server = NotifyServer(wrapper, menu)  # type: ignore[arg-type]
+    return TestClient(server.build_app()), wrapper, menu
 
 
 def _method() -> SendMessage:
@@ -60,12 +78,58 @@ def _method() -> SendMessage:
 
 def test_delivered_message_is_confirmed() -> None:
     """Успешная отправка подтверждается 204 — api ставит delivered_at."""
-    client, wrapper = _client()
+    client, wrapper, menu = _client()
 
     response = client.post("/notify", json=_PAYLOAD)
 
     assert response.status_code == status.HTTP_204_NO_CONTENT
     assert wrapper.sent == [(777, "Таблица готова")]
+    assert menu.shown == [777]
+
+
+def test_other_kinds_do_not_draw_the_menu() -> None:
+    """Меню появляется по готовности таблицы, а не после любого уведомления.
+
+    Ролловер и разбор листа приходят к владельцу давно готовой таблицы: экран
+    после каждого из них был бы не подсказкой, а помехой.
+    """
+    client, _, menu = _client()
+
+    response = client.post("/notify", json={**_PAYLOAD, "kind": "ROLLOVER"})
+
+    assert response.status_code == status.HTTP_204_NO_CONTENT
+    assert menu.shown == []
+
+
+def test_unknown_kind_is_still_delivered() -> None:
+    """Незнакомый вид уведомления печатается, а не роняет доставку.
+
+    Перечисление видов — зеркало api, и отстать оно может на одну выкладку.
+    Пока это так, текст важнее вида: печатать бот умеет любой.
+    """
+    client, wrapper, menu = _client()
+
+    response = client.post("/notify", json={**_PAYLOAD, "kind": "СОВСЕМ_НОВОЕ"})
+
+    assert response.status_code == status.HTTP_204_NO_CONTENT
+    assert wrapper.sent == [(777, "Таблица готова")]
+    assert menu.shown == []
+
+
+def test_broken_menu_does_not_resend_the_notification() -> None:
+    """Ошибка отрисовки меню не превращает 204 в 503.
+
+    Текст уже доставлен. Ответив 503, бот попросил бы api прислать его второй
+    раз, и пользователь получил бы «таблица готова» дважды — из-за экрана,
+    который к самой доставке отношения не имеет.
+    """
+    client, wrapper, menu = _client(menu_error=RuntimeError("меню не нарисовалось"))
+
+    response = client.post("/notify", json=_PAYLOAD)
+
+    assert response.status_code == status.HTTP_204_NO_CONTENT
+    assert wrapper.sent == [(777, "Таблица готова")]
+    assert menu.shown == [777]
 
 
 @pytest.mark.parametrize(
@@ -84,7 +148,7 @@ def test_permanent_failure_is_confirmed_anyway(error: Exception) -> None:
     значит навсегда заклинить очередь этого пользователя и залить журнал
     одинаковыми стектрейсами.
     """
-    client, _ = _client(error)
+    client, _, _menu = _client(error)
 
     response = client.post("/notify", json=_PAYLOAD)
 
@@ -102,7 +166,7 @@ def test_permanent_failure_is_confirmed_anyway(error: Exception) -> None:
 )
 def test_temporary_failure_keeps_the_notification(error: Exception) -> None:
     """Временная неудача оставляет уведомление в очереди."""
-    client, _ = _client(error)
+    client, _, _menu = _client(error)
 
     response = client.post("/notify", json=_PAYLOAD)
 
@@ -111,7 +175,7 @@ def test_temporary_failure_keeps_the_notification(error: Exception) -> None:
 
 def test_unknown_field_is_rejected() -> None:
     """Лишнее поле в теле — ошибка схемы, а не молчаливое игнорирование."""
-    client, _ = _client()
+    client, _, _menu = _client()
 
     response = client.post("/notify", json={**_PAYLOAD, "surprise": 1})
 
@@ -120,5 +184,5 @@ def test_unknown_field_is_rejected() -> None:
 
 def test_health() -> None:
     """Healthcheck контейнера отвечает."""
-    client, _ = _client()
+    client, _, _menu = _client()
     assert client.get("/health").status_code == status.HTTP_200_OK

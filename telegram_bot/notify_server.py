@@ -12,6 +12,8 @@ from fastapi import FastAPI, Response, status
 from pydantic import BaseModel, ConfigDict, Field
 
 from telegram_bot.aiogram_wrapper import AiogramWrapper
+from telegram_bot.api_client.models import NotificationKind
+from telegram_bot.commands.menu import MenuCommand
 from telegram_bot.logging import get_logger
 
 logger = get_logger(__name__)
@@ -64,8 +66,9 @@ class NotifyServer:
     пользователя, которых он тоже никогда не получит.
     """
 
-    def __init__(self, aiogram_wrapper: AiogramWrapper) -> None:
+    def __init__(self, aiogram_wrapper: AiogramWrapper, menu: MenuCommand) -> None:
         self._aiogram = aiogram_wrapper
+        self._menu = menu
 
     def build_app(self) -> FastAPI:
         """Собирает приложение с зарегистрированными маршрутами."""
@@ -96,7 +99,32 @@ class NotifyServer:
             logger.exception("Не удалось отправить уведомление %s", payload.notification_id)
             return Response(status_code=status.HTTP_503_SERVICE_UNAVAILABLE)
 
+        await self._show_menu_if_ready(payload)
         return Response(status_code=status.HTTP_204_NO_CONTENT)
+
+    async def _show_menu_if_ready(self, payload: NotifyPayload) -> None:
+        """Дорисовывает меню, когда приехало «таблица готова».
+
+        До этого момента меню не показывалось ни разу: мастер заканчивается
+        обещанием, а все кнопки экрана работают с документом, которого ещё нет.
+        Это и есть момент, когда обещание исполнено, — и узнаёт о нём бот
+        отсюда, а не от пользователя.
+
+        Отказ отрисовки глушится логом и **не меняет код ответа**. Текст уже
+        доставлен: ответив 503, бот попросил бы api прислать его второй раз, и
+        пользователь получил бы «таблица готова» дважды из-за не нарисованного
+        экрана.
+
+        `kind` сравнивается строкой, а не разбирается в `StrEnum`: незнакомый
+        вид уведомления не должен ронять его доставку — печатать бот умеет
+        любой.
+        """
+        if payload.kind != NotificationKind.TABLE_READY.value:
+            return
+        try:
+            await self._menu.show(chat_id=payload.telegram_id)
+        except Exception:
+            logger.exception("Меню после готовности таблицы не нарисовано")
 
     async def _health(self) -> dict[str, str]:
         """Проверка живости для healthcheck контейнера."""

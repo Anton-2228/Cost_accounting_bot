@@ -7,9 +7,14 @@ from typing import Any
 
 from aiogram import Bot, Dispatcher, Router
 from aiogram.dispatcher.event.handler import CallbackType
+from aiogram.exceptions import TelegramAPIError
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State
 from aiogram.types import CallbackQuery, InlineKeyboardButton, InlineKeyboardMarkup, Message
+
+from telegram_bot.logging import get_logger
+
+logger = get_logger(__name__)
 
 
 class AiogramWrapper:
@@ -106,6 +111,51 @@ class AiogramWrapper:
                 [InlineKeyboardButton(text=text, callback_data=data)] for text, data in buttons
             ]
         )
+
+    @staticmethod
+    def inline_keyboard_rows(
+        rows: Sequence[Sequence[tuple[str, str]]],
+    ) -> InlineKeyboardMarkup:
+        """То же, но с явной раскладкой по рядам.
+
+        Отдельный метод, а не замена `inline_keyboard`: экраны меню и настроек
+        читаются списком сверху вниз, и оборачивать каждую их кнопку в
+        одноэлементный ряд значило бы утяжелить их описание ради одной ветки.
+
+        Ряды понадобились разбору чека: там на одном блоке до четырёх кнопок, и
+        столбец из четырёх строк подряд занимает пол-экрана телефона.
+        """
+        return InlineKeyboardMarkup(
+            inline_keyboard=[
+                [InlineKeyboardButton(text=text, callback_data=data) for text, data in row]
+                for row in rows
+                if row
+            ]
+        )
+
+    async def clear_keyboard(self, chat_id: int, message_id: int) -> None:
+        """Снимает клавиатуру с ранее отправленного сообщения.
+
+        Любой отказ Telegram здесь глушится, и это не перестраховка. Гашение
+        сопровождает шаг, а не составляет его: оно идёт первым в `finish`, и
+        выброшенное отсюда исключение оставило бы пользователя в состоянии
+        только что законченного диалога — со снятой кнопкой, но без выхода.
+        Стоимость обратной ошибки несравнима: не снятая клавиатура — лишняя
+        кнопка в переписке, и нажатие на неё отсекается сверкой ветки.
+
+        Отказов таких много и все штатные: сообщение устарело, удалено
+        пользователем, разметки на нём уже нет, сеть моргнула. Ловится общий
+        предок ответов Telegram, а не их перечисление, — но именно он, а не
+        `Exception`: ошибка в самом боте обязана остаться видимой.
+        """
+        try:
+            await self.bot.edit_message_reply_markup(
+                chat_id=chat_id,
+                message_id=message_id,
+                reply_markup=None,
+            )
+        except TelegramAPIError as error:
+            logger.debug("Клавиатура сообщения %s не снята: %s", message_id, error)
 
     async def answer_callback(self, callback: CallbackQuery, text: str | None = None) -> None:
         """Гасит «часики» на кнопке, при необходимости показав всплывающий текст.

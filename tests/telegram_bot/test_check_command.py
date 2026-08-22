@@ -35,14 +35,22 @@ from telegram_bot.api_client.models import (
     Check,
     LlmEntityKind,
     LlmOperation,
+    NotificationKind,
     Record,
     Source,
 )
-from telegram_bot.commands.check import CheckCommand
-from telegram_bot.commands.check_delete import CheckDeleteCommand
+from telegram_bot.commands.cancel import CANCEL_BUTTON_TEXT, CancelCommand
+from telegram_bot.commands.check import _DONE_BUTTON, DELETE_BUTTON, SKIP_BUTTON, CheckCommand
+from telegram_bot.commands.check_delete import (
+    _CONFIRM_BUTTON,
+    _DECLINE_BUTTON,
+    CheckDeleteCommand,
+)
 from telegram_bot.commands.check_skip import CheckSkipCommand
 from telegram_bot.commands.manager import Manager
+from telegram_bot.commands.menu import MenuCommand
 from telegram_bot.enums import CommandName
+from telegram_bot.errors import TABLE_CREATING_MESSAGE
 from telegram_bot.notifications import NotificationCatchUp
 from telegram_bot.states import States
 from tests.telegram_bot.conftest import make_category, make_source
@@ -95,6 +103,8 @@ class FakeAiogram(AiogramWrapper):
         super().__init__(bot, router, Dispatcher())
         self.sent: list[str] = []
         self.keyboards: list[InlineKeyboardMarkup] = []
+        #: Сообщения, у которых сняли клавиатуру.
+        self.cleared: list[int] = []
 
     async def answer_message(self, message: Message, text: str) -> Message:
         self.sent.append(text)
@@ -113,6 +123,10 @@ class FakeAiogram(AiogramWrapper):
             self.keyboards.append(keyboard)
         return _message(text)
 
+    async def clear_keyboard(self, chat_id: int, message_id: int) -> None:
+        """Гасит клавиатуру: помнит, у какого сообщения её сняли."""
+        self.cleared.append(message_id)
+
     async def answer_callback(self, callback: CallbackQuery, text: str | None = None) -> None:
         if text is not None:
             self.sent.append(text)
@@ -126,20 +140,45 @@ class FakeAiogram(AiogramWrapper):
         """Было ли сказано что-то, содержащее фрагмент."""
         return any(fragment in text for text in self.sent)
 
-    def done_callback_data(self) -> str:
-        """`callback_data` последней кнопки «Готово»."""
-        return self.keyboards[-1].inline_keyboard[0][0].callback_data or ""
+    def button_data(self, label: str) -> str:
+        """`callback_data` кнопки с такой надписью на последней клавиатуре.
+
+        По надписи, а не по месту в ряду: рядов теперь несколько, и «Готово»
+        уже не единственная кнопка блока.
+        """
+        for row in self.keyboards[-1].inline_keyboard:
+            for button in row:
+                if button.text == label:
+                    return button.callback_data or ""
+        raise AssertionError(f"Кнопки «{label}» нет на последней клавиатуре")
+
+    def labels(self) -> list[str]:
+        """Надписи кнопок последней клавиатуры, сверху вниз."""
+        return [
+            button.text for row in self.keyboards[-1].inline_keyboard for button in row
+        ]
+
+    def rows(self) -> list[list[str]]:
+        """Надписи последней клавиатуры, разложенные по рядам."""
+        return [[button.text for button in row] for row in self.keyboards[-1].inline_keyboard]
 
 
 class FakeSpreadsheets:
-    """Клиент документов: один пользователь, один документ."""
+    """Клиент документов: один пользователь, один документ.
+
+    `google_id` пуст — документ ещё создаётся: строки в базе есть, а таблицы в
+    Google нет.
+    """
+
+    def __init__(self, google_id: str = "google-1") -> None:
+        self._google_id = google_id
 
     async def by_telegram_id(self, telegram_id: int) -> Any:
         from telegram_bot.api_client.models import Spreadsheet
 
         return Spreadsheet(
             id=10,
-            google_spreadsheet_id="google-1",
+            google_spreadsheet_id=self._google_id,
             title="Тест",
             reset_day=15,
             timezone="Europe/Moscow",
@@ -168,8 +207,12 @@ class FakeChecks:
         self.cached = cached
         self.committed: list[dict[str, Any]] = []
         self.deleted: list[int] = []
+        #: Обращения к очереди. Нужны одному тесту: api отдаёт её и неготовому
+        #: документу, и не дойти до неё должен сам бот.
+        self.listed: list[int] = []
 
     async def list_unprocessed(self, spreadsheet_id: int) -> list[Check]:
+        self.listed.append(spreadsheet_id)
         return [check for check in self.checks if check.processed_at is None]
 
     async def delete(self, spreadsheet_id: int, check_id: int) -> None:
@@ -232,7 +275,7 @@ class FakeLlmUsages:
         entity_id: int | None = None,
     ) -> None:
         if self.broken:
-            raise ApiUnavailableError("api недоступен")
+            raise ApiUnavailableError(503, code="unavailable", details={})
         self.recorded.append(
             {
                 "spreadsheet_id": spreadsheet_id,
@@ -252,8 +295,9 @@ class FakeApi:
         checks: FakeChecks,
         catalog: FakeCatalog,
         llm_usages: FakeLlmUsages | None = None,
+        google_id: str = "google-1",
     ) -> None:
-        self.spreadsheets = FakeSpreadsheets()
+        self.spreadsheets = FakeSpreadsheets(google_id)
         self.catalog = catalog
         self.checks = checks
         self.llm_usages = llm_usages or FakeLlmUsages()
@@ -289,7 +333,9 @@ class FakeAi:
         self.types = types or {}
         self.categories = categories or {}
         self.broken = broken
-        self.usage = usage if usage is not None else make_usage()
+        #: Замер, который «провайдер» вернул вместе с ответом. `None`
+        #: означает, что не вернул вовсе, — учитывать тогда нечего.
+        self.usage: LlmUsage | None = usage if usage is not None else make_usage()
         self.type_calls: list[list[str]] = []
         self.category_calls: list[list[str]] = []
 
@@ -317,8 +363,13 @@ class FakeAi:
 class FakeCatchUp:
     """Дочитка уведомлений: в этих тестах ей нечего доставлять."""
 
-    async def deliver(self, spreadsheet_id: int, chat_id: int) -> None:
-        return None
+    #: Что дочитка отдаёт вызывающему. По умолчанию — ничего: почти каждому
+    #: тесту доставлять нечего, а `TABLE_READY` подставляют те, кто проверяет
+    #: меню после готовности таблицы.
+    delivered: tuple[NotificationKind, ...] = ()
+
+    async def deliver(self, spreadsheet_id: int, chat_id: int) -> list[NotificationKind]:
+        return list(self.delivered)
 
 
 def _message(text: str) -> Message:
@@ -354,13 +405,16 @@ class Harness:
         ai: FakeAi | None = None,
         categories: list[Category] | None = None,
         llm_usages: FakeLlmUsages | None = None,
+        google_id: str = "google-1",
     ) -> None:
         self.aiogram = FakeAiogram()
         self.checks = FakeChecks(checks, cached or {})
         self.catalog = FakeCatalog(categories or [_FOOD, _BASKET], [_CARD])
         self.ai = ai or FakeAi()
         self.llm_usages = llm_usages or FakeLlmUsages()
-        api = cast("ApiGateway", FakeApi(self.checks, self.catalog, self.llm_usages))
+        api = cast(
+            "ApiGateway", FakeApi(self.checks, self.catalog, self.llm_usages, google_id)
+        )
         catch_up = cast("NotificationCatchUp", FakeCatchUp())
 
         self.manager = Manager(AccessGuard(frozenset({_USER_ID})), self.aiogram)
@@ -371,15 +425,16 @@ class Harness:
             catch_up,
             cast("AiClient", self.ai),
         )
+        arguments = (self.manager, api, self.aiogram, catch_up)
         self.manager.register(
             {
                 CommandName.CHECK: command,
-                CommandName.CHECK_SKIP: CheckSkipCommand(
-                    self.manager, api, self.aiogram, catch_up, command
-                ),
-                CommandName.CHECK_DEL: CheckDeleteCommand(
-                    self.manager, api, self.aiogram, catch_up, command
-                ),
+                CommandName.CHECK_SKIP: CheckSkipCommand(*arguments, command),
+                CommandName.CHECK_DEL: CheckDeleteCommand(*arguments, command),
+                # Отмена возвращает в меню, и без него ветка обрывается на
+                # полпути — там же, где пользователь ждёт экран.
+                CommandName.CANCEL: CancelCommand(*arguments),
+                CommandName.MENU: MenuCommand(*arguments),
             }
         )
         self.state = FSMContext(
@@ -393,11 +448,23 @@ class Harness:
 
     async def press_done(self) -> None:
         """Нажимает последнюю показанную кнопку «Готово»."""
-        await self.manager.launch_callback(
-            CommandName.CHECK,
-            _callback(self.aiogram.done_callback_data()),
-            self.state,
-        )
+        await self.press(_DONE_BUTTON)
+
+    async def press(self, label: str) -> None:
+        """Нажимает кнопку последнего блока по её надписи.
+
+        Команда находится по префиксу `callback_data` — тем же правилом, по
+        которому её находит `main`.
+        """
+        await self.press_data(self.aiogram.button_data(label))
+
+    async def press_data(self, data: str) -> None:
+        """Нажимает кнопку с явной `callback_data`: для устаревших кнопок."""
+        prefix = data.split(":", maxsplit=1)[0]
+        # Единственный префикс, не совпадающий с ключом команды: «Готово»
+        # обслуживает сам разбор, и `main` разводит его тем же правилом.
+        name = CommandName.CHECK if prefix == "check_done" else prefix
+        await self.manager.launch_callback(name, _callback(data), self.state)
 
     async def current_state(self) -> str | None:
         """Текущее FSM-состояние."""
@@ -576,6 +643,28 @@ async def test_edited_cached_type_reaches_commit() -> None:
     assert harness.aiogram.said("Запомнил: молоко → сыры")
 
 
+async def test_unready_table_stops_before_the_queue() -> None:
+    """Пока документа нет, разбор не начинается вовсе.
+
+    Дыра, которую 409 от api не закрывает: очередь чеков он отдаёт и неготовому
+    документу — проверка готовности стоит только на записи. Без остановки здесь
+    пользователь прошёл бы все три стадии и оплатил бы два вызова модели, чтобы
+    получить отказ на последнем шаге.
+    """
+    harness = Harness(
+        checks=[_check(1, ("молоко", 8990))],
+        cached={"молоко": "молочка"},
+        google_id="",
+    )
+
+    await harness.send("/check")
+
+    assert harness.aiogram.said(TABLE_CREATING_MESSAGE)
+    assert harness.checks.listed == []
+    assert harness.ai.type_calls == []
+    assert await harness.current_state() is None
+
+
 async def test_skipped_check_returns_in_next_session() -> None:
     """Пропуск ничего не сохраняет: чек вернётся при следующем `/check`.
 
@@ -585,7 +674,7 @@ async def test_skipped_check_returns_in_next_session() -> None:
     harness = Harness(checks=[_check(1, ("молоко", 8990))], cached={"молоко": "молочка"})
 
     await harness.send("/check")
-    await harness.send("/check_skip", CommandName.CHECK_SKIP)
+    await harness.press(SKIP_BUTTON)
 
     assert harness.checks.deleted == []
     assert harness.checks.committed == []
@@ -598,17 +687,85 @@ async def test_skipped_check_returns_in_next_session() -> None:
 
 
 async def test_deleted_check_leaves_the_queue() -> None:
-    """`/check_del` убирает чек и показывает следующий."""
+    """Кнопка «Удалить» убирает чек и показывает следующий — после вопроса."""
     harness = Harness(
         checks=[_check(1, ("молоко", 8990)), _check(2, ("хлеб", 4000))],
         cached={"молоко": "молочка", "хлеб": "выпечка"},
     )
 
     await harness.send("/check")
-    await harness.send("/check_del", CommandName.CHECK_DEL)
+    await harness.press(DELETE_BUTTON)
+
+    # Первое нажатие только спрашивает: кнопка стоит вплотную к «Отложить», и
+    # промах между ними означал бы разные вещи.
+    assert harness.checks.deleted == []
+    assert harness.aiogram.said("Удалить этот чек?")
+
+    await harness.press(_CONFIRM_BUTTON)
 
     assert harness.checks.deleted == [1]
     assert harness.aiogram.said("хлеб")
+
+
+async def test_declined_deletion_returns_to_the_stage() -> None:
+    """Отказ от удаления возвращает блок стадии, а не оставляет чек без кнопок.
+
+    Подтверждение съело клавиатуру стадии: не вернув её, бот запер бы
+    пользователя с чеком, который нельзя ни разобрать, ни бросить.
+    """
+    harness = Harness(checks=[_check(1, ("молоко", 8990))], cached={"молоко": "молочка"})
+
+    await harness.send("/check")
+    await harness.press(DELETE_BUTTON)
+    await harness.press(_DECLINE_BUTTON)
+
+    assert harness.checks.deleted == []
+    assert await harness.current_state() == States.CHECK_TYPES.state
+    assert harness.aiogram.rows() == [
+        [_DONE_BUTTON],
+        [SKIP_BUTTON, DELETE_BUTTON],
+        [CANCEL_BUTTON_TEXT],
+    ]
+
+
+async def test_every_stage_can_drop_the_check() -> None:
+    """«Отложить» и «Удалить» есть на каждой стадии, а не только на первой.
+
+    Заметить «этот чек лишний» можно и на счёте: уводить за таким решением
+    обратно в начало значило бы просить пройти разбор ещё раз, чтобы от него
+    отказаться.
+    """
+    harness = Harness(checks=[_check(1, ("молоко", 8990))], cached={"молоко": "молочка"})
+
+    await harness.send("/check")
+    assert harness.aiogram.rows() == [
+        [_DONE_BUTTON],
+        [SKIP_BUTTON, DELETE_BUTTON],
+        [CANCEL_BUTTON_TEXT],
+    ]
+
+    await harness.press_done()
+    assert harness.aiogram.rows() == [
+        [_DONE_BUTTON],
+        [SKIP_BUTTON, DELETE_BUTTON],
+        [CANCEL_BUTTON_TEXT],
+    ]
+
+    await harness.press_done()
+    # На счёте «Готово» не над чем нажимать: следующий шаг делает ответ.
+    assert harness.aiogram.rows() == [[SKIP_BUTTON, DELETE_BUTTON], [CANCEL_BUTTON_TEXT]]
+
+
+async def test_cancel_leaves_the_check_unprocessed() -> None:
+    """«Отмена» выходит из разбора, ничего не записывая и не удаляя."""
+    harness = Harness(checks=[_check(1, ("молоко", 8990))], cached={"молоко": "молочка"})
+
+    await harness.send("/check")
+    await harness.press(CANCEL_BUTTON_TEXT)
+
+    assert await harness.current_state() is None
+    assert harness.checks.committed == []
+    assert harness.checks.deleted == []
 
 
 async def test_model_failure_does_not_trap_the_user() -> None:
@@ -638,21 +795,43 @@ async def test_button_of_previous_check_is_ignored() -> None:
     )
 
     await harness.send("/check")
-    stale = harness.aiogram.done_callback_data()
-    await harness.send("/check_skip", CommandName.CHECK_SKIP)
+    stale = harness.aiogram.button_data(_DONE_BUTTON)
+    await harness.press(SKIP_BUTTON)
 
     harness.aiogram.sent.clear()
-    await harness.manager.launch_callback(CommandName.CHECK, _callback(stale), harness.state)
+    await harness.press_data(stale)
 
     assert harness.aiogram.said("от другого чека")
     assert await harness.current_state() == States.CHECK_TYPES.state
 
 
+async def test_stale_delete_button_does_not_delete() -> None:
+    """Кнопка «Удалить» от прошлого чека не сносит разбираемый сейчас.
+
+    Номер чека едет в `callback_data` каждой кнопки ветки ровно поэтому: без
+    него нажатая на прошлом блоке кнопка применилась бы к текущему чеку.
+    """
+    harness = Harness(
+        checks=[_check(1, ("молоко", 8990)), _check(2, ("хлеб", 4000))],
+        cached={"молоко": "молочка", "хлеб": "выпечка"},
+    )
+
+    await harness.send("/check")
+    stale = harness.aiogram.button_data(DELETE_BUTTON)
+    await harness.press(SKIP_BUTTON)
+
+    await harness.press_data(stale)
+
+    assert harness.checks.deleted == []
+    assert harness.aiogram.said("от другого чека")
+
+
 async def test_broken_receipt_keeps_delete_reachable() -> None:
     """Нечитаемый чек не выкидывает из разбора: его можно убрать.
 
-    Иначе `/check_del` был бы недоступен — он зарегистрирован только внутри
-    состояний разбора, — и чек застрял бы в очереди навсегда.
+    Кнопки живут только внутри состояний разбора, и выйди бот из них — чек
+    застрял бы в очереди навсегда. Текст отказа при этом свой: он называет
+    причину, которой у общей формулировки нет.
     """
     broken = Check(
         id=1,
@@ -663,10 +842,12 @@ async def test_broken_receipt_keeps_delete_reachable() -> None:
     harness = Harness(checks=[broken])
 
     await harness.send("/check")
-    assert harness.aiogram.said("/check_del")
     assert await harness.current_state() == States.CHECK_TYPES.state
+    # Разбирать нечего, и «Готово» вести некуда: только судьба чека и выход.
+    assert harness.aiogram.rows() == [[SKIP_BUTTON, DELETE_BUTTON], [CANCEL_BUTTON_TEXT]]
 
-    await harness.send("/check_del", CommandName.CHECK_DEL)
+    await harness.press(DELETE_BUTTON)
+    await harness.press(_CONFIRM_BUTTON)
     assert harness.checks.deleted == [1]
 
 
