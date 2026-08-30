@@ -7,6 +7,7 @@ from datetime import date, datetime
 from pydantic import BaseModel, ConfigDict
 
 from api.core.types import SignedMoneyDecimal
+from api.enums import Currency
 
 
 class Record(BaseModel):
@@ -16,6 +17,10 @@ class Record(BaseModel):
     сервис по виду категории — пользователь передаёт сумму без знака, и
     отрицательное значение от него не может «перевернуть» операцию, как это
     происходило раньше.
+
+    `currency` — валюта самой суммы, а не счёта. Хранится исходная: приведение
+    к валюте счёта (для остатка) и к валюте статистики зависит от курса на
+    :attr:`added_at` и считается на лету.
     """
 
     model_config = ConfigDict(from_attributes=True)
@@ -26,6 +31,7 @@ class Record(BaseModel):
     category_id: int
     source_id: int
     amount: SignedMoneyDecimal
+    currency: Currency
     added_at: date
     notes: str = ""
     product_name: str | None = None

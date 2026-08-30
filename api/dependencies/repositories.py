@@ -14,6 +14,7 @@ from api.db.session import get_session
 from api.repositories.cashed_record_repository import CashedRecordRepository
 from api.repositories.category_repository import CategoryRepository
 from api.repositories.check_repository import CheckRepository
+from api.repositories.exchange_rate_repository import ExchangeRateRepository
 from api.repositories.llm_usage_repository import LlmUsageRepository
 from api.repositories.period_repository import PeriodRepository
 from api.repositories.record_repository import RecordRepository
@@ -111,3 +112,10 @@ def get_user_notification_repository(
 ) -> UserNotificationRepository:
     """Репозиторий уведомлений пользователю."""
     return UserNotificationRepository(session)
+
+
+def get_exchange_rate_repository(
+    session: AsyncSession = Depends(get_session),
+) -> ExchangeRateRepository:
+    """Репозиторий кэша курсов валют."""
+    return ExchangeRateRepository(session)

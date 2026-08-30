@@ -203,7 +203,7 @@ async def test_include_deleted_returns_catalogues_for_archive_sheets(
     removed = await client.post(
         f"{base}/import/bills",
         json={"rows": [[str(source.id), "", "", "", "", ""],
-                       ["", "1", "Новый", "", "0", ""]]},
+                       ["", "1", "Новый", "", "RUB", "0", ""]]},
     )
     assert removed.json()["data"]["deleted"] == 1
 

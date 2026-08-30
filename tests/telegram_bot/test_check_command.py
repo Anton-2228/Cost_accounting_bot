@@ -39,6 +39,7 @@ from telegram_bot.api_client.models import (
     Record,
     Source,
 )
+from telegram_bot.checks.models import CHECK_CURRENCY
 from telegram_bot.commands.cancel import CANCEL_BUTTON_TEXT, CancelCommand
 from telegram_bot.commands.check import _DONE_BUTTON, DELETE_BUTTON, SKIP_BUTTON, CheckCommand
 from telegram_bot.commands.check_delete import (
@@ -250,6 +251,7 @@ class FakeChecks:
                 category_id=item.category_id,
                 source_id=source_id,
                 amount=-item.amount,
+                currency=CHECK_CURRENCY,
                 added_at=datetime(2026, 7, 26, tzinfo=UTC).date(),
                 notes="",
                 from_check=True,

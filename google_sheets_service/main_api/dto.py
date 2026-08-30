@@ -162,6 +162,10 @@ class Source:
     status: str
     title: str
     associations: list[str]
+    #: Валюта счёта. Строкой, а не перечислением: сервис её только печатает в
+    #: ячейку и никак не интерпретирует, а заводить копию `api.enums.Currency`
+    #: значило бы держать два списка валют, расходящихся при каждой правке.
+    currency: str
     start_balance: Decimal
 
     @classmethod
@@ -172,6 +176,7 @@ class Source:
             status=str(body["status"]),
             title=str(body["title"]),
             associations=[str(item) for item in body["associations"]],
+            currency=str(body["currency"]),
             start_balance=_decimal(body["start_balance"]),
         )
 
@@ -230,6 +235,8 @@ class Record:
     category_id: int
     source_id: int
     amount: Decimal
+    #: Валюта суммы — операции, не счёта. Совпадают они не всегда.
+    currency: str
     added_at: date
     notes: str
     product_name: str | None
@@ -250,6 +257,7 @@ class Record:
             category_id=int(body["category_id"]),
             source_id=int(body["source_id"]),
             amount=_decimal(body["amount"]),
+            currency=str(body["currency"]),
             added_at=date.fromisoformat(body["added_at"]),
             notes=str(body["notes"]),
             product_name=None if product_name is None else str(product_name),

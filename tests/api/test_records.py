@@ -27,7 +27,12 @@ async def test_expense_and_income_get_their_sign(
     base = f"/api/v1/spreadsheets/{spreadsheet.id}/records"
     spent = await client.post(
         base,
-        json={"category_id": expense.id, "source_id": source.id, "amount": "100.50"},
+        json={
+            "category_id": expense.id,
+            "source_id": source.id,
+            "amount": "100.50",
+            "currency": "RUB",
+        },
     )
     assert spent.status_code == 201
     assert spent.json()["data"]["amount"] == "-100.50"
@@ -35,7 +40,12 @@ async def test_expense_and_income_get_their_sign(
 
     earned = await client.post(
         base,
-        json={"category_id": income.id, "source_id": source.id, "amount": "100.50"},
+        json={
+            "category_id": income.id,
+            "source_id": source.id,
+            "amount": "100.50",
+            "currency": "RUB",
+        },
     )
     assert earned.json()["data"]["amount"] == "100.50"
 
@@ -52,7 +62,12 @@ async def test_negative_amount_is_rejected_by_schema(
 
     response = await client.post(
         f"/api/v1/spreadsheets/{spreadsheet.id}/records",
-        json={"category_id": category.id, "source_id": source.id, "amount": "-5.00"},
+        json={
+            "category_id": category.id,
+            "source_id": source.id,
+            "amount": "-5.00",
+            "currency": "RUB",
+        },
     )
     assert response.status_code == 422
 
@@ -76,7 +91,12 @@ async def test_check_reference_is_exposed_in_list(
     base = f"/api/v1/spreadsheets/{spreadsheet.id}"
     await client.post(
         f"{base}/records",
-        json={"category_id": category.id, "source_id": source.id, "amount": "10.00"},
+        json={
+            "category_id": category.id,
+            "source_id": source.id,
+            "amount": "10.00",
+            "currency": "RUB",
+        },
     )
     await client.post(
         f"{base}/checks/commit",
@@ -109,7 +129,12 @@ async def test_last_route_is_declared_before_id_route(
     base = f"/api/v1/spreadsheets/{spreadsheet.id}/records"
     created = await client.post(
         base,
-        json={"category_id": category.id, "source_id": source.id, "amount": "7.00"},
+        json={
+            "category_id": category.id,
+            "source_id": source.id,
+            "amount": "7.00",
+            "currency": "RUB",
+        },
     )
     record_id = created.json()["data"]["id"]
 
@@ -134,7 +159,12 @@ async def test_deleting_record_of_closed_period_is_422(
     base = f"/api/v1/spreadsheets/{spreadsheet.id}/records"
     created = await client.post(
         base,
-        json={"category_id": category.id, "source_id": source.id, "amount": "7.00"},
+        json={
+            "category_id": category.id,
+            "source_id": source.id,
+            "amount": "7.00",
+            "currency": "RUB",
+        },
     )
     record = created.json()["data"]
 
@@ -162,7 +192,12 @@ async def test_list_by_explicit_period(client: AsyncClient, session: AsyncSessio
     base = f"/api/v1/spreadsheets/{spreadsheet.id}/records"
     created = await client.post(
         base,
-        json={"category_id": category.id, "source_id": source.id, "amount": "3.00"},
+        json={
+            "category_id": category.id,
+            "source_id": source.id,
+            "amount": "3.00",
+            "currency": "RUB",
+        },
     )
     period_id = created.json()["data"]["period_id"]
 
@@ -184,7 +219,12 @@ async def test_balance_follows_records(client: AsyncClient, session: AsyncSessio
 
     await client.post(
         f"/api/v1/spreadsheets/{spreadsheet.id}/records",
-        json={"category_id": category.id, "source_id": source.id, "amount": "250.25"},
+        json={
+            "category_id": category.id,
+            "source_id": source.id,
+            "amount": "250.25",
+            "currency": "RUB",
+        },
     )
 
     balances = await client.get(f"/api/v1/spreadsheets/{spreadsheet.id}/balances")

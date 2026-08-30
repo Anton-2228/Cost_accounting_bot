@@ -17,6 +17,7 @@ from __future__ import annotations
 
 import os
 from collections.abc import AsyncGenerator
+from decimal import Decimal
 
 # Переменные окружения выставляются ДО первого импорта api.*: настройки
 # читаются на импорте модуля api.core.config, и потом их уже не переопределить.
@@ -40,6 +41,7 @@ from sqlalchemy.pool import NullPool  # noqa: E402
 import api.orm  # noqa: E402, F401 — регистрирует все таблицы в Base.metadata
 from api.core.config import settings  # noqa: E402
 from api.db.base import Base  # noqa: E402
+from tests.fakes import FakeRateProvider  # noqa: E402
 
 _MIN_SERVER_VERSION = 150000
 
@@ -117,6 +119,11 @@ async def client(
 
     app = create_app()
     app.dependency_overrides[get_session] = override_get_session
+    # `ASGITransport` не выполняет lifespan, а клиент курсов собирается именно
+    # там. Без подстановки любой запрос, считающий остаток или статистику, падал
+    # бы на `app.state.rate_provider`. Фейк, а не настоящий клиент: тест не
+    # должен ходить в сеть — он проверял бы доступность чужого сайта.
+    app.state.rate_provider = FakeRateProvider(default_rate=Decimal("1"))
 
     transport = ASGITransport(app=app)
     async with AsyncClient(transport=transport, base_url="http://test") as http_client:

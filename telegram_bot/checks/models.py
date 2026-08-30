@@ -7,6 +7,14 @@ from decimal import Decimal
 
 from pydantic import BaseModel, ConfigDict
 
+from telegram_bot.api_client.models import Currency
+
+#: Валюта чека ФНС. Формат физически рублёвый — суммы в нём и приходят
+#: целыми копейками, — поэтому это свойство формата, а не выбор
+#: пользователя. Зеркало `_CHECK_CURRENCY` в `api.services.check_service`,
+#: где по этой же причине валюта проставляется операциям чека.
+CHECK_CURRENCY = Currency.RUB
+
 
 class ReceiptItem(BaseModel):
     """Одна позиция чека: название и сумма в рублях.

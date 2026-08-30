@@ -13,6 +13,8 @@ from decimal import Decimal
 
 from pydantic import BaseModel, ConfigDict
 
+from telegram_bot.api_client.models import Currency
+
 
 class ParsedRecord(BaseModel):
     """Разобранная строка добавления операции."""
@@ -20,6 +22,7 @@ class ParsedRecord(BaseModel):
     model_config = ConfigDict(frozen=True)
 
     amount: Decimal
+    currency: Currency
     category_id: int
     category_title: str
     category_is_income: bool
@@ -59,8 +62,8 @@ class ParseError(Exception):
     """Ввод разобрать не удалось; текст уже готов для пользователя.
 
     Исключение, а не возвращаемое значение: разбор идёт по шагам (сумма,
-    категория, счёт), и каждый шаг иначе пришлось бы оборачивать проверкой
-    результата предыдущего.
+    категория, счёт, валюта), и каждый шаг иначе пришлось бы оборачивать
+    проверкой результата предыдущего.
     """
 
     def __init__(self, message: str) -> None:

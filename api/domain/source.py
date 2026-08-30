@@ -9,7 +9,7 @@ from pydantic import BaseModel, ConfigDict, field_validator
 
 from api.core.text import normalize_terms
 from api.core.types import MoneyDecimal
-from api.enums import EntityStatus
+from api.enums import Currency, EntityStatus
 
 
 class Source(BaseModel):
@@ -17,6 +17,10 @@ class Source(BaseModel):
 
     Текущего баланса здесь нет: он производная величина, см.
     :class:`api.domain.source_balance.SourceBalance`.
+
+    `currency` — валюта, в которой ведётся счёт. В ней задан `start_balance` и в
+    ней же выражен вычисленный остаток; операция в другой валюте приводится к
+    этой по курсу на день операции.
     """
 
     model_config = ConfigDict(from_attributes=True)
@@ -25,6 +29,7 @@ class Source(BaseModel):
     spreadsheet_id: int
     status: EntityStatus = EntityStatus.ACTIVE
     title: str
+    currency: Currency
     associations: list[str] = []
     start_balance: MoneyDecimal = Decimal("0.00")
     deleted_at: datetime | None = None

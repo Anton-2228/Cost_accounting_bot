@@ -9,6 +9,7 @@ import pytest
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from api.core.period import now_in_timezone
+from api.enums import Currency
 from api.repositories.record_repository import RecordRepository
 from tests import factories
 
@@ -149,7 +150,7 @@ async def test_daily_totals_keep_kopeks(session: AsyncSession) -> None:
     await session.commit()
 
     assert period.id is not None
-    totals = await RecordRepository(session).daily_totals_by_category(period.id)
+    totals = await RecordRepository(session).daily_totals_by_category(period.id, base=Currency.RUB)
 
     assert [(item.day, item.total) for item in totals] == [
         (date(2026, 7, 20), Decimal("-15.75")),

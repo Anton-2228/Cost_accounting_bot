@@ -16,7 +16,7 @@ from api.domain.category import Category
 from api.domain.check import Check
 from api.domain.check_item import CheckItem, ProductTypeAssignment
 from api.domain.record import Record
-from api.enums import CategoryKind, CheckKind, SheetTarget, SyncTaskKind
+from api.enums import CategoryKind, CheckKind, Currency, SheetTarget, SyncTaskKind
 from api.exceptions.base import BusinessRuleError, ConflictError, NotFoundError
 from api.repositories.cashed_record_repository import CashedRecordRepository
 from api.repositories.category_repository import CategoryRepository
@@ -46,6 +46,12 @@ ALREADY_PROCESSED_REASON = "check_already_processed"
 #: молчаливое переназначение было бы хуже отказа: раскладка позиций чека стала
 #: бы зависеть от порядка обработки.
 TYPE_TAKEN_REASON = "product_type_taken"
+
+#: Валюта чека по его формату. Не спрашивается у пользователя и не извлекается
+#: из расшифровки: формат ФНС физически рублёвый — суммы в нём приходят целыми
+#: копейками, — и «валюта чека» для него не переменная, а свойство формата.
+#: Сербский чек добавится сюда строкой вместе со своим парсером.
+_CHECK_CURRENCY: dict[CheckKind, Currency] = {CheckKind.RU_FNS: Currency.RUB}
 
 
 class CheckService(BaseSpreadsheetService):
@@ -210,6 +216,9 @@ class CheckService(BaseSpreadsheetService):
         важно лишь то, что ни одна её часть не может уцелеть без остальных.
         Отметка `processed_at` — такая же часть: уцелей операции без неё, чек
         вернулся бы в очередь и был бы записан второй раз.
+
+        Валюта операций берётся из формата чека, а не из его расшифровки и не у
+        пользователя: см. :data:`_CHECK_CURRENCY`.
         """
         spreadsheet = await self._get_ready(spreadsheet_id)
         check = await self._checks.get_for_spreadsheet(check_id, spreadsheet_id)
@@ -238,6 +247,8 @@ class CheckService(BaseSpreadsheetService):
         period = await ensure_current_period(self._periods, spreadsheet, today)
         assert period.id is not None
 
+        currency = _CHECK_CURRENCY[check.kind]
+
         created: list[Record] = []
         for item in items:
             category = categories.get(item.category_id)
@@ -253,6 +264,7 @@ class CheckService(BaseSpreadsheetService):
                         category_id=item.category_id,
                         source_id=source_id,
                         amount=signed,
+                        currency=currency,
                         added_at=today,
                         product_name=item.product_name,
                         product_type=item.product_type,

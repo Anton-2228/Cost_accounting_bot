@@ -25,6 +25,7 @@ from api.repositories.user_notification_repository import UserNotificationReposi
 from api.repositories.user_repository import UserRepository
 from api.services._periods import today_for
 from api.services.base import BaseSpreadsheetService
+from api.services.exchange_rate_service import ExchangeRateService
 
 logger = get_logger(__name__)
 
@@ -44,6 +45,7 @@ class SpreadsheetService(BaseSpreadsheetService):
         accesses: SpreadsheetAccessRepository,
         tasks: SheetSyncTaskRepository,
         notifications: UserNotificationRepository,
+        rates: ExchangeRateService,
     ) -> None:
         super().__init__(session, spreadsheets)
         self._users = users
@@ -53,6 +55,7 @@ class SpreadsheetService(BaseSpreadsheetService):
         self._accesses = accesses
         self._tasks = tasks
         self._notifications = notifications
+        self._rates = rates
 
     # --- чтение ---
 
@@ -130,13 +133,25 @@ class SpreadsheetService(BaseSpreadsheetService):
         *,
         only_active: bool = False,
     ) -> list[SourceBalance]:
-        """Текущие балансы счетов.
+        """Текущие балансы счетов, каждый в валюте своего счёта.
 
         Баланс не хранится, а считается из начального остатка, операций и
         переводов. Прежняя схема держала `current_balance` колонкой, и любая
         потерянная правка расходилась с реестром навсегда.
+
+        Три шага вместо одного: операция и перевод бывают в чужой валюте, курс
+        нужен на день каждого из них, а тянуть его из SQL нельзя. Поэтому
+        сначала запрос собирает список недостающих курсов, затем они
+        догружаются в кэш, и только потом считается агрегат.
+
+        Порядок обязателен. Пропущенный курс не даёт ошибки в SQL — он даёт
+        `NULL`, который `SUM` молча выбрасывает, и остаток занижается на эту
+        операцию. Если источник курсов недоступен, `ensure` бросает 502: задача
+        перерисовки листа повторится позже, а в таблице до тех пор останутся
+        прежние верные числа.
         """
         await self._get_ready(spreadsheet_id)
+        await self._rates.ensure(await self._sources.balance_requirements(spreadsheet_id))
         return await self._sources.balances(spreadsheet_id, only_active=only_active)
 
     async def list_accesses(self, spreadsheet_id: int) -> list[SpreadsheetAccess]:

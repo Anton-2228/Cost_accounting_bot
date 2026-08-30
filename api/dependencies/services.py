@@ -8,7 +8,7 @@
 
 from __future__ import annotations
 
-from fastapi import Depends
+from fastapi import Depends, Request
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from api.db.session import get_session
@@ -16,6 +16,7 @@ from api.dependencies.repositories import (
     get_cashed_record_repository,
     get_category_repository,
     get_check_repository,
+    get_exchange_rate_repository,
     get_llm_usage_repository,
     get_period_repository,
     get_record_repository,
@@ -31,6 +32,7 @@ from api.dependencies.repositories import (
 from api.repositories.cashed_record_repository import CashedRecordRepository
 from api.repositories.category_repository import CategoryRepository
 from api.repositories.check_repository import CheckRepository
+from api.repositories.exchange_rate_repository import ExchangeRateRepository
 from api.repositories.llm_usage_repository import LlmUsageRepository
 from api.repositories.period_repository import PeriodRepository
 from api.repositories.record_repository import RecordRepository
@@ -44,6 +46,7 @@ from api.repositories.user_notification_repository import UserNotificationReposi
 from api.repositories.user_repository import UserRepository
 from api.services.category_import_service import CategoryImportService
 from api.services.check_service import CheckService
+from api.services.exchange_rate_service import ExchangeRateService
 from api.services.llm_usage_service import LlmUsageService
 from api.services.notification_service import NotificationService
 from api.services.period_service import PeriodService
@@ -53,6 +56,21 @@ from api.services.sheet_sync_task_service import SheetSyncTaskService
 from api.services.source_import_service import SourceImportService
 from api.services.spreadsheet_service import SpreadsheetService
 from api.services.transfer_service import TransferService
+
+
+def get_exchange_rate_service(
+    request: Request,
+    session: AsyncSession = Depends(get_session),
+    rates: ExchangeRateRepository = Depends(get_exchange_rate_repository),
+) -> ExchangeRateService:
+    """Сервис дозагрузки курсов валют.
+
+    Клиент внешнего источника берётся из состояния приложения, а не создаётся
+    здесь: внутри него пул соединений, и заводить его на каждый запрос значило
+    бы открывать TLS-сессию заново ради одного GET. Собирается он в `lifespan`
+    — см. :mod:`api.main`.
+    """
+    return ExchangeRateService(session, rates, request.app.state.rate_provider)
 
 
 def get_spreadsheet_service(
@@ -65,6 +83,7 @@ def get_spreadsheet_service(
     accesses: SpreadsheetAccessRepository = Depends(get_spreadsheet_access_repository),
     tasks: SheetSyncTaskRepository = Depends(get_sheet_sync_task_repository),
     notifications: UserNotificationRepository = Depends(get_user_notification_repository),
+    rates: ExchangeRateService = Depends(get_exchange_rate_service),
 ) -> SpreadsheetService:
     """Сервис жизненного цикла документа."""
     return SpreadsheetService(
@@ -77,6 +96,7 @@ def get_spreadsheet_service(
         accesses=accesses,
         tasks=tasks,
         notifications=notifications,
+        rates=rates,
     )
 
 
@@ -163,9 +183,16 @@ def get_period_service(
     spreadsheets: SpreadsheetRepository = Depends(get_spreadsheet_repository),
     periods: PeriodRepository = Depends(get_period_repository),
     records: RecordRepository = Depends(get_record_repository),
+    rates: ExchangeRateService = Depends(get_exchange_rate_service),
 ) -> PeriodService:
     """Сервис чтения периодов и дневных итогов."""
-    return PeriodService(session, spreadsheets, periods=periods, records=records)
+    return PeriodService(
+        session,
+        spreadsheets,
+        periods=periods,
+        records=records,
+        rates=rates,
+    )
 
 
 def get_category_import_service(

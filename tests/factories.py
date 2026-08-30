@@ -17,15 +17,17 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from api.core.period import period_bounds
 from api.domain.category import Category
 from api.domain.check import Check
+from api.domain.exchange_rate import ExchangeRate
 from api.domain.period import Period
 from api.domain.record import Record
 from api.domain.source import Source
 from api.domain.spreadsheet import Spreadsheet
 from api.domain.transfer import Transfer
 from api.domain.user import User
-from api.enums import CategoryKind, CheckKind
+from api.enums import CategoryKind, CheckKind, Currency
 from api.repositories.category_repository import CategoryRepository
 from api.repositories.check_repository import CheckRepository
+from api.repositories.exchange_rate_repository import ExchangeRateRepository
 from api.repositories.period_repository import PeriodRepository
 from api.repositories.record_repository import RecordRepository
 from api.repositories.source_repository import SourceRepository
@@ -124,16 +126,18 @@ async def create_source(
     spreadsheet: Spreadsheet,
     *,
     title: str | None = None,
+    currency: Currency = Currency.RUB,
     start_balance: Decimal = Decimal("0.00"),
     associations: list[str] | None = None,
 ) -> Source:
-    """Создаёт счёт."""
+    """Создаёт счёт. Валюта по умолчанию рублёвая — как весь учёт до её появления."""
     assert spreadsheet.id is not None
     name = title if title is not None else f"Счёт{next(_titles)}"
     return await SourceRepository(session).add(
         Source(
             spreadsheet_id=spreadsheet.id,
             title=name,
+            currency=currency,
             start_balance=start_balance,
             associations=associations if associations is not None else [name.lower()],
         )
@@ -182,11 +186,17 @@ async def create_record(
     source: Source,
     *,
     amount: Decimal,
+    currency: Currency | None = None,
     added_at: date | None = None,
     notes: str = "",
     check_id: int | None = None,
 ) -> Record:
-    """Создаёт операцию. Сумма знаковая: расход отрицателен."""
+    """Создаёт операцию. Сумма знаковая: расход отрицателен.
+
+    Валюта по умолчанию совпадает с валютой счёта — то есть конвертации нет и
+    курс не нужен. Так тесты, которым валюта безразлична, остаются про то, про
+    что были написаны.
+    """
     assert spreadsheet.id is not None
     assert period.id is not None
     assert category.id is not None
@@ -198,6 +208,7 @@ async def create_record(
             category_id=category.id,
             source_id=source.id,
             amount=amount,
+            currency=currency if currency is not None else source.currency,
             added_at=added_at if added_at is not None else period.start_date,
             notes=notes,
             check_id=check_id,
@@ -232,3 +243,27 @@ async def create_transfer(
             added_at=added_at if added_at is not None else period.start_date,
         )
     )
+
+
+async def create_rate(
+    session: AsyncSession,
+    *,
+    base: Currency,
+    quote: Currency,
+    rate: Decimal,
+    rate_date: date,
+) -> ExchangeRate:
+    """Кладёт курс в кэш.
+
+    Тесты конвертации сеют курсы сами и никуда не ходят: подсчёт обязан брать их
+    только из БД, а тест, лезущий в сеть, проверял бы доступность чужого сайта,
+    а не арифметику.
+    """
+    item = ExchangeRate(
+        base_currency=base,
+        quote_currency=quote,
+        rate_date=rate_date,
+        rate=rate,
+    )
+    await ExchangeRateRepository(session).upsert_many([item])
+    return item

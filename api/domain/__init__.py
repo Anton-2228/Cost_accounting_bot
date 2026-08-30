@@ -10,6 +10,7 @@ from api.domain.cashed_record import CashedRecord
 from api.domain.category import Category
 from api.domain.category_daily_total import CategoryDailyTotal
 from api.domain.check import Check
+from api.domain.exchange_rate import ExchangeRate, RateRequirement
 from api.domain.pending_notification import PendingNotification
 from api.domain.period import Period
 from api.domain.record import Record
@@ -28,6 +29,8 @@ __all__ = [
     "Category",
     "CategoryDailyTotal",
     "Check",
+    "ExchangeRate",
+    "RateRequirement",
     "PendingNotification",
     "Period",
     "Record",

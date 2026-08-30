@@ -21,6 +21,7 @@ from api.enums import (
     AccessRole,
     CategoryKind,
     CheckKind,
+    Currency,
     EntityStatus,
     LlmEntityKind,
     LlmOperation,
@@ -37,6 +38,11 @@ MONEY = Numeric(constants.MONEY_MAX_DIGITS, constants.MONEY_DECIMAL_PLACES)
 #: двух знаков после запятой хватило бы ровно на то, чтобы записать ноль.
 LLM_COST = Numeric(constants.LLM_COST_MAX_DIGITS, constants.LLM_COST_DECIMAL_PLACES)
 
+#: Курс одной валюты к другой. Отдельно от `MONEY` по той же причине, что и
+#: `LLM_COST`: курс RSD→EUR это 0.0085, и двух знаков после запятой хватило бы
+#: ровно на то, чтобы записать ноль и обнулить каждую динарную операцию.
+RATE = Numeric(constants.RATE_MAX_DIGITS, constants.RATE_DECIMAL_PLACES)
+
 ENTITY_STATUS = SAEnum(
     EntityStatus,
     name="entity_status",
@@ -52,6 +58,12 @@ CATEGORY_KIND = SAEnum(
 CHECK_KIND = SAEnum(
     CheckKind,
     name="check_kind",
+    metadata=Base.metadata,
+)
+
+CURRENCY = SAEnum(
+    Currency,
+    name="currency",
     metadata=Base.metadata,
 )
 

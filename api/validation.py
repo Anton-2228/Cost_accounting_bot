@@ -30,17 +30,23 @@ from collections.abc import Sequence
 from decimal import Decimal, InvalidOperation
 
 from api.core.text import normalize_terms
+from api.enums import Currency
 
 #: Колонки листа `Categories`: ID · Active · Income · Cost · Name · Associations · Product types
 CATEGORY_WIDTH = 7
-#: Колонки листа `Bills`: ID · Active · Name · Associations · Start balance · Current balance
-SOURCE_WIDTH = 6
+#: Колонки листа `Bills`:
+#: ID · Active · Name · Associations · Currency · Start balance · Current balance
+SOURCE_WIDTH = 7
+
+#: Позиция колонки `Currency` в строке листа `Bills`. Ниже по индексам едут
+#: `Start balance` и `Current balance`.
+SOURCE_CURRENCY_INDEX = 4
 
 #: Сколько полей после ID означают «строку очистили» (пустые ⇒ удаление).
 #: У источников последняя колонка (`Current balance`) не в счёт: её пишет
 #: перерисовка, пользователь её не заполняет.
 CATEGORY_MEANINGFUL_FIELDS = 6
-SOURCE_MEANINGFUL_FIELDS = 4
+SOURCE_MEANINGFUL_FIELDS = 5
 
 _FLAGS = ("0", "1")
 
@@ -95,6 +101,26 @@ def parse_aliases(cell: str, title: str) -> list[str]:
 def parse_product_types(cell: str) -> list[str]:
     """Типы товаров: перечисление через запятую."""
     return normalize_terms(cell.split(","))
+
+
+def parse_currency(cell: str) -> Currency | None:
+    """Читает валюту счёта. `None` — ячейка пуста или содержит не валюту.
+
+    Значения по умолчанию нет намеренно. Валюта задаётся выпадающим списком, и
+    пустая ячейка означает, что счёт просто не заполнили; подставить сюда рубль
+    значило бы завести счёт в валюте, которую пользователь не выбирал, и
+    молча пересчитать по ней все его операции.
+
+    Регистр не важен — `eur` из буфера обмена валиден так же, как `EUR` из
+    списка.
+    """
+    value = cell.strip().upper()
+    if value == "":
+        return None
+    try:
+        return Currency(value)
+    except ValueError:
+        return None
 
 
 def parse_money(cell: str) -> Decimal | None:
@@ -210,7 +236,9 @@ def validate_source_rows(
             return f"В источниках в {number} строке Name пустой"
         if len(row[2].split()) > 1:
             return f"В источниках в {number} строке Name записан не одним словом"
-        if parse_money(row[4]) is None:
+        if parse_currency(row[SOURCE_CURRENCY_INDEX]) is None:
+            return f"В источниках в {number} строке Currency странная"
+        if parse_money(row[SOURCE_CURRENCY_INDEX + 1]) is None:
             return f"В источниках в {number} строке Balance не число"
 
         titles.append(row[2].strip().lower())

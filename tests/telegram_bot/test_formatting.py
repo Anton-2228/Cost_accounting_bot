@@ -7,7 +7,14 @@ from decimal import Decimal
 
 import pytest
 
-from telegram_bot.api_client.models import Category, Record, Source, Spreadsheet, Transfer
+from telegram_bot.api_client.models import (
+    Category,
+    Currency,
+    Record,
+    Source,
+    Spreadsheet,
+    Transfer,
+)
 from telegram_bot.checks.draft import CheckDraft, DraftItem
 from telegram_bot.formatting import (
     CheckFormatter,
@@ -33,7 +40,28 @@ class TestMoneyFormatter:
     )
     def test_formatting(self, amount: Decimal, expected: str) -> None:
         """Разряды разделяются, копейки не теряются."""
-        assert MoneyFormatter.format(amount) == expected
+        assert MoneyFormatter.format(amount, Currency.RUB) == expected
+
+    @pytest.mark.parametrize(
+        ("currency", "expected"),
+        [
+            (Currency.RUB, "500,00 ₽"),
+            (Currency.USD, "500,00 $"),
+            (Currency.EUR, "500,00 €"),
+            (Currency.RSD, "500,00 дин."),
+        ],
+    )
+    def test_every_currency_has_its_own_sign(
+        self,
+        currency: Currency,
+        expected: str,
+    ) -> None:
+        """Каждая валюта подписывается своим знаком.
+
+        Проверяются все члены перечисления: пропущенная валюта уронила бы печать
+        суммы `KeyError`-ом в момент, когда пользователь её уже ввёл.
+        """
+        assert MoneyFormatter.format(Decimal("500.00"), currency) == expected
 
     def test_sign_is_dropped(self) -> None:
         """Знак снимается: расход и так назван расходом.
@@ -41,10 +69,10 @@ class TestMoneyFormatter:
         Api хранит сумму расхода отрицательной, но «-500 ₽» рядом со словом
         «расход» читается как двойное отрицание.
         """
-        assert MoneyFormatter.format(Decimal("-500.00")) == "500,00 ₽"
+        assert MoneyFormatter.format(Decimal("-500.00"), Currency.RUB) == "500,00 ₽"
 
 
-def _record(amount: str = "-500.00") -> Record:
+def _record(amount: str = "-500.00", currency: Currency = Currency.RUB) -> Record:
     """Операция из ответа api."""
     return Record(
         id=42,
@@ -52,6 +80,7 @@ def _record(amount: str = "-500.00") -> Record:
         category_id=1,
         source_id=1,
         amount=Decimal(amount),
+        currency=currency,
         added_at=date(2026, 8, 14),
         notes="обед",
         from_check=False,
@@ -65,6 +94,7 @@ class TestRecordFormatter:
         """В подтверждении есть вид, сумма, категория, счёт, дата и id."""
         parsed = ParsedRecord(
             amount=Decimal("500"),
+            currency=Currency.RUB,
             category_id=1,
             category_title="Продукты",
             category_is_income=False,
@@ -85,6 +115,7 @@ class TestRecordFormatter:
         """Доход называется доходом: вид приходит из категории."""
         parsed = ParsedRecord(
             amount=Decimal("1000"),
+            currency=Currency.RUB,
             category_id=2,
             category_title="Зарплата",
             category_is_income=True,
@@ -143,7 +174,7 @@ class TestTransferFormatter:
             to_source_title="Карта",
             notes="отложил",
         )
-        text = TransferFormatter.saved(parsed, self._transfer())
+        text = TransferFormatter.saved(parsed, self._transfer(), currency=Currency.RUB)
 
         assert "Наличные → Карта" in text
         assert "1 000,00 ₽" in text

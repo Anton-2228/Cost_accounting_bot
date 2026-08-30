@@ -13,7 +13,7 @@ from api.core.logging import get_logger
 from api.core.period import now_in_timezone
 from api.domain.sheet_import_result import SheetImportResult
 from api.domain.source import Source
-from api.enums import EntityStatus, NotificationKind, SheetTarget, SyncTaskKind
+from api.enums import Currency, EntityStatus, NotificationKind, SheetTarget, SyncTaskKind
 from api.repositories.period_repository import PeriodRepository
 from api.repositories.sheet_sync_task_repository import SheetSyncTaskRepository, TaskKey
 from api.repositories.source_repository import SourceRepository
@@ -101,7 +101,8 @@ class SourceImportService(BaseSpreadsheetService):
                     spreadsheet_id=spreadsheet_id,
                     status=_status(row[1]),
                     title=row[2].strip(),
-                    start_balance=_start_balance(row[4]),
+                    currency=_currency(row[validation.SOURCE_CURRENCY_INDEX]),
+                    start_balance=_start_balance(row[validation.SOURCE_CURRENCY_INDEX + 1]),
                 )
             )
             assert updated is not None
@@ -116,7 +117,8 @@ class SourceImportService(BaseSpreadsheetService):
                     spreadsheet_id=spreadsheet_id,
                     status=_status(row[1]),
                     title=row[2].strip(),
-                    start_balance=_start_balance(row[4]),
+                    currency=_currency(row[validation.SOURCE_CURRENCY_INDEX]),
+                    start_balance=_start_balance(row[validation.SOURCE_CURRENCY_INDEX + 1]),
                 )
             )
             assert created.id is not None
@@ -161,5 +163,12 @@ def _status(cell: str) -> EntityStatus:
 def _start_balance(cell: str) -> Decimal:
     """Начальный остаток. Валидация уже подтвердила, что это число."""
     value = validation.parse_money(cell)
+    assert value is not None
+    return value
+
+
+def _currency(cell: str) -> Currency:
+    """Валюта счёта. Валидация уже подтвердила, что ячейка её содержит."""
+    value = validation.parse_currency(cell)
     assert value is not None
     return value

@@ -7,7 +7,7 @@ from tests.google_sheets_service.factories import make_category, make_task
 from tests.google_sheets_service.sync.conftest import Harness
 
 CATEGORIES_RANGE = "'Categories'!A2:G"
-BILLS_RANGE = "'Bills'!A2:F"
+BILLS_RANGE = "'Bills'!A2:G"
 
 
 async def test_import_reads_sheet_and_sends_rows_to_api(ready_harness: Harness) -> None:
@@ -85,7 +85,9 @@ async def test_import_error_does_not_redraw_and_is_not_a_failure(
 
 async def test_bills_import_reads_its_own_range(ready_harness: Harness) -> None:
     """Лист счетов читается по своей ширине."""
-    ready_harness.sheets.values[BILLS_RANGE] = [[1, 1, "Карта", "карта", 1000.5, 850.5]]
+    ready_harness.sheets.values[BILLS_RANGE] = [
+        [1, 1, "Карта", "карта", "RUB", 1000.5, 850.5]
+    ]
     ready_harness.api.tasks.queue = [make_task(kind="IMPORT", target="BILLS")]
 
     await ready_harness.engine.run_once()
@@ -93,7 +95,7 @@ async def test_bills_import_reads_its_own_range(ready_harness: Harness) -> None:
     target, rows = ready_harness.api.imports.received[0]
     assert target == "BILLS"
     # Дробный остаток доезжает без потери копеек и без двоичного хвоста.
-    assert rows[0] == ["1", "1", "Карта", "карта", "1000.5", "850.5"]
+    assert rows[0] == ["1", "1", "Карта", "карта", "RUB", "1000.5", "850.5"]
 
 
 async def test_import_of_empty_sheet_sends_no_rows(ready_harness: Harness) -> None:

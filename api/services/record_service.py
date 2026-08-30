@@ -10,7 +10,7 @@ from api.core.logging import get_logger
 from api.core.period import now_in_timezone
 from api.domain.record import Record
 from api.domain.spreadsheet import Spreadsheet
-from api.enums import CategoryKind, SheetTarget, SyncTaskKind
+from api.enums import CategoryKind, Currency, SheetTarget, SyncTaskKind
 from api.exceptions.base import BusinessRuleError, NotFoundError
 from api.repositories.cashed_record_repository import CashedRecordRepository
 from api.repositories.category_repository import CategoryRepository
@@ -73,6 +73,7 @@ class RecordService(BaseSpreadsheetService):
         category_id: int,
         source_id: int,
         amount: Decimal,
+        currency: Currency,
         notes: str = "",
         product_name: str | None = None,
         product_type: str | None = None,
@@ -82,6 +83,12 @@ class RecordService(BaseSpreadsheetService):
         Знак суммы ставит вид категории, а не пользователь: снаружи приходит
         модуль. Прежде знак приходил вместе с суммой, и расход с минусом
         превращался в доход.
+
+        Валюта сохраняется как есть и **не сверяется** с валютой счёта:
+        расхождение — это не ошибка, а обычное дело, ради которого всё и
+        затевалось. Курс здесь не спрашивается: он понадобится при подсчёте
+        остатка, и тянуть его в момент записи значило бы поставить `/add` в
+        зависимость от доступности стороннего сайта.
 
         Период под сегодняшнюю дату создаётся здесь же, если его ещё нет:
         ждать фонового ролловера нельзя, иначе первая операция после простоя
@@ -110,6 +117,7 @@ class RecordService(BaseSpreadsheetService):
                 category_id=category_id,
                 source_id=source_id,
                 amount=signed,
+                currency=currency,
                 added_at=today,
                 notes=notes,
                 product_name=product_name,

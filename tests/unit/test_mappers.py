@@ -8,7 +8,7 @@ from decimal import Decimal
 from api.domain.category import Category
 from api.domain.record import Record
 from api.domain.sheet_sync_task import SheetSyncTask
-from api.enums import CategoryKind, SheetTarget
+from api.enums import CategoryKind, Currency, SheetTarget
 from api.mappers.category_mapper import CategoryMapper
 from api.mappers.record_mapper import RecordMapper
 from api.mappers.sheet_sync_task_mapper import SheetSyncTaskMapper
@@ -24,6 +24,7 @@ def test_to_orm_does_not_set_database_managed_fields() -> None:
             category_id=3,
             source_id=4,
             amount=Decimal("-10.00"),
+            currency=Currency.RUB,
             added_at=date(2026, 7, 20),
             created_at=datetime(2020, 1, 1),
         )

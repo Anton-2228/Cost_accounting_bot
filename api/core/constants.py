@@ -7,6 +7,8 @@
 
 from __future__ import annotations
 
+from api.enums import Currency
+
 # ---- Денежные значения (часть контракта схемы БД: Numeric(14, 2)) ----
 MONEY_MAX_DIGITS = 14
 MONEY_DECIMAL_PLACES = 2
@@ -16,6 +18,30 @@ MONEY_DECIMAL_PLACES = 2
 # запятой округлили бы каждую строку учёта в ноль.
 LLM_COST_MAX_DIGITS = 18
 LLM_COST_DECIMAL_PLACES = 10
+
+# ---- Курсы валют (часть контракта схемы БД: Numeric(24, 12)) ----
+# Своя точность, а не `MONEY`: курс RSD→EUR это 0.0085, и два знака после
+# запятой округлили бы каждую динарную операцию в ноль.
+RATE_MAX_DIGITS = 24
+RATE_DECIMAL_PLACES = 12
+
+# Валюта, к которой приводится лист статистики. Пока константа: остальной код
+# принимает её параметром, поэтому «своя валюта у каждого документа» позже
+# станет колонкой в `spreadsheets`, а не правкой сигнатур.
+STATISTICS_CURRENCY = Currency.EUR
+
+# ---- Курсы: внешний источник ----
+# `@fawazahmed0/currency-api` через jsDelivr: статические JSON на CDN, без ключа
+# и квот. Один запрос на (база, дата) отдаёт котировки ко всем валютам сразу,
+# поэтому курс к валюте счёта и курс к валюте статистики стоят одного похода.
+# Второй хост — независимая раздача тех же данных с Cloudflare Pages: он спасает
+# от недоступности именно jsDelivr, а не от пропажи самого проекта.
+CURRENCY_API_BASE_URL = "https://cdn.jsdelivr.net"
+CURRENCY_API_PATH_TEMPLATE = "/npm/@fawazahmed0/currency-api@{day}/v1/currencies/{base}.json"
+CURRENCY_API_FALLBACK_URL_TEMPLATE = (
+    "https://{day}.currency-api.pages.dev/v1/currencies/{base}.json"
+)
+CURRENCY_API_TIMEOUT_SECONDS = 15.0
 
 # ---- Учётный период ----
 # День сброса ограничен 28-м числом намеренно: только так `date.replace(day=...)`

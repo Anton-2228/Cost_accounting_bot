@@ -28,6 +28,7 @@ import pytest  # noqa: E402
 from telegram_bot.api_client.models import (  # noqa: E402
     Category,
     CategoryKind,
+    Currency,
     EntityStatus,
     Source,
 )
@@ -59,6 +60,7 @@ def make_source(
     *,
     source_id: int = 1,
     title: str = "Карта",
+    currency: Currency = Currency.RUB,
     associations: list[str] | None = None,
 ) -> Source:
     """Счёт для тестов."""
@@ -66,6 +68,7 @@ def make_source(
         id=source_id,
         status=EntityStatus.ACTIVE,
         title=title,
+        currency=currency,
         associations=associations if associations is not None else [title.lower()],
         start_balance=Decimal("0.00"),
     )

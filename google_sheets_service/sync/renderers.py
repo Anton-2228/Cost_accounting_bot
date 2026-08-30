@@ -77,6 +77,7 @@ def render_bills(sources: list[Source], balances: list[SourceBalance]) -> SheetP
             values.text_cell(_flag(source.status == "ACTIVE")),
             values.text_cell(source.title),
             values.text_cell(" ".join(source.associations)),
+            values.text_cell(source.currency),
             values.number_cell(source.start_balance),
             values.number_cell(balance_by_source.get(source.id, source.start_balance)),
         ]
@@ -104,13 +105,22 @@ def render_operations(
     """
     category_titles = {category.id: category.title for category in categories}
     source_titles = {source.id: source.title for source in sources}
+    # Валюты счетов нужны переводам: сумма перевода выражена в валюте
+    # счёта-источника, и взять её из самого перевода нельзя — там её нет.
+    source_currencies = {source.id: source.currency for source in sources}
 
     entries: list[tuple[date, int, list[dict[str, Any]]]] = []
     for record in records:
         entries.append((record.added_at, record.id, _record_row(record, category_titles,
                                                                 source_titles)))
     for transfer in transfers:
-        entries.append((transfer.added_at, transfer.id, _transfer_row(transfer, source_titles)))
+        entries.append(
+            (
+                transfer.added_at,
+                transfer.id,
+                _transfer_row(transfer, source_titles, source_currencies),
+            )
+        )
 
     entries.sort(key=lambda entry: (entry[0], entry[1]))
     return SheetPayload(rows=[row for _, _, row in entries])
@@ -211,6 +221,7 @@ def _record_row(
         values.int_cell(record.id),
         values.date_cell(record.added_at),
         values.number_cell(record.amount),
+        values.text_cell(record.currency),
         values.text_cell(record.product_name or ""),
         values.text_cell(category_titles.get(record.category_id, "")),
         values.text_cell(record.product_type or ""),
@@ -220,11 +231,20 @@ def _record_row(
     ]
 
 
-def _transfer_row(transfer: Transfer, source_titles: dict[int, str]) -> list[dict[str, Any]]:
+def _transfer_row(
+    transfer: Transfer,
+    source_titles: dict[int, str],
+    source_currencies: dict[int, str],
+) -> list[dict[str, Any]]:
     """Строка реестра для перевода.
 
     Сумма печатается положительной: деньги не появились и не исчезли, а
     переехали, и знак у такой строки означал бы неправду в любую сторону.
+
+    В колонке `Currency` — валюта **счёта-источника**: именно в ней названа
+    сумма. Если счёт-получатель ведётся в другой валюте, зачисленное считается
+    по курсу на день перевода, и на листе операций этой второй суммы нет — она
+    видна только в остатке принимающего счёта.
     """
     source = source_titles.get(transfer.from_source_id, "")
     target = source_titles.get(transfer.to_source_id, "")
@@ -232,6 +252,7 @@ def _transfer_row(transfer: Transfer, source_titles: dict[int, str]) -> list[dic
         values.int_cell(transfer.id),
         values.date_cell(transfer.added_at),
         values.number_cell(transfer.amount),
+        values.text_cell(source_currencies.get(transfer.from_source_id, "")),
         values.text_cell(""),
         values.text_cell(constants.TRANSFER_CATEGORY_TITLE),
         values.text_cell(""),

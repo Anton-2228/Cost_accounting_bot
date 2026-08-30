@@ -7,12 +7,16 @@ from datetime import date
 from pydantic import BaseModel, ConfigDict
 
 from api.core.types import SignedMoneyDecimal
+from api.enums import Currency
 
 
 class RecordResponse(BaseModel):
     """Операция в ответе.
 
-    `amount` знаковая: расход отрицателен, доход положителен.
+    `amount` знаковая: расход отрицателен, доход положителен, и выражена она
+    в `currency` — валюте операции, не обязательно совпадающей с валютой
+    счёта. Приведённой к счёту суммы здесь нет: она зависит от курса и
+    считается агрегатом остатка.
 
     `check_id` выдаётся наружу как есть. Прежде он сворачивался в булев
     `from_check` — листу операций хватало галочки в колонке `Check`. Теперь в
@@ -27,6 +31,7 @@ class RecordResponse(BaseModel):
     category_id: int
     source_id: int
     amount: SignedMoneyDecimal
+    currency: Currency
     added_at: date
     notes: str
     product_name: str | None

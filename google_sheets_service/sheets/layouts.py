@@ -28,23 +28,42 @@ CATEGORIES_LAYOUT = SheetLayout(
 
 #: Лист счетов. `Current balance` защищён: он вычисляется из операций и
 #: переводов, и правка в нём была бы стёрта следующей же перерисовкой.
+#:
+#: `Currency` стоит перед денежными колонками, которые она и описывает: в ней
+#: задан `Start balance` и в ней же выражен `Current balance`. Заполняется
+#: выпадающим списком — см. `CURRENCY_COLUMN_INDEX` ниже.
 BILLS_LAYOUT = SheetLayout(
     columns=(
         Column(header="ID", width=50, protected=True),
         Column(header="Active", width=100),
         Column(header="Name", width=200),
         Column(header="Associations", width=300),
+        Column(header="Currency", width=90),
         Column(header="Start balance", width=120),
         Column(header="Current balance", width=120, protected=True),
     )
 )
 
+#: Позиция колонки `Currency` на листе счетов. Нужна дважды: под выпадающий
+#: список при создании листа и в разборе прочитанных строк на стороне api
+#: (`api.validation`). Вычисляется из раскладки, а не пишется числом, чтобы
+#: вставка колонки не разъехалась с местом, куда вешается список.
+CURRENCY_COLUMN_INDEX = next(
+    index for index, column in enumerate(BILLS_LAYOUT.columns) if column.header == "Currency"
+)
+
 #: Реестр операций периода. Защищён целиком: производен от базы.
+#:
+#: `Currency` идёт сразу за суммой: валюта относится именно к ней, и «500 RSD»
+#: читается только рядом. Это валюта **операции**, а не счёта — они совпадают не
+#: всегда, и приведённой к счёту суммы на листе нет: она зависит от курса и
+#: живёт в `Current balance` листа счетов.
 OPERATIONS_LAYOUT = SheetLayout(
     columns=(
         Column(header="ID", width=50),
         Column(header="Date", width=130),
         Column(header="Amount", width=100),
+        Column(header="Currency", width=90),
         Column(header="Name", width=400),
         Column(header="Category", width=200),
         Column(header="Type", width=150),
@@ -77,10 +96,14 @@ def statistics_layout(start_date: date, end_date: date) -> SheetLayout:
     Колонок здесь столько, сколько дней в периоде, поэтому описание строится, а
     не лежит константой. Границы полуинтервальные: день `end_date` принадлежит
     уже следующему месяцу и колонки не получает.
+
+    Валюта вынесена в заголовок итоговой колонки: числа на этом листе сведены к
+    одной валюте, и без подписи «1000» рядом с рублёвыми и динарными операциями
+    не значит ничего.
     """
     columns = [
         Column(header="Category", width=200),
-        Column(header="Total", width=100),
+        Column(header=f"Total, {constants.STATISTICS_CURRENCY}", width=100),
     ]
     columns.extend(
         Column(header=day.isoformat(), width=DAY_COLUMN_WIDTH, rotated_header=True)

@@ -46,4 +46,11 @@ class TransferAddCommand(BaseCommand):
             amount=parsed.amount,
             notes=parsed.notes,
         )
-        await self.aiogram.answer_message(message, TransferFormatter.saved(parsed, transfer))
+        # Валюта перевода — валюта счёта-источника: именно в ней названа сумма.
+        currency = next(
+            item.currency for item in sources if item.id == parsed.from_source_id
+        )
+        await self.aiogram.answer_message(
+            message,
+            TransferFormatter.saved(parsed, transfer, currency=currency),
+        )

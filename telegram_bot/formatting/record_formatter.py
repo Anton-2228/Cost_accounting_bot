@@ -19,7 +19,7 @@ class RecordFormatter:
         """
         kind = "доход" if parsed.category_is_income else "расход"
         lines = [
-            f"Записал {kind}: {MoneyFormatter.format(record.amount)}",
+            f"Записал {kind}: {MoneyFormatter.format(record.amount, record.currency)}",
             f"Категория: {parsed.category_title}",
             f"Счёт: {parsed.source_title}",
         ]
@@ -45,7 +45,7 @@ class RecordFormatter:
         category = next((item.title for item in categories if item.id == record.category_id), "")
         source = next((item.title for item in sources if item.id == record.source_id), "")
         lines = [
-            f"Удалил операцию: {MoneyFormatter.format(record.amount)}",
+            f"Удалил операцию: {MoneyFormatter.format(record.amount, record.currency)}",
             f"Категория: {category}" if category else "",
             f"Счёт: {source}" if source else "",
             f"id: {record.id}",

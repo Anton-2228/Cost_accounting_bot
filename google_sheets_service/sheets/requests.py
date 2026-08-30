@@ -19,6 +19,7 @@ from google_sheets_service.sheets.layout import (
     SheetLayout,
     SheetPayload,
 )
+from google_sheets_service.sheets.layouts import BILLS_LAYOUT, CURRENCY_COLUMN_INDEX
 
 
 def sheet_properties(
@@ -80,7 +81,49 @@ def header_requests(
         for item in existing_protection_ids
     )
     requests.extend(_protection_requests(sheet_id, layout))
+    requests.extend(_data_validation_requests(sheet_id, layout))
     return requests
+
+
+def _data_validation_requests(sheet_id: int, layout: SheetLayout) -> list[dict[str, Any]]:
+    """Выпадающие списки колонок с закрытым набором значений.
+
+    Пока такая колонка одна — `Currency` на листе счетов. Набор валют закрыт и
+    меняется только вместе с миграцией, поэтому список можно поставить один раз
+    при создании листа: он не устаревает, в отличие от перечня категорий.
+
+    `strict` отвергает значение вне списка прямо в интерфейсе Google. Это не
+    замена проверке на импорте — вставка через буфер список обходит, — а способ
+    сообщить об опечатке сразу, а не отказом всего импорта пять минут спустя.
+
+    Диапазон открыт снизу: `end_row` не задан, поэтому список действует до конца
+    листа и достаётся строкам, которых ещё нет. Иначе новый счёт, дописанный
+    после десятого, вводился бы руками.
+    """
+    if layout is not BILLS_LAYOUT:
+        return []
+    return [
+        {
+            "setDataValidation": {
+                "range": grid_range(
+                    sheet_id,
+                    start_row=constants.HEADER_ROW_COUNT,
+                    start_column=CURRENCY_COLUMN_INDEX,
+                    end_column=CURRENCY_COLUMN_INDEX + 1,
+                ),
+                "rule": {
+                    "condition": {
+                        "type": "ONE_OF_LIST",
+                        "values": [
+                            {"userEnteredValue": code} for code in constants.CURRENCY_CODES
+                        ],
+                    },
+                    "showCustomUi": True,
+                    "strict": True,
+                },
+            }
+        }
+    ]
 
 
 def redraw_requests(

@@ -18,8 +18,9 @@ from sqlalchemy.orm import Mapped, mapped_column
 
 from api.core import constants
 from api.db.base import Base
-from api.db.column_types import MONEY
+from api.db.column_types import CURRENCY, MONEY
 from api.db.mixins import PkMixin, SoftDeleteMixin, TimestampMixin
+from api.enums import Currency
 
 
 class RecordORM(PkMixin, TimestampMixin, SoftDeleteMixin, Base):
@@ -123,6 +124,11 @@ class RecordORM(PkMixin, TimestampMixin, SoftDeleteMixin, Base):
     category_id: Mapped[int] = mapped_column(BigInteger, nullable=False)
     source_id: Mapped[int] = mapped_column(BigInteger, nullable=False)
     amount: Mapped[Decimal] = mapped_column(MONEY, nullable=False)
+    # Валюта суммы — не обязательно валюта счёта. Хранится исходная: она факт,
+    # а приведение к валюте счёта и к валюте статистики зависит от курса и
+    # потому считается на лету. Записать сюда уже сконвертированное значило бы
+    # похоронить настоящую сумму покупки.
+    currency: Mapped[Currency] = mapped_column(CURRENCY, nullable=False)
     added_at: Mapped[date] = mapped_column(Date, nullable=False)
     notes: Mapped[str] = mapped_column(
         String(constants.NOTES_MAX_LENGTH),

@@ -6,6 +6,7 @@ from api.mappers.base import BaseMapper
 from api.mappers.cashed_record_mapper import CashedRecordMapper
 from api.mappers.category_mapper import CategoryMapper
 from api.mappers.check_mapper import CheckMapper
+from api.mappers.exchange_rate_mapper import ExchangeRateMapper
 from api.mappers.period_mapper import PeriodMapper
 from api.mappers.record_mapper import RecordMapper
 from api.mappers.sheet_mapping_mapper import SheetMappingMapper
@@ -22,6 +23,7 @@ __all__ = [
     "CashedRecordMapper",
     "CategoryMapper",
     "CheckMapper",
+    "ExchangeRateMapper",
     "PeriodMapper",
     "RecordMapper",
     "SheetMappingMapper",

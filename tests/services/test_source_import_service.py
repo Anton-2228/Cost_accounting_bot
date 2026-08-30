@@ -4,9 +4,10 @@ from __future__ import annotations
 
 from decimal import Decimal
 
+import pytest
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from api.enums import NotificationKind, SheetTarget
+from api.enums import Currency, NotificationKind, SheetTarget
 from api.repositories.sheet_sync_task_repository import SheetSyncTaskRepository
 from api.repositories.source_repository import SourceRepository
 from api.repositories.user_notification_repository import UserNotificationRepository
@@ -19,11 +20,12 @@ def _row(
     active: str = "1",
     name: str = "Кошелёк",
     associations: str = "",
+    currency: str = "RUB",
     start_balance: str = "0",
     current_balance: str = "",
 ) -> list[str]:
-    """Строка листа `Bills`: ID · Active · Name · Assoc · Start · Current."""
-    return [source_id, active, name, associations, start_balance, current_balance]
+    """Строка листа `Bills`: ID · Active · Name · Assoc · Currency · Start · Current."""
+    return [source_id, active, name, associations, currency, start_balance, current_balance]
 
 
 async def test_new_row_creates_source(
@@ -198,5 +200,72 @@ async def test_empty_sheet_is_rejected(
     await session.commit()
     assert spreadsheet.id is not None
 
-    result = await source_import_service.import_rows(spreadsheet.id, [["", "", "", "", "", ""]])
+    result = await source_import_service.import_rows(spreadsheet.id, [["", "", "", "", "", "", ""]])
     assert result.error == "Добавьте хотя бы один источник"
+
+
+async def test_currency_from_the_dropdown_is_stored(
+    session: AsyncSession,
+    source_import_service: SourceImportService,
+) -> None:
+    """Валюта из выпадающего списка доезжает до счёта."""
+    spreadsheet = await factories.create_spreadsheet(session, ready=True)
+    await session.commit()
+    assert spreadsheet.id is not None
+
+    result = await source_import_service.import_rows(
+        spreadsheet.id, [_row(name="Динары", currency="RSD")]
+    )
+
+    assert result.error is None
+    sources = await SourceRepository(session).list_by_spreadsheet(spreadsheet.id)
+    assert sources[0].currency is Currency.RSD
+
+
+async def test_currency_is_case_insensitive(
+    session: AsyncSession,
+    source_import_service: SourceImportService,
+) -> None:
+    """Валюта, вставленная из буфера строчными, принимается.
+
+    Список отвергает такое в интерфейсе Google, но вставка через буфер список
+    обходит, а «eur» — это ровно то, что человек имел в виду.
+    """
+    spreadsheet = await factories.create_spreadsheet(session, ready=True)
+    await session.commit()
+    assert spreadsheet.id is not None
+
+    result = await source_import_service.import_rows(
+        spreadsheet.id, [_row(name="Евро", currency="eur")]
+    )
+
+    assert result.error is None
+    sources = await SourceRepository(session).list_by_spreadsheet(spreadsheet.id)
+    assert sources[0].currency is Currency.EUR
+
+
+@pytest.mark.parametrize(
+    "currency",
+    [pytest.param("", id="пусто"), pytest.param("тугрики", id="не валюта")],
+)
+async def test_missing_or_unknown_currency_rejects_the_whole_import(
+    currency: str,
+    session: AsyncSession,
+    source_import_service: SourceImportService,
+) -> None:
+    """Счёт без валюты создать нельзя, и весь импорт откатывается.
+
+    Значения по умолчанию здесь нет намеренно: подставить рубль значило бы
+    завести счёт в валюте, которую пользователь не выбирал, и пересчитать по
+    ней все его операции — молча.
+    """
+    spreadsheet = await factories.create_spreadsheet(session, ready=True)
+    await session.commit()
+    assert spreadsheet.id is not None
+
+    result = await source_import_service.import_rows(
+        spreadsheet.id, [_row(name="Счёт", currency=currency)]
+    )
+
+    assert result.error == "В источниках в 1 строке Currency странная"
+    assert await SourceRepository(session).list_by_spreadsheet(spreadsheet.id) == []

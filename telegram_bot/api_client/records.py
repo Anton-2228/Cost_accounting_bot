@@ -6,7 +6,7 @@ from decimal import Decimal
 
 from telegram_bot import constants
 from telegram_bot.api_client.http import ApiHttpClient
-from telegram_bot.api_client.models import Record
+from telegram_bot.api_client.models import Currency, Record
 
 
 class RecordsClient:
@@ -22,6 +22,7 @@ class RecordsClient:
         category_id: int,
         source_id: int,
         amount: Decimal,
+        currency: Currency,
         notes: str,
     ) -> Record:
         """Записывает операцию.
@@ -35,6 +36,7 @@ class RecordsClient:
                 "category_id": category_id,
                 "source_id": source_id,
                 "amount": str(amount),
+                "currency": currency.value,
                 "notes": notes,
             },
             timeout=constants.WRITE_TIMEOUT_SECONDS,

@@ -18,7 +18,7 @@ class TransferParser:
     def parse(cls, raw_args: str | None, *, sources: list[Source]) -> ParsedTransfer:
         """Разбирает аргументы команды или бросает :class:`ParseError`."""
         parts = (raw_args or "").split()
-        if len(parts) < constants.REQUIRED_ARGUMENTS:
+        if len(parts) < constants.TRANSFER_ARGUMENTS:
             raise ParseError(_USAGE)
 
         amount = AmountParser.parse(parts[0])
@@ -42,7 +42,7 @@ class TransferParser:
             # круга по сети.
             raise ParseError("Счёт отправителя и получателя совпадают")
 
-        notes = " ".join(parts[constants.REQUIRED_ARGUMENTS :])
+        notes = " ".join(parts[constants.TRANSFER_ARGUMENTS :])
         if len(notes) > constants.NOTES_MAX_LENGTH:
             raise ParseError(f"Пометка длиннее {constants.NOTES_MAX_LENGTH} символов")
 

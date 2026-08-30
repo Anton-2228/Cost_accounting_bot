@@ -126,10 +126,21 @@ google_sheets_service/
 | Лист | Заголовок | Колонки | Защита |
 |---|---|---|---|
 | `Categories` | фиксированный | ID · Active · Income · Cost · Name · Associations · Product types | шапка и `ID` |
-| `Bills` | фиксированный | ID · Active · Name · Associations · Start balance · Current balance | шапка, `ID`, `Current balance` |
-| Операции | `2026-08-01` | ID · Date · Amount · Name · Category · Type · Notes · Source · Check | все системные колонки |
-| Статистика | `Stat. 2026-08-01` | Category · Total · по колонке на день | все системные колонки |
+| `Bills` | фиксированный | ID · Active · Name · Associations · Currency · Start balance · Current balance | шапка, `ID`, `Current balance` |
+| Операции | `2026-08-01` | ID · Date · Amount · Currency · Name · Category · Type · Notes · Source · Check | все системные колонки |
+| Статистика | `Stat. 2026-08-01` | Category · Total, EUR · по колонке на день | все системные колонки |
 | Чеки | `Checks 2026-08-01` | ID · Check | все системные колонки |
+
+У `Bills` колонка `Currency` — **единственная с выпадающим списком** во всём
+документе (`setDataValidation`, `ONE_OF_LIST`, `strict`). Набор валют закрыт и
+меняется только вместе с миграцией, поэтому список ставится один раз, в
+`header_requests`: он не устаревает, в отличие от перечня категорий. Отсюда
+следствие — в документах, созданных до появления валют, списка не будет:
+уже созданные листы не переоформляются (см. ниже).
+
+Колонки листов зеркалит `api.validation` (`SOURCE_WIDTH`,
+`SOURCE_CURRENCY_INDEX`), а список валют — `google_sheets_service.constants`
+(`CURRENCY_CODES`, `STATISTICS_CURRENCY`); расхождение ловится тестом.
 
 **За системными колонками у каждого листа десять пустых** — `SPARE_COLUMN_COUNT`.
 Сетка точного размера не оставляла пользователю ни одной ячейки под собственную

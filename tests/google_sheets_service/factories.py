@@ -107,6 +107,7 @@ def make_source(
     status: str = "ACTIVE",
     title: str = "Карта",
     associations: list[str] | None = None,
+    currency: str = "RUB",
     start_balance: str = "1000.00",
 ) -> Source:
     """Счёт."""
@@ -115,6 +116,7 @@ def make_source(
         status=status,
         title=title,
         associations=associations if associations is not None else [title.lower()],
+        currency=currency,
         start_balance=Decimal(start_balance),
     )
 
@@ -142,6 +144,7 @@ def make_record(
     category_id: int = 1,
     source_id: int = 1,
     amount: str = "-149.50",
+    currency: str = "RUB",
     added_at: date = PERIOD_START,
     notes: str = "",
     product_name: str | None = "Хлеб",
@@ -155,6 +158,7 @@ def make_record(
         category_id=category_id,
         source_id=source_id,
         amount=Decimal(amount),
+        currency=currency,
         added_at=added_at,
         notes=notes,
         product_name=product_name,

@@ -10,9 +10,9 @@ from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from api.core import constants
 from api.db.base import Base
-from api.db.column_types import ENTITY_STATUS, MONEY
+from api.db.column_types import CURRENCY, ENTITY_STATUS, MONEY
 from api.db.mixins import PkMixin, SoftDeleteMixin, TimestampMixin
-from api.enums import EntityStatus
+from api.enums import Currency, EntityStatus
 
 if TYPE_CHECKING:
     from api.orm.source_association import SourceAssociationORM
@@ -68,6 +68,10 @@ class SourceORM(PkMixin, TimestampMixin, SoftDeleteMixin, Base):
         server_default=EntityStatus.ACTIVE.value,
     )
     title: Mapped[str] = mapped_column(String(constants.TITLE_MAX_LENGTH), nullable=False)
+    # Валюта счёта. Без `server_default`: значение приходит из листа `Bills` и
+    # проверяется на импорте, поэтому «валюта по умолчанию» существовала бы
+    # ровно для того, чтобы молча подставиться вместо опечатки.
+    currency: Mapped[Currency] = mapped_column(CURRENCY, nullable=False)
     start_balance: Mapped[Decimal] = mapped_column(
         MONEY,
         nullable=False,

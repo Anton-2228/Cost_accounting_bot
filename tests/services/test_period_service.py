@@ -9,12 +9,14 @@ import pytest
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from api.core.period import today_in_timezone
-from api.enums import CategoryKind
+from api.enums import CategoryKind, Currency
 from api.exceptions.base import NotFoundError
+from api.rates.base import RateUnavailableError
 from api.repositories.period_repository import PeriodRepository
 from api.repositories.spreadsheet_repository import SpreadsheetRepository
 from api.services.period_service import PeriodService
 from tests import factories
+from tests.fakes import FakeRateProvider
 
 _TIMEZONE = "Europe/Moscow"
 
@@ -140,3 +142,106 @@ async def test_statistics_of_alien_period_is_not_found(
 
     with pytest.raises(NotFoundError):
         await period_service.daily_totals(spreadsheet.id, alien_period.id)
+
+
+async def test_statistics_are_converted_to_one_currency(
+    session: AsyncSession,
+    period_service: PeriodService,
+    rate_provider: FakeRateProvider,
+) -> None:
+    """Операции в разных валютах сводятся к одной, иначе итог не значит ничего.
+
+    Лист статистики складывает суммы по категории за день. Складывать динары с
+    евро бессмысленно, поэтому всё приводится к
+    :data:`api.core.constants.STATISTICS_CURRENCY`.
+    """
+    spreadsheet = await factories.create_spreadsheet(session, ready=True)
+    period = await factories.create_period(session, spreadsheet)
+    category = await factories.create_category(session, spreadsheet, kind=CategoryKind.EXPENSE)
+    source = await factories.create_source(session, spreadsheet, currency=Currency.EUR)
+    for currency in (Currency.EUR, Currency.RSD):
+        await factories.create_record(
+            session,
+            spreadsheet,
+            period,
+            category,
+            source,
+            amount=Decimal("-100.00"),
+            currency=currency,
+            added_at=period.start_date,
+        )
+    await session.commit()
+    assert spreadsheet.id is not None
+
+    rate_provider.add(Currency.RSD, period.start_date, {Currency.EUR: Decimal("0.01")})
+    totals = await period_service.daily_totals(spreadsheet.id, period.id)
+
+    # −100 евро как есть и −100 динаров по одной сотой = −1 евро.
+    assert [item.total for item in totals] == [Decimal("-101.00")]
+
+
+async def test_statistics_convert_the_original_amount_not_via_the_account(
+    session: AsyncSession,
+    period_service: PeriodService,
+    rate_provider: FakeRateProvider,
+) -> None:
+    """Исходная сумма переводится в валюту статистики напрямую.
+
+    Через валюту счёта было бы два округления вместо одного, и копейки терялись
+    бы на каждом шаге. Здесь счёт рублёвый, операция динарная, статистика в
+    евро — и курс нужен ровно один: RSD→EUR.
+    """
+    spreadsheet = await factories.create_spreadsheet(session, ready=True)
+    period = await factories.create_period(session, spreadsheet)
+    category = await factories.create_category(session, spreadsheet, kind=CategoryKind.EXPENSE)
+    source = await factories.create_source(session, spreadsheet, currency=Currency.RUB)
+    await factories.create_record(
+        session,
+        spreadsheet,
+        period,
+        category,
+        source,
+        amount=Decimal("-1000.00"),
+        currency=Currency.RSD,
+        added_at=period.start_date,
+    )
+    await session.commit()
+    assert spreadsheet.id is not None
+
+    rate_provider.add(Currency.RSD, period.start_date, {Currency.EUR: Decimal("0.0085")})
+    totals = await period_service.daily_totals(spreadsheet.id, period.id)
+
+    assert [item.total for item in totals] == [Decimal("-8.50")]
+    assert rate_provider.calls == [(Currency.RSD, period.start_date)]
+
+
+async def test_statistics_refuse_to_count_without_a_rate(
+    session: AsyncSession,
+    period_service: PeriodService,
+    rate_provider: FakeRateProvider,
+) -> None:
+    """Недоступный курс роняет подсчёт, а не выдаёт часть суммы.
+
+    Задача перерисовки листа повторится позже, а до тех пор в таблице останутся
+    прежние верные числа.
+    """
+    spreadsheet = await factories.create_spreadsheet(session, ready=True)
+    period = await factories.create_period(session, spreadsheet)
+    category = await factories.create_category(session, spreadsheet, kind=CategoryKind.EXPENSE)
+    source = await factories.create_source(session, spreadsheet, currency=Currency.RUB)
+    await factories.create_record(
+        session,
+        spreadsheet,
+        period,
+        category,
+        source,
+        amount=Decimal("-1000.00"),
+        currency=Currency.RSD,
+        added_at=period.start_date,
+    )
+    await session.commit()
+    assert spreadsheet.id is not None
+
+    rate_provider.default_rate = None
+    with pytest.raises(RateUnavailableError):
+        await period_service.daily_totals(spreadsheet.id, period.id)

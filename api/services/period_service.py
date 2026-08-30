@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from api.core import constants
 from api.domain.category_daily_total import CategoryDailyTotal
 from api.domain.period import Period
 from api.exceptions.base import NotFoundError
@@ -12,6 +13,7 @@ from api.repositories.record_repository import RecordRepository
 from api.repositories.spreadsheet_repository import SpreadsheetRepository
 from api.services._periods import resolve_period, today_for
 from api.services.base import BaseSpreadsheetService
+from api.services.exchange_rate_service import ExchangeRateService
 
 
 class PeriodService(BaseSpreadsheetService):
@@ -29,10 +31,12 @@ class PeriodService(BaseSpreadsheetService):
         *,
         periods: PeriodRepository,
         records: RecordRepository,
+        rates: ExchangeRateService,
     ) -> None:
         super().__init__(session, spreadsheets)
         self._periods = periods
         self._records = records
+        self._rates = rates
 
     async def list_all(self, spreadsheet_id: int) -> list[Period]:
         """Все периоды документа по возрастанию даты начала, в том числе отвязанного.
@@ -70,9 +74,18 @@ class PeriodService(BaseSpreadsheetService):
         Из этого строится лист статистики: по строке на категорию и по колонке на
         день периода. Суммы знаковые и в `Decimal` — округлять их нельзя нигде по
         дороге к листу.
+
+        Всё сведено к одной валюте, :data:`api.core.constants.STATISTICS_CURRENCY`:
+        складывать динары с евро бессмысленно, а лист статистики именно
+        складывает. Операции в других валютах приводятся по курсу на свой день,
+        и курсы для этого сначала догружаются в кэш — порядок тот же и по той же
+        причине, что в :meth:`SpreadsheetService.list_balances`.
         """
         spreadsheet = await self._get_ready(spreadsheet_id)
         period = await resolve_period(self._periods, spreadsheet, period_id)
         if period is None or period.id is None:
             return []
-        return await self._records.daily_totals_by_category(period.id)
+
+        base = constants.STATISTICS_CURRENCY
+        await self._rates.ensure(await self._records.statistics_requirements(period.id, base))
+        return await self._records.daily_totals_by_category(period.id, base=base)

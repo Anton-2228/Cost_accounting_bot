@@ -4,13 +4,16 @@ from __future__ import annotations
 
 from collections.abc import Iterable, Mapping
 from decimal import Decimal
+from typing import Any
 
-from sqlalchemy import ColumnElement, delete, func, literal, select
+from sqlalchemy import ColumnElement, Row, case, delete, func, literal, select
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy.orm import InstrumentedAttribute
+from sqlalchemy.orm import aliased
 
+from api.core import constants
 from api.core.text import normalize_terms
 from api.db.column_types import MONEY
+from api.domain.exchange_rate import RateRequirement
 from api.domain.source import Source
 from api.domain.source_balance import SourceBalance
 from api.enums import EntityStatus
@@ -19,6 +22,8 @@ from api.orm.record import RecordORM
 from api.orm.source import SourceORM
 from api.orm.source_association import SourceAssociationORM
 from api.orm.transfer import TransferORM
+from api.rates.base import RateUnavailableError
+from api.repositories._rates import rate_factor
 from api.repositories.base import BaseRepository
 
 # Ноль нужного типа. Без явного Numeric COALESCE с целочисленным литералом
@@ -172,6 +177,14 @@ class SourceRepository(BaseRepository[SourceORM, Source]):
         с `GROUP BY`. Соединение перемножило бы строки: три операции, два
         входящих перевода и два исходящих дали бы двенадцать строк, и каждая
         сумма посчиталась бы кратно числу строк остальных таблиц.
+
+        Результат выражен в валюте счёта: операция и перевод в другой валюте
+        приводятся к ней по курсу на свой день. Курсы обязаны лежать в кэше к
+        моменту вызова — их догружает
+        :meth:`api.services.exchange_rate_service.ExchangeRateService.ensure`
+        по списку из :meth:`balance_requirements`. Вызвать этот метод, минуя
+        `ensure`, значит получить отказ, а не тихо занижённый остаток — см.
+        :meth:`_to_balance`.
         """
         stmt = select(
             SourceORM.id,
@@ -186,15 +199,7 @@ class SourceRepository(BaseRepository[SourceORM, Source]):
             stmt = stmt.where(SourceORM.status == EntityStatus.ACTIVE)
 
         rows = (await self._session.execute(stmt.order_by(SourceORM.id))).all()
-        return [
-            SourceBalance(
-                source_id=row.id,
-                title=row.title,
-                start_balance=row.start_balance,
-                balance=row.balance,
-            )
-            for row in rows
-        ]
+        return [self._to_balance(row) for row in rows]
 
     async def balance_of(self, source_id: int) -> SourceBalance | None:
         """Считает баланс одного счёта."""
@@ -206,8 +211,27 @@ class SourceRepository(BaseRepository[SourceORM, Source]):
         ).where(SourceORM.id == source_id)
 
         row = (await self._session.execute(stmt)).one_or_none()
-        if row is None:
-            return None
+        return None if row is None else self._to_balance(row)
+
+    @staticmethod
+    def _to_balance(row: Row[Any]) -> SourceBalance:
+        """Строка результата → :class:`SourceBalance`; `NULL` в сумме — отказ.
+
+        `NULL` здесь означает ровно одно: какой-то операции не хватило курса, и
+        запрос честно отказался складывать то, что сложить нельзя (см.
+        :meth:`_total`). Единственный законный способ это получить — позвать
+        подсчёт, не загрузив курсы, то есть в обход
+        :meth:`api.services.exchange_rate_service.ExchangeRateService.ensure`.
+
+        Ошибка та же, что и при недоступном источнике курсов, и это не натяжка:
+        снаружи оба случая — «курса нет», оба лечатся повтором, и в обоих лучше
+        показать прежние верные числа, чем свежие неверные.
+        """
+        if row.balance is None:
+            raise RateUnavailableError(
+                "Не хватает курса, чтобы посчитать остаток счёта",
+                details={"source_id": row.id},
+            )
         return SourceBalance(
             source_id=row.id,
             title=row.title,
@@ -215,39 +239,132 @@ class SourceRepository(BaseRepository[SourceORM, Source]):
             balance=row.balance,
         )
 
+    async def balance_requirements(self, spreadsheet_id: int) -> set[RateRequirement]:
+        """Какие курсы нужны, чтобы посчитать балансы этого документа.
+
+        Ходит по тем же таблицам и с теми же условиями, что и сам агрегат, — и
+        это не стилистическое совпадение, а требование. Курса, которого нет в
+        кэше, подзапрос в :meth:`_rate_factor` не найдёт, умножение даст `NULL`,
+        а `SUM` молча выбросит слагаемое: остаток занизится ровно на эту
+        операцию и ничем себя не выдаст. Разъедься два запроса — и ошибка
+        станет невидимой.
+
+        Мягко удалённые **счета** здесь намеренно не отфильтрованы, хотя
+        :meth:`balances` их не показывает. Лишний курс стоит одной строки в
+        кэше, недостающий — молчаливо неверного числа; при такой цене ошибки
+        перестраховка идёт в сторону лишнего.
+        """
+        records = (
+            select(RecordORM.currency, SourceORM.currency, RecordORM.added_at)
+            .join(SourceORM, SourceORM.id == RecordORM.source_id)
+            .where(
+                SourceORM.spreadsheet_id == spreadsheet_id,
+                RecordORM.deleted_at.is_(None),
+                RecordORM.currency != SourceORM.currency,
+            )
+            .distinct()
+        )
+
+        from_source = aliased(SourceORM, name="from_source")
+        to_source = aliased(SourceORM, name="to_source")
+        transfers = (
+            select(from_source.currency, to_source.currency, TransferORM.added_at)
+            .join(from_source, from_source.id == TransferORM.from_source_id)
+            .join(to_source, to_source.id == TransferORM.to_source_id)
+            .where(
+                to_source.spreadsheet_id == spreadsheet_id,
+                TransferORM.deleted_at.is_(None),
+                from_source.currency != to_source.currency,
+            )
+            .distinct()
+        )
+
+        rows = (await self._session.execute(records.union(transfers))).all()
+        return {(row[0], row[1], row[2]) for row in rows}
+
     # --- Составные части агрегата баланса ---
 
     @classmethod
     def _balance_expression(cls) -> ColumnElement[Decimal]:
-        """Начальный баланс + операции + входящие переводы − исходящие."""
-        return (
+        """Начальный баланс + операции + входящие переводы − исходящие.
+
+        Всё приведено к валюте счёта по курсу на день каждой операции.
+        Округление одно, в самом конце: промежуточные произведения несут
+        двенадцать знаков курса, и округлять их по дороге значило бы копить
+        ошибку на каждой операции вместо одной на весь остаток.
+        """
+        total = (
             SourceORM.start_balance
             + cls._records_sum()
-            + cls._transfers_sum(TransferORM.to_source_id)
-            - cls._transfers_sum(TransferORM.from_source_id)
+            + cls._incoming_transfers_sum()
+            - cls._outgoing_transfers_sum()
         )
+        return func.round(total, constants.MONEY_DECIMAL_PLACES)
 
     @staticmethod
-    def _records_sum() -> ColumnElement[Decimal]:
-        """Сумма операций счёта. Знаковая: расходы уже отрицательны."""
-        return func.coalesce(
-            select(func.sum(RecordORM.amount))
+    def _total(amount: ColumnElement[Decimal]) -> ColumnElement[Decimal]:
+        """Сумма слагаемых — либо `NULL`, если хоть одно посчитать не удалось.
+
+        Обычный `COALESCE(SUM(...), 0)` здесь опасен, и это выяснилось не в
+        рассуждении, а на тесте. Ненайденный курс делает произведение `NULL`,
+        `SUM` молча выбрасывает такое слагаемое, а `COALESCE` превращает
+        результат в ноль — и остаток счёта с пропавшей динарной тратой выходит
+        ровно тем же числом, что и до неё. Ошибки нет, есть неправда.
+
+        `COUNT(*) = COUNT(выражение)` отличает «слагаемых не было» от «слагаемое
+        не посчиталось»: первое честно даёт ноль, второе — `NULL`, который
+        доходит до самого верха и превращается в отказ. Это дублирует
+        предварительную загрузку курсов, и намеренно: цена ошибки здесь —
+        молчаливо неверные деньги.
+        """
+        return case(
+            (func.count() == func.count(amount), func.coalesce(func.sum(amount), _ZERO)),
+            else_=literal(None, MONEY),
+        )
+
+    @classmethod
+    def _records_sum(cls) -> ColumnElement[Decimal]:
+        """Сумма операций счёта в его валюте. Знаковая: расходы уже отрицательны."""
+        factor = rate_factor(RecordORM.currency, SourceORM.currency, RecordORM.added_at)
+        return (
+            select(cls._total(RecordORM.amount * factor))
             .where(
                 RecordORM.source_id == SourceORM.id,
                 RecordORM.deleted_at.is_(None),
             )
             .correlate(SourceORM)
-            .scalar_subquery(),
-            _ZERO,
+            .scalar_subquery()
+        )
+
+    @classmethod
+    def _incoming_transfers_sum(cls) -> ColumnElement[Decimal]:
+        """Сумма зачислений, приведённая к валюте принимающего счёта.
+
+        Сумма перевода выражена в валюте счёта-источника — это единственная
+        валюта, которую называет пользователь, — поэтому подзапросу нужен сам
+        счёт-источник, а не только его идентификатор.
+        """
+        from_source = aliased(SourceORM, name="from_source")
+        factor = rate_factor(from_source.currency, SourceORM.currency, TransferORM.added_at)
+        return (
+            select(cls._total(TransferORM.amount * factor))
+            .select_from(TransferORM)
+            .join(from_source, from_source.id == TransferORM.from_source_id)
+            .where(
+                TransferORM.to_source_id == SourceORM.id,
+                TransferORM.deleted_at.is_(None),
+            )
+            .correlate(SourceORM)
+            .scalar_subquery()
         )
 
     @staticmethod
-    def _transfers_sum(side: InstrumentedAttribute[int]) -> ColumnElement[Decimal]:
-        """Сумма переводов по одной стороне: `to_source_id` или `from_source_id`."""
+    def _outgoing_transfers_sum() -> ColumnElement[Decimal]:
+        """Сумма списаний. Без конвертации: она уже в валюте этого счёта."""
         return func.coalesce(
             select(func.sum(TransferORM.amount))
             .where(
-                side == SourceORM.id,
+                TransferORM.from_source_id == SourceORM.id,
                 TransferORM.deleted_at.is_(None),
             )
             .correlate(SourceORM)

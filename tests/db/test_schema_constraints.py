@@ -15,7 +15,7 @@ from sqlalchemy import text
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from api.enums import CategoryKind, CheckKind
+from api.enums import CategoryKind, CheckKind, Currency
 from api.orm.category import CategoryORM
 from api.orm.category_association import CategoryAssociationORM
 from api.orm.record import RecordORM
@@ -111,6 +111,7 @@ async def test_zero_amount_record_is_allowed(session: AsyncSession) -> None:
             category_id=category.id,
             source_id=source.id,
             amount=Decimal("0.00"),
+            currency=Currency.RUB,
             added_at=period.start_date,
         )
     )

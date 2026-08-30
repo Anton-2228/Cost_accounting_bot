@@ -25,6 +25,20 @@ class CategoryKind(StrEnum):
     EXPENSE = "EXPENSE"
 
 
+class Currency(StrEnum):
+    """Валюта суммы.
+
+    Зеркало `api.enums.Currency`. Список закрыт и меняется только вместе с
+    миграцией, поэтому копия здесь дешевле похода в api за справочником,
+    который не может измениться между запросами.
+    """
+
+    RUB = "RUB"
+    USD = "USD"
+    EUR = "EUR"
+    RSD = "RSD"
+
+
 class EntityStatus(StrEnum):
     """Состояние справочной записи."""
 
@@ -115,6 +129,7 @@ class Source(BaseModel):
     status: EntityStatus
     title: str
     associations: list[str]
+    currency: Currency
     start_balance: Decimal
 
 
@@ -132,6 +147,7 @@ class Record(BaseModel):
     category_id: int
     source_id: int
     amount: Decimal
+    currency: Currency
     added_at: date
     notes: str
     #: Номер чека, из которого распознана позиция. Бот его не печатает, но поле

@@ -48,7 +48,7 @@ async def test_broken_sheet_returns_200_with_russian_error(
 
     response = await client.post(
         f"/api/v1/spreadsheets/{spreadsheet.id}/import/bills",
-        json={"rows": [["", "1", "Карта", "", "много", ""]]},
+        json={"rows": [["", "1", "Карта", "", "RUB", "много", ""]]},
     )
 
     assert response.status_code == 200
@@ -71,7 +71,7 @@ async def test_bills_import_ignores_current_balance_column(
 
     await client.post(
         f"/api/v1/spreadsheets/{spreadsheet.id}/import/bills",
-        json={"rows": [["", "1", "Карта", "сбер", "100", "99999"]]},
+        json={"rows": [["", "1", "Карта", "сбер", "RUB", "100", "99999"]]},
     )
 
     balances = await client.get(f"/api/v1/spreadsheets/{spreadsheet.id}/balances")

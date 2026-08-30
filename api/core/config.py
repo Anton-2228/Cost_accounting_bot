@@ -52,6 +52,13 @@ class Settings(BaseSettings):
     notification_push_interval_seconds: int = constants.NOTIFICATION_PUSH_INTERVAL_SECONDS
     notification_push_timeout_seconds: float = constants.NOTIFICATION_PUSH_TIMEOUT_SECONDS
 
+    # Источник курсов валют. Ключа нет и не предполагается: выбранная раздача —
+    # статические файлы на CDN. Второй адрес независим от первого и служит
+    # запасным, а не заменой: оба раздают одни и те же данные.
+    currency_api_base_url: str = constants.CURRENCY_API_BASE_URL
+    currency_api_fallback_url_template: str = constants.CURRENCY_API_FALLBACK_URL_TEMPLATE
+    currency_api_timeout_seconds: float = constants.CURRENCY_API_TIMEOUT_SECONDS
+
     @property
     def database_url(self) -> str:
         """Async-DSN для приложения (asyncpg)."""

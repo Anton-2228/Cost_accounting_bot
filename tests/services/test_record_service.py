@@ -10,7 +10,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from api.core.period import now_in_timezone, today_in_timezone
 from api.domain.cashed_record import CashedRecord
-from api.enums import CategoryKind, SheetTarget
+from api.enums import CategoryKind, Currency, SheetTarget
 from api.exceptions.base import BusinessRuleError, NotFoundError
 from api.repositories.cashed_record_repository import CashedRecordRepository
 from api.repositories.check_repository import CheckRepository
@@ -42,6 +42,7 @@ async def test_expense_is_stored_with_negative_amount(
         category_id=category.id,
         source_id=source.id,
         amount=Decimal("100.50"),
+        currency=Currency.RUB,
     )
 
     assert record.amount == Decimal("-100.50")
@@ -64,6 +65,7 @@ async def test_income_is_stored_positive(
         category_id=category.id,
         source_id=source.id,
         amount=Decimal("100.50"),
+        currency=Currency.RUB,
     )
     assert record.amount == Decimal("100.50")
 
@@ -84,6 +86,7 @@ async def test_record_marks_three_sheets_stale(
         category_id=category.id,
         source_id=source.id,
         amount=Decimal("10.00"),
+        currency=Currency.RUB,
     )
 
     targets = {
@@ -114,6 +117,7 @@ async def test_ten_records_leave_one_task_per_sheet(
             category_id=category.id,
             source_id=source.id,
             amount=Decimal("1.00"),
+            currency=Currency.RUB,
         )
 
     tasks = await SheetSyncTaskRepository(session).list_by_spreadsheet(spreadsheet.id)
@@ -141,6 +145,7 @@ async def test_period_is_created_lazily(
         category_id=category.id,
         source_id=source.id,
         amount=Decimal("5.00"),
+        currency=Currency.RUB,
     )
 
     periods = await PeriodRepository(session).list_by_spreadsheet(spreadsheet.id)
@@ -167,6 +172,7 @@ async def test_zero_and_negative_amounts_are_rejected(
                 category_id=category.id,
                 source_id=source.id,
                 amount=amount,
+                currency=Currency.RUB,
             )
 
 
@@ -193,6 +199,7 @@ async def test_category_of_another_document_is_not_found(
             category_id=alien_category.id,
             source_id=source.id,
             amount=Decimal("1.00"),
+            currency=Currency.RUB,
         )
 
 
@@ -224,6 +231,7 @@ async def test_delete_last_forgets_learned_product_type(
         category_id=category.id,
         source_id=source.id,
         amount=Decimal("50.00"),
+        currency=Currency.RUB,
         product_name="молоко",
         product_type="продукты",
     )
@@ -249,6 +257,7 @@ async def test_delete_is_soft_and_balance_recovers(
         category_id=category.id,
         source_id=source.id,
         amount=Decimal("250.00"),
+        currency=Currency.RUB,
     )
     assert record.id is not None
 
@@ -363,6 +372,7 @@ async def test_delete_of_ordinary_record_touches_no_check(
         category_id=category.id,
         source_id=source.id,
         amount=Decimal("10.00"),
+        currency=Currency.RUB,
     )
     assert record.id is not None and record.check_id is None
 
@@ -398,6 +408,7 @@ async def test_record_of_closed_period_is_not_deletable(
         category_id=category.id,
         source_id=source.id,
         amount=Decimal("10.00"),
+        currency=Currency.RUB,
     )
     assert record.id is not None
 
@@ -443,6 +454,7 @@ async def test_list_by_period_defaults_to_current_and_checks_owner(
         category_id=category.id,
         source_id=source.id,
         amount=Decimal("7.00"),
+        currency=Currency.RUB,
     )
     current = await record_service.list_by_period(spreadsheet.id)
     assert [item.id for item in current] == [record.id]

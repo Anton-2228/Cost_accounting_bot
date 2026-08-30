@@ -50,6 +50,7 @@ class RecordAddCommand(BaseCommand):
             category_id=parsed.category_id,
             source_id=parsed.source_id,
             amount=parsed.amount,
+            currency=parsed.currency,
             notes=parsed.notes,
         )
         await self.aiogram.answer_message(message, RecordFormatter.saved(parsed, record))
