@@ -16,3 +16,4 @@ class CheckKind(StrEnum):
     """Формат фискального чека."""
 
     RU_FNS = "RU_FNS"
+    SRB_SUF = "SRB_SUF"

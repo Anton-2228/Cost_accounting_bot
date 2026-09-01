@@ -13,6 +13,7 @@ import hashlib
 import hmac
 import json
 from datetime import UTC, datetime
+from pathlib import Path
 from urllib.parse import urlencode
 
 from checks_service import constants
@@ -20,6 +21,46 @@ from checks_service import constants
 #: Пример настоящей QR-строки российского чека.
 RU_FNS_QR = "t=20260725T1507&s=1214.95&fn=7384440901402798&i=145&fp=698610272&n=1"
 RU_FNS_KEY = "7384440901402798:145:698610272"
+
+#: Настоящая ссылка с сербского чека: Maxi, Светогорская 7, 610,38 динара.
+#: Именно она, а не выдуманная: двоичный заголовок внутри `vl` подписан, и
+#: собрать правдоподобный вручную нельзя — а всё, что читает парсер, лежит
+#: именно в нём.
+SRB_SUF_QR = (
+    "https://suf.purs.gov.rs/v/?vl=A1lNUVFXR0tDWU1RUVdHS0OLPwEAiz8BAPgiXQAAAAAAAAAB"
+    "oENOTOwAAACfwGj7WquwePtJXDLnfYA%2B8IQeMogbiwiVLcLe8pz3hOEdSKAER3x64OYI%2BWid4"
+    "byzQ5dFulWkeQPlyuYTUPu6uri40%2BVYSWSpZ86mn8zqkGZwfJ1m9FQ7pIO18xSN3wZtXg6GOlZT"
+    "jRjnVjIFk9Evi9TGEmN5Dt4a%2FN8U35J62R4PpiWIl9PDhLyhlVsqTBr%2FNVJ8DS7tNjVxB5Ve2"
+    "nWiYEEYkntAwr2nraFCLuS2YYzM71uJT1vuT%2BQCX%2FcAWQXOVcTC1xC%2FWlBFfwHc6ZHCuIl2"
+    "S73kNbMsNTazeWeet4w8vT%2BRd%2FI5Mb106%2FNstpB9YO3ByXb8ECNnnkUeWpfhWKpFSbLnkk%"
+    "2BpkdMdFLATjBQ%2B8qFSWcJqv3pkR59fM97V1%2FDD6bT64jNXOgjHnIKSz8dZurPrTVcrCYR73U"
+    "a%2BXyHdjtxJnL3B82yGxnGvfvX9zHAj1ilSZntOAPBUOE7x1K4J4Y9Eu%2Blc%2FussKKe6uXJcu"
+    "27nWafTzWLCjxupJorcNRSdJGCurHMJH%2B%2Bw0yScKKI1nafE1p0EKW3CbuMM26dpzjCHMtjf7U"
+    "cvZuK%2BxMFUQ4xzcnDEHZRJ204rKO11K5CpjKI8mx8c8ED3jZm86SFpzNlQrEst%2BDJerWR1kD4"
+    "tuLP0TNGGI%2Bqw4caaQ%2BHnmlcTKl0I46FxDcUBUCRYhsJNuCS44rrqhZl7nu6p%2Fyg%3D"
+)
+SRB_SUF_KEY = "YMQQWGKC-YMQQWGKC-81803"
+#: Токен запроса позиций — он же лежит в фикстурах страниц.
+SRB_SUF_TOKEN = "68d61815-760e-45d6-a230-7a300d363837"
+
+_FIXTURES = Path(__file__).parent / "fixtures"
+
+
+def suf_page(locale: str) -> str:
+    """Сохранённая страница чека на указанном языке.
+
+    Страницы настоящие, снятые с `suf.purs.gov.rs`, — из них вырезаны только
+    base64-картинки и внешние ресурсы. Именно настоящие: разметка страницы
+    содержит незакрытые теги, и фикстура «как надо бы» проверяла бы разбор
+    HTML, которого в жизни не встретится.
+    """
+    name = "suf_sr.html" if locale == constants.SRB_SUF_LOCALE_SR else "suf_en.html"
+    return (_FIXTURES / name).read_text(encoding="utf-8")
+
+
+def suf_specifications() -> str:
+    """Сохранённый ответ `/specifications` с позициями чека."""
+    return (_FIXTURES / "suf_specifications.json").read_text(encoding="utf-8")
 
 #: Правдоподобный ответ proverkacheka: суммы в копейках, как и в жизни.
 PROVERKACHEKA_PAYLOAD = {

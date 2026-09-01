@@ -13,6 +13,7 @@ from checks_service.enums import CheckKind
 from checks_service.exceptions import register_exception_handlers
 from checks_service.formats.registry import FormatRegistry
 from checks_service.formats.ru_fns import ProverkachekaFetcher, RuFnsQrParser
+from checks_service.formats.srb_suf import SrbSufQrParser, SufFetcher
 from checks_service.logging import get_logger, setup_logging
 from checks_service.main_api import ApiGateway
 from checks_service.routers import mini_app_router, system_router
@@ -30,16 +31,23 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     модулю — в том числе из тестов.
 
     Реестр форматов — единственное место, где перечислены поддерживаемые чеки.
-    Сербский добавится сюда двумя строками: парсер в список и фетчер в словарь.
+    Следующий добавится сюда двумя строками: парсер в список и фетчер в словарь.
+
+    Порядок парсеров значения не имеет: `matches` у них взаимоисключающие —
+    один требует пар «ключ=значение», другой ссылку на конкретный хост.
     """
     api = ApiGateway(settings.api_base_url, timeout=settings.api_timeout_seconds)
     registry = FormatRegistry(
-        parsers=[RuFnsQrParser()],
+        parsers=[RuFnsQrParser(), SrbSufQrParser()],
         fetchers={
             CheckKind.RU_FNS: ProverkachekaFetcher(
                 settings.proverkacheka_base_url,
                 token=settings.proverkacheka_api_token,
                 timeout=settings.proverkacheka_timeout_seconds,
+            ),
+            CheckKind.SRB_SUF: SufFetcher(
+                settings.suf_base_url,
+                timeout=settings.suf_timeout_seconds,
             ),
         },
     )

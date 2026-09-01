@@ -26,7 +26,6 @@ from collections.abc import Callable, Collection, Sequence
 from html import escape
 
 from telegram_bot.checks.draft import CheckDraft, DraftItem
-from telegram_bot.checks.models import CHECK_CURRENCY
 from telegram_bot.formatting.money_formatter import MoneyFormatter
 
 #: Заглушка на месте незаполненного типа или категории.
@@ -47,7 +46,7 @@ class CheckFormatter:
             lines[0] = f"Чек: {draft.retail_place}"
         if draft.purchased_at:
             lines.append(f"Куплено: {draft.purchased_at}")
-        lines.append(f"Итого: {MoneyFormatter.format(draft.total, CHECK_CURRENCY)}")
+        lines.append(f"Итого: {MoneyFormatter.format(draft.total, draft.currency)}")
         lines.append(f"Позиций: {len(draft.items)}")
         if left > 0:
             lines.append(f"Ещё в очереди: {left}")

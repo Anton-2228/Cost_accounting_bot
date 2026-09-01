@@ -1,0 +1,60 @@
+{
+  "success": true,
+  "items": [
+    {
+      "gtin": "28215580",
+      "name": "Banana/KG",
+      "quantity": 0.584,
+      "total": 93.43,
+      "unitPrice": 159.99,
+      "label": "Е",
+      "labelRate": 10,
+      "taxBaseAmount": 84.94,
+      "vatAmount": 8.49
+    },
+    {
+      "gtin": "5449000155023",
+      "name": "Min.voda NG Rosa Sport 0.75l/KOM",
+      "quantity": 1,
+      "total": 70.99,
+      "unitPrice": 70.99,
+      "label": "Ђ",
+      "labelRate": 20,
+      "taxBaseAmount": 59.16,
+      "vatAmount": 11.83
+    },
+    {
+      "gtin": "4014500516899",
+      "name": "Monte 100g/KOM",
+      "quantity": 2,
+      "total": 185.98,
+      "unitPrice": 92.99,
+      "label": "Ђ",
+      "labelRate": 20,
+      "taxBaseAmount": 154.98,
+      "vatAmount": 31
+    },
+    {
+      "gtin": "8600197473858",
+      "name": "Kasika bambus Maxi 10 1/KOM",
+      "quantity": 1,
+      "total": 109.99,
+      "unitPrice": 109.99,
+      "label": "Ђ",
+      "labelRate": 20,
+      "taxBaseAmount": 91.66,
+      "vatAmount": 18.33
+    },
+    {
+      "gtin": "8601500140474",
+      "name": "Coffe Almond Imlek Nera 230ml/KOM",
+      "quantity": 1,
+      "total": 149.99,
+      "unitPrice": 149.99,
+      "label": "Ђ",
+      "labelRate": 20,
+      "taxBaseAmount": 124.99,
+      "vatAmount": 25
+    }
+  ]
+}

@@ -1,0 +1,484 @@
+<!DOCTYPE html>
+<html lang="en-US">
+<head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="robots" content="noindex">
+    <title>Invoice Verification - TaxCore</title>
+    <link rel="shortcut icon" type="image/x-icon" href="/favicon.ico" />
+
+    <style>
+        .form-group {
+            display: grid;
+        }
+
+        .col-form-label {
+            font-weight: bold;
+        }
+    </style>
+
+
+
+    <script type="text/javascript">
+        $(document).ready(function () {
+
+            viewModel = new ViewModel();
+            ko.applyBindings(viewModel);
+            viewModel.InvoiceNumber('YMQQWGKC-YMQQWGKC-81803');
+            viewModel.Token('68d61815-760e-45d6-a230-7a300d363837');
+
+viewModel.IsNormalOrAdvance(true); viewModel.IsNormalSale(true); 
+                });
+
+    </script>
+
+    <script type="text/javascript">
+        var rootPath = 'https://suf.purs.gov.rs';
+        var lang = 'en-US';
+        var dateTimePickerFormat = 'm/d/yyyy HH:ii P';
+        var showMeridianTime = true;
+    </script>
+</head>
+<body class="body-content">
+    <div class="container">
+        <div class="m-t-md">
+            <div class="mr-1 ml-1 justify-content-between d-flex">
+                <a href="/" class="navbar-brand font-bold" style="background-color:inherit;color:black;padding-right: 5px;margin-right: 5px;display: flex;align-items: center;">
+                    <img src="/images/logo.png" width="40"> <span style="padding-left: 14px;">  Invoice Verification </span>
+                </a>
+                <ul class="nav navbar-nav ml-auto">
+                    <li class="nav-item dropdown">
+                        <a id="languagesSelect" href="#" class="nav-link dropdown-toggle pb-1 pt-3" data-bs-toggle="dropdown"><img src="/images/Flags/en-US.png" alt="English (United States)" width="16" /></a>
+                        <div class="dropdown-menu dropdown-menu-right">
+                                <a href="/Home/ChangeLanguage/sr-Cyrl-RS" class="dropdown-item "><img src="/images/Flags/sr-Cyrl-RS.png" alt="&#x441;&#x440;&#x43F;&#x441;&#x43A;&#x438; (&#x45B;&#x438;&#x440;&#x438;&#x43B;&#x438;&#x446;&#x430;, &#x421;&#x440;&#x431;&#x438;&#x458;&#x430;)" width="16" /> &#x421;&#x440;&#x43F;&#x441;&#x43A;&#x438; (&#x45B;&#x438;&#x440;&#x438;&#x43B;&#x438;&#x446;&#x430;, &#x421;&#x440;&#x431;&#x438;&#x458;&#x430;)</a>
+                                <a href="/Home/ChangeLanguage/en-US" class="dropdown-item font-bold"><img src="/images/Flags/en-US.png" alt="English (United States)" width="16" /> English (United States)</a>
+                        </div>
+                    </li>
+                </ul>
+            </div>
+            <hr />
+            
+<form action="/v" method="post">    <div class="row">
+        <div class="col-lg-12  text-center">
+            <div class="panel panel-primary">
+                <div class="panel-heading">
+                    <i class="glyphicon glyphicon-info-sign"></i>
+                    Invoice Status
+                </div>
+                <div class="panel-body">
+                    <div class="form-group">
+                        <div class="col-md-12">
+                                <label class="h2" for="invoiceStatusLabel" id="invoiceStatusLabel" style="margin-top:10px">Invoice is verified</label>
+                            <br /> <img src="/images/Verification/Valid.png" width="100" height="100" />
+
+
+                        </div>
+                        <div class="col-md-12">
+
+                                    <span style="padding: 10px 0px">
+                                        <text>
+                                            <b>
+                                                Please match totals on this page with your receipt. In case of inaccuracy, <a target="_blank" href='/CustomerReport/YMQQWGKC-YMQQWGKC-81803'>report it to the tax authority.</a>                                            </b>
+                                        </text>
+                                    </span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+        </div>
+    </div>
+    <div class="row">
+        <div class="col-lg-6 col-md-6 text-center">
+            <div class="panel panel-info">
+                <div class="panel-heading">
+                    <i class="glyphicon glyphicon-arrow-right"></i>
+                    Invoice Request
+                </div>
+                <div class="panel-body">
+                        <div class="form-group">
+                            <label class="col-form-label">TIN</label>
+                            <div class="col-md-12">
+                                <span id="tinLabel">
+                                    103482850
+                                    <span>
+                            </div>
+                        </div>
+
+                        <div class="form-group">
+                            <label class="col-form-label">Location Name</label>
+                            <div class="col-md-12">
+                                <span id="shopFullNameLabel">1002342-195 - Maxi</span>
+                            </div>
+                        </div>
+                        <div class="form-group">
+                            <label class="col-form-label">Address</label>
+                            <div class="col-md-12">
+                                <span id="addressLabel">&#x421;&#x412;&#x415;&#x422;&#x41E;&#x413;&#x41E;&#x420;&#x421;&#x41A;&#x410; 7   </span>
+                            </div>
+                        </div>
+                        <div class="form-group">
+                            <label class="col-form-label">City</label>
+                            <div class="col-md-12">
+                                <span id="cityLabel">&#x411;&#x415;&#x41E;&#x413;&#x420;&#x410;&#x414; (&#x421;&#x422;&#x410;&#x420;&#x418; &#x413;&#x420;&#x410;&#x414;)</span>
+                            </div>
+                        </div>
+                        <div class="form-group">
+                            <label class="col-form-label">Administrative Unit</label>
+                            <div class="col-md-12">
+                                <span id="administrativeUnitLabel">&#x411;&#x435;&#x43E;&#x433;&#x440;&#x430;&#x434;-&#x421;&#x442;&#x430;&#x440;&#x438; &#x413;&#x440;&#x430;&#x434;</span>
+                            </div>
+                        </div>
+
+                    <div class="form-group">
+                        <label class="col-form-label">Buyer&#x27;s TIN</label>
+                        <div class="col-md-12">
+                            <span id="buyerIdLabel">
+                                
+                            </span>
+                        </div>
+                    </div>
+
+                    <div class="form-group">
+                        <label class="col-form-label">Requested By</label>
+                        <div class="col-md-12">
+                            <span id="requestedByLabel">
+                                YMQQWGKC
+                            </span>
+                        </div>
+                    </div>
+
+                    <div class="form-group">
+                        <label class="col-form-label" for="">Type</label>
+                        <div class="col-md-12">
+                            <span id="invoiceTypeId">Normal</span>
+                            <span id="transactionTypeId">Sale</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="col-lg-6 col-md-6 text-center">
+            <div class="panel panel-info">
+                <div class="panel-heading">
+                    <i class="glyphicon glyphicon-arrow-left"></i>
+                    Invoice Result
+                </div>
+                <div class="panel-body">
+
+                    <div class="form-group">
+                        <label class="col-form-label">Total Amount</label>
+                        <div class="col-md-12">
+                            <span id="totalAmountLabel">
+                                610.38
+                            </span>
+                        </div>
+                    </div>
+
+                    <div class="form-group">
+                        <label class="col-form-label">Transaction Type Counter</label>
+                        <div class="col-md-12">
+                            <span id="transactionTypeCounterLabel">
+                                81803
+                            </span>
+                        </div>
+                    </div>
+
+                    <div class="form-group">
+                        <label class="col-form-label">Total Counter</label>
+                        <div class="col-md-12">
+                            <span id="totalCounterLabel">
+                                81803
+                            </span>
+                        </div>
+                    </div>
+
+                    <div class="form-group">
+                        <label class="col-form-label">Invoice Counter Extension</label>
+                        <div class="col-md-12">
+                            <span id="invoiceCounterExtensionLabel">
+                                &#x41F;&#x41F;
+                            </span>
+                        </div>
+                    </div>
+
+                    <div class="form-group">
+                        <label class="col-form-label">Requested By - Signed By - Counter</label>
+                        <div class="col-md-12">
+                            <span id="invoiceNumberLabel">
+                                YMQQWGKC-YMQQWGKC-81803
+                            </span>
+                        </div>
+                    </div>
+
+                    <div class="form-group">
+                        <label class="col-form-label">Signed By</label>
+                        <div class="col-md-12">
+                            <span id="signedByLabel">
+                                YMQQWGKC
+                            </span>
+                        </div>
+                    </div>
+
+                    <div class="form-group">
+                        <label class="col-form-label">SDC Time (server time zone)</label>
+                        <div class="col-md-12">
+                            <span id="sdcDateTimeLabel">
+                                8/27/2026 3:00:00 PM
+                            </span>
+                        </div>
+                    </div>
+
+                </div>
+            </div>
+        </div>
+
+    </div>
+        <div class="row">
+            <div class="col-lg-12 text-center centered">
+                <div class="panel panel-info">
+                    <div class="panel-heading">
+                        <h5 class="panel-title">
+                            <a data-bs-toggle="collapse" href="#collapse-specs" class="collapsed" aria-expanded="false"><i class="glyphicon glyphicon-align-justify"></i> Invoice specification</a>
+                        </h5>
+                    </div>
+                    <div id="collapse-specs" class="panel-collapse in collapse">
+                        <div class="panel-body">
+                            <div class="table-responsive m-t">
+                                <table class="table invoice-table" aria-label="Invoice specification" data-bind="visible: !LoadingSpecifications()">
+                                    <thead>
+                                        <tr>
+                                            <th style="min-height: 200px;">Name</th>
+                                            <th>Quantity</th>
+                                            <th>Gross Unit Price</th>
+                                            <th>Total Price</th>
+                                            <th>Net Price</th>
+                                            <th>Tax Amount</th>
+                                            <th>Rate</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                    <tbody data-bind="foreach: Specifications">
+                                        <tr>
+                                            <td>
+                                                <strong data-bind="text: Name"></strong>
+                                            </td>
+                                            <td data-bind="decimalAsText: Quantity"></td>
+                                            <td data-bind="decimalAsText: UnitPrice"></td>
+                                            <td data-bind="decimalAsText: Total"></td>
+                                            <td data-bind="decimalAsText: TaxBaseAmount"></td>
+                                            <td data-bind="decimalAsText: VatAmount"></td>
+                                            <td data-bind="text: Label"></td>
+                                        </tr>
+                                    </tbody>
+                                </table>
+
+                                <div data-bind="visible: LoadingSpecifications" class="sk-spinner sk-spinner-wave">
+                                    <div class="sk-rect1"></div>
+                                    <div class="sk-rect2"></div>
+                                    <div class="sk-rect3"></div>
+                                    <div class="sk-rect4"></div>
+                                    <div class="sk-rect5"></div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+            </div>
+        </div>
+    <div class="row">
+        <div class="col-lg-12 text-center centered">
+            <div class="panel panel-warning">
+                <div class="panel-heading">
+                    <h4 class="panel-title">
+                        <a data-bs-toggle="collapse" href="#collapse3"><i class="glyphicon glyphicon-list-alt"></i> Journal</a>
+                    </h4>
+                </div>
+                <div id="collapse3" class="panel-collapse collapse">
+                    <div class="panel-body">
+                            <pre style="font-family:monospace">============ ФИСКАЛНИ РАЧУН ============
+               103482850                
+      DELHAIZE SERBIA DOO BEOGRAD       
+           1002342-195 - Maxi           
+            СВЕТОГОРСКА 7               
+           Београд-Стари Град           
+Касир:                              SELF
+ЕСИР број:                      253/49.0
+-------------ПРОМЕТ ПРОДАЈА-------------
+Артикли
+========================================
+Назив   Цена         Кол.         Укупно
+Banana/KG (Е)                           
+       159,99      0,584           93,43
+Min.voda NG Rosa Sport 0.75l/KOM (Ђ)    
+        70,99          1           70,99
+Monte 100g/KOM (Ђ)                      
+        92,99          2          185,98
+Kasika bambus Maxi 10 1/KOM (Ђ)         
+       109,99          1          109,99
+Coffe Almond Imlek Nera 230ml/KOM (Ђ)   
+       149,99          1          149,99
+----------------------------------------
+Укупан износ:                     610,38
+Платна картица:                   610,38
+========================================
+Ознака       Име      Стопа        Порез
+Е           П-ПДВ   10,00%          8,49
+Ђ           О-ПДВ   20,00%         86,16
+----------------------------------------
+Укупан износ пореза:               94,65
+========================================
+ПФР време:          27.08.2026. 15:00:00
+ПФР број рачуна: YMQQWGKC-YMQQWGKC-81803
+Бројач рачуна:             81803/81803ПП
+========================================<br/><img src="data:image/gif;base64,SU5MSU5F"/>
+======== КРАЈ ФИСКАЛНОГ РАЧУНА =========</pre>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+        <div class="row">
+            <div class="col-lg-12 text-center centered">
+                <button type="button" class="btn btn-success mb-1" onclick="OnPrintClicked();">Print preview</button>
+                <div style="display: none">
+                    
+<div id="PrintInvoice" class="panel-body" style="margin:0;">
+    <div style="margin:0;">
+        <div style="width:100%;overflow:hidden" class="row">
+            <div style="width:45%;float:left;">
+                <p style="border: none; text-align:left;margin:0px;padding:0px;"><strong>TIN:</strong>&nbsp;<span class="badge" style="background-color: #fff;">103482850</span></p>
+                <hr />
+                    <p style="border: none; text-align:left;margin:0px;padding:0px;"><strong>Company:</strong>&nbsp;<span class="badge" style="background-color: #fff;white-space: pre-wrap;line-height: 1.3; line-break: anywhere;">DELHAIZE SERBIA DOO BEOGRAD</span></p>
+                    <hr />
+                    <p style="border: none; text-align:left;margin:0px;padding:0px;"><strong>Store:</strong>&nbsp;<span class="badge" style="background-color: #fff;white-space: pre-wrap;line-height: 1.3; line-break: anywhere;">195 - Maxi</span></p>
+                    <hr />
+                    <p style="border: none; text-align:left;margin:0px;padding:0px;"><strong>Address:</strong>&nbsp;<span class="badge" style="background-color: #fff;white-space: pre-wrap;line-height: 1.3; line-break: anywhere;">&#x421;&#x412;&#x415;&#x422;&#x41E;&#x413;&#x41E;&#x420;&#x421;&#x41A;&#x410; 7   </span></p>
+                    <hr />
+                    <p style="border: none; text-align:left;margin:0px;padding:0px;"><strong>District:</strong>&nbsp;<span class="badge" style="background-color: #fff;white-space: pre-wrap;line-height: 1.3; line-break: anywhere;">&#x411;&#x435;&#x43E;&#x433;&#x440;&#x430;&#x434;-&#x421;&#x442;&#x430;&#x440;&#x438; &#x413;&#x440;&#x430;&#x434;</span></p>
+                    <hr />
+                <p style="border: none; text-align:left;margin:0px;padding:0px;"><strong>Cashier TIN:</strong>&nbsp;<span class="badge" style="background-color: #fff;white-space: pre-wrap;line-height: 1.3; line-break: anywhere;">SELF</span></p>
+                <hr />
+                <p style="border: none; text-align:left;margin:0px;padding:0px;"><strong>Buyer&#x27;s TIN:</strong>&nbsp;<span class="badge" style="background-color: #fff;white-space: pre-wrap;line-height: 1.3; line-break: anywhere;"></span></p>
+                <hr />
+                <p style="border: none; text-align:left;margin:0px;padding:0px;"><strong>Buyer&#x27;s Cost Center:</strong>&nbsp;<span class="badge" style="background-color: #fff;white-space: pre-wrap;line-height: 1.3; line-break: anywhere;"></span></p>
+                <hr />
+                <p style="border: none; text-align:left;margin:0px;padding:0px;"><strong>POS Number:</strong>&nbsp;<span class="badge" style="background-color: #fff;white-space: pre-wrap;line-height: 1.3; line-break: anywhere;">253/49.0</span></p>
+                <hr />
+                <p style="border: none; text-align:left;margin:0px;padding:0px;">
+                    <strong>POS Time:</strong>&nbsp;
+                </p>
+                <hr />
+            </div>
+            <div style="width:54%;float:right; align-content:flex-end;">
+                <div>
+                    <div style="width:100%;display: inline-block;">
+                        <div style="width:55%;float:left;text-align:left;">
+                            <br />
+                            <strong style="margin-bottom:0px;">
+                                Invoice No:
+                            </strong>
+                                <h4 style="margin-top:0px;">YMQQWGKC-YMQQWGKC-81803</h4>
+
+                                <h4>FISCAL INVOICE</h4>
+                        </div>
+                        <div style="width:45%;float:right">
+                            <br /><img class='QR_img' alt='' src=data:image/gif;base64,SU5MSU5F width='169' height='169' />
+                        </div>
+                    </div>
+                    <div style="width:100%;display: inline-block;">
+                        <hr />
+                        <table style="margin-left:0; margin-right:auto;">
+                            <tbody>
+                                <tr>
+                                        <td><strong>Total Purchase:</strong></td>
+                                    <td style="padding-left: 20px;">610.38</td>
+                                </tr>
+                                 <tr data-bind="if: Specifications().length > 0">
+                                       <td><strong>Total Tax:</strong></td>
+                                       <td style="padding-left:20px;" data-bind="decimalAsText: TotalTax"></td>
+                                 </tr>
+                                    <tr>
+                                        <td><strong>Payment Method:</strong></td>
+                                        <td style="padding-left: 20px;">
+
+                                                <span>Card</span>
+                                        </td>
+                                    </tr>
+                                <tr>
+                                    <td><strong>Invoice Type:</strong></td>
+                                    <td style="padding-left:20px;">Normal Sale</td>
+                                </tr>
+                                <tr>
+                                    <td><strong>Secure Element Time:</strong></td>
+                                    <td style="padding-left:20px;">8/27/2026 3:00:00 PM</td>
+                                </tr>
+                                <tr>
+                                    <td><strong>Invoice Counter:</strong></td>
+                                    <td style="padding-left:20px;">81803/81803&#x41F;&#x41F;</td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+
+            </div>
+
+        </div>
+        <br />
+
+            <div style="width:100%;margin-top: 30px" data-bind="if: Specifications().length > 0">
+
+                <h3 style="text-align:left;padding-bottom:0;margin-bottom:0;">Invoice specification</h3>
+                <hr style="margin-top:0;padding-top:0;" />
+                <table style="width:100%;padding:0;">
+                    <thead style="font-size: 14px;">
+                        <tr>
+                            <th scope="col" style="border-bottom:solid DarkGray 1px;text-align:left;">Name</th>
+                            <th scope="col" style="border-bottom:solid DarkGray 1px;text-align:right;">Quantity</th>
+                            <th scope="col" style="border-bottom:solid DarkGray 1px;text-align:right;">Gross Unit Price</th>
+                            <th scope="col" style="border-bottom:solid DarkGray 1px;text-align:right;">Total Price</th>
+                            <th scope="col" style="border-bottom:solid DarkGray 1px;text-align:right;">Net Price</th>
+                            <th scope="col" style="border-bottom:solid DarkGray 1px;text-align:right;">Tax Amount</th>
+                            <th scope="col" style="border-bottom:solid DarkGray 1px;text-align:right;">Rate</th>
+                        </tr>
+                    </thead>
+                    <tbody style="font-size: 12px;" data-bind="foreach: Specifications">
+                        <tr>
+                            <td style="border-bottom: solid DarkGray 1px; text-align: left;" data-bind="text: Name"></td>
+                            <td style="border-bottom: solid DarkGray 1px; text-align: right;" data-bind="decimalAsText: Quantity"></td>
+                            <td style="border-bottom: solid DarkGray 1px; text-align: right;" data-bind="decimalAsText: UnitPrice"></td>
+                            <td style="border-bottom: solid DarkGray 1px; text-align: right;" data-bind="decimalAsText: Total"></td>
+                            <td style="border-bottom: solid DarkGray 1px; text-align: right;" data-bind="decimalAsText: TaxBaseAmount"></td>
+                            <td style="border-bottom: solid DarkGray 1px; text-align: right;" data-bind="decimalAsText: VatAmount"></td>
+                            <td style="border-bottom: solid DarkGray 1px; text-align: right;" data-bind="text: Label"></td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+
+    </div>
+</div>
+
+                </div>
+            </div>
+        </div>
+        <div class="row">
+            <div class="col-lg-12 text-center centered">
+                <a target="_blank" href='/CustomerReport/YMQQWGKC-YMQQWGKC-81803' class="btn btn-danger">       <i class="glyphicon glyphicon-flag"></i> Report this invoice</a>
+            </div>
+        </div>
+<input name="" type="hidden" value="" /></form>
+
+
+            <hr />
+            <footer>
+                <p class="text-center"><strong>Copyright</strong> <a href="https://www.dti.rs">Data Tech International</a> &copy; 2012-2026 |  Version : 3.5.32.0</p>
+            </footer>
+        </div>
+    </div>
+</body>
+
+</html>

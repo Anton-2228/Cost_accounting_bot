@@ -39,6 +39,19 @@ class Currency(StrEnum):
     RSD = "RSD"
 
 
+class CheckKind(StrEnum):
+    """Формат фискального чека.
+
+    Зеркало `api.enums.CheckKind`, здесь и по той же причине, что `Currency`.
+    Боту он нужен затем, что сырьё чека читается по-разному в зависимости от
+    формата: разбирает `raw_payload` именно бот, и без вида чека он не знает,
+    какой из разборщиков звать.
+    """
+
+    RU_FNS = "RU_FNS"
+    SRB_SUF = "SRB_SUF"
+
+
 class EntityStatus(StrEnum):
     """Состояние справочной записи."""
 
@@ -173,14 +186,18 @@ class Transfer(BaseModel):
 class Check(BaseModel):
     """Сохранённый чек: сырьё и отметка о разборе.
 
-    `raw_payload` — ответ внешнего сервиса целиком, и разбирает его бот:
-    `telegram_bot.checks.ReceiptExtractor`. Api его не интерпретирует вовсе,
-    поэтому здесь он и остаётся словарём, а не набором полей.
+    `raw_payload` — расшифровка целиком, и разбирает её бот:
+    `telegram_bot.checks.ReceiptExtractor`. Api её не интерпретирует вовсе,
+    поэтому здесь она и остаётся словарём, а не набором полей.
+
+    `kind` без этого разбора не обойтись: у каждого формата своя структура
+    сырья и своя валюта, и выбирается разборщик именно по нему.
     """
 
     model_config = ConfigDict(extra="ignore")
 
     id: int
+    kind: CheckKind
     qr_raw: str
     raw_payload: dict[str, Any]
     fetched_at: datetime

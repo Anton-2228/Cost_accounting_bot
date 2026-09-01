@@ -18,6 +18,8 @@ from typing import Any
 
 from pydantic import BaseModel, ConfigDict
 
+from telegram_bot.api_client.models import Currency
+
 
 class DraftItem(BaseModel):
     """Одна позиция чека в процессе разбора."""
@@ -47,6 +49,11 @@ class CheckDraft(BaseModel):
     retail_place: str = ""
     purchased_at: str = ""
     total: Decimal = Decimal("0")
+    #: Валюта чека: её определяет формат, и в черновик она попадает затем, что
+    #: суммы показываются пользователю. `StrEnum` переживает `mode="json"` без
+    #: правки `dump`/`load`. Рубль по умолчанию — для черновика сломанного
+    #: чека, где формат прочитать не удалось и показывать всё равно нечего.
+    currency: Currency = Currency.RUB
     items: list[DraftItem] = []
 
     def dump(self) -> dict[str, Any]:

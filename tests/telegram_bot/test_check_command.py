@@ -33,13 +33,14 @@ from telegram_bot.api_client.models import (
     CashedRecord,
     Category,
     Check,
+    CheckKind,
     LlmEntityKind,
     LlmOperation,
     NotificationKind,
     Record,
     Source,
 )
-from telegram_bot.checks.models import CHECK_CURRENCY
+from telegram_bot.checks.models import currency_of
 from telegram_bot.commands.cancel import CANCEL_BUTTON_TEXT, CancelCommand
 from telegram_bot.commands.check import _DONE_BUTTON, DELETE_BUTTON, SKIP_BUTTON, CheckCommand
 from telegram_bot.commands.check_delete import (
@@ -85,6 +86,7 @@ def _check(check_id: int, *items: tuple[str, int]) -> Check:
     """Неразобранный чек."""
     return Check(
         id=check_id,
+        kind=CheckKind.RU_FNS,
         qr_raw="t=20260725T1507&s=129.90&fn=1&i=1&fp=1",
         raw_payload=_payload(*items),
         fetched_at=datetime(2026, 7, 25, 15, 8, tzinfo=UTC),
@@ -251,7 +253,7 @@ class FakeChecks:
                 category_id=item.category_id,
                 source_id=source_id,
                 amount=-item.amount,
-                currency=CHECK_CURRENCY,
+                currency=currency_of(CheckKind.RU_FNS),
                 added_at=datetime(2026, 7, 26, tzinfo=UTC).date(),
                 notes="",
                 from_check=True,
@@ -837,6 +839,7 @@ async def test_broken_receipt_keeps_delete_reachable() -> None:
     """
     broken = Check(
         id=1,
+        kind=CheckKind.RU_FNS,
         qr_raw="t=20260725T1507&s=1.00&fn=1&i=1&fp=1",
         raw_payload={"code": 1, "data": {}},
         fetched_at=datetime(2026, 7, 25, 15, 8, tzinfo=UTC),

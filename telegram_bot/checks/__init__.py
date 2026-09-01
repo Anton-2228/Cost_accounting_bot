@@ -12,8 +12,8 @@ from telegram_bot.checks.errors import (
     ReceiptMismatchError,
     ReceiptNotSupportedError,
 )
-from telegram_bot.checks.extractor import ReceiptExtractor
-from telegram_bot.checks.models import Receipt, ReceiptItem
+from telegram_bot.checks.extractor import ReceiptExtractor, RuFnsExtractor, SrbSufExtractor
+from telegram_bot.checks.models import Receipt, ReceiptItem, currency_of
 
 __all__ = [
     "Receipt",
@@ -23,4 +23,7 @@ __all__ = [
     "ReceiptItem",
     "ReceiptMismatchError",
     "ReceiptNotSupportedError",
+    "RuFnsExtractor",
+    "SrbSufExtractor",
+    "currency_of",
 ]

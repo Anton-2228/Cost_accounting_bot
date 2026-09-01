@@ -222,7 +222,7 @@ class CheckCommand(BaseCommand):
     ) -> None:
         """Готовит первую стадию: шапка, кэш, подсказки модели."""
         try:
-            receipt = ReceiptExtractor.extract(check.raw_payload, check.qr_raw)
+            receipt = ReceiptExtractor.extract(check)
         except ReceiptError as error:
             # Чек остаётся в очереди: его надо либо убрать, либо отложить, и
             # обе кнопки живут только внутри состояния разбора. Текст отказа —
@@ -247,6 +247,7 @@ class CheckCommand(BaseCommand):
                 receipt.purchased_at.strftime("%d.%m.%Y %H:%M") if receipt.purchased_at else ""
             ),
             total=receipt.total,
+            currency=receipt.currency,
             items=[DraftItem(name=item.name, amount=item.amount) for item in receipt.items],
         )
 

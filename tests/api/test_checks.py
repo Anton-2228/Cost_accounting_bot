@@ -49,6 +49,57 @@ async def test_repeated_scan_is_409(client: AsyncClient, session: AsyncSession) 
     assert len((await client.get(base)).json()["items"]) == 1
 
 
+_SRB_SAVE_BODY = {
+    "kind": "SRB_SUF",
+    "qr_raw": "https://suf.purs.gov.rs/v/?vl=A1lNUVFXR0tDWU1RUVdHS0OLPwEAiz8BAPgiXQAA",
+    "external_key": "YMQQWGKC-YMQQWGKC-81803",
+    "raw_payload": {
+        "url": "https://suf.purs.gov.rs/v/?vl=A1lNUVFXR0tDWU1RUVdHS0OLPwEAiz8BAPgiXQAA",
+        "invoice_number": "YMQQWGKC-YMQQWGKC-81803",
+        "sr": {"Укупан износ": "610.38", "Спецификација рачуна": [{"Назив": "Banana/KG"}]},
+        "en": {"Total Amount": "610.38", "Invoice specification": [{"Name": "Banana/KG"}]},
+    },
+    "fetched_at": "2026-08-27T13:00:00+00:00",
+}
+
+
+async def test_serbian_check_is_saved_with_both_language_versions(
+    client: AsyncClient,
+    session: AsyncSession,
+) -> None:
+    """Второй формат ложится в ту же таблицу без единой правки схемы.
+
+    В этом и смысл её устройства: `checks` хранит сырьё и вид, а какие поля в
+    сырье и на каком они языке — дело формата, а не БД.
+    """
+    spreadsheet = await factories.create_spreadsheet(session, ready=True)
+    await session.commit()
+
+    base = f"/api/v1/spreadsheets/{spreadsheet.id}/checks"
+    saved = await client.post(base, json=_SRB_SAVE_BODY)
+    assert saved.status_code == 201
+    assert saved.json()["data"]["kind"] == "SRB_SUF"
+    assert saved.json()["data"]["raw_payload"] == _SRB_SAVE_BODY["raw_payload"]
+
+
+async def test_same_key_in_two_formats_is_not_a_duplicate(
+    client: AsyncClient,
+    session: AsyncSession,
+) -> None:
+    """Ключ уникален внутри формата, а не поперёк форматов.
+
+    Ключи разных стран построены по разным правилам, и совпасть они могут
+    только случайно — отказывать в таком совпадении значило бы потерять чек.
+    """
+    spreadsheet = await factories.create_spreadsheet(session, ready=True)
+    await session.commit()
+
+    base = f"/api/v1/spreadsheets/{spreadsheet.id}/checks"
+    shared_key = {"external_key": "ОДИН-И-ТОТ-ЖЕ-КЛЮЧ"}
+    assert (await client.post(base, json={**_SAVE_BODY, **shared_key})).status_code == 201
+    assert (await client.post(base, json={**_SRB_SAVE_BODY, **shared_key})).status_code == 201
+
+
 async def test_unknown_check_kind_is_422(client: AsyncClient, session: AsyncSession) -> None:
     """Неизвестный вид чека отсекается схемой.
 

@@ -24,6 +24,12 @@ dependencies = [
     "httplib2>=0.22",
     "httpx>=0.27",
     "anyio>=4.6",
+    # checks_service: сербский чек отдаётся HTML-страницей, а не JSON, и
+    # значения снимаются с неё по `id` элементов. Регулярками это делать нельзя:
+    # разметка страницы содержит незакрытые теги (`<span>` вместо `</span>` у
+    # ПИБ), и только настоящий парсер читает её так же, как браузер.
+    "beautifulsoup4>=4.12",
+    "lxml>=5.3",
     # telegram_bot: aiogram и хранилище состояний диалога.
     "aiogram>=3.10,<4",
     # SOCKS5-прокси для сессии Telegram: aiogram сам его не умеет и без этого
@@ -45,6 +51,7 @@ dev = [
     "httpx>=0.27",
     "types-python-dateutil>=2.9",
     "types-httplib2>=0.22",
+    "types-beautifulsoup4>=4.12",
 ]
 
 [build-system]

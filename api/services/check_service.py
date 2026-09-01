@@ -48,10 +48,15 @@ ALREADY_PROCESSED_REASON = "check_already_processed"
 TYPE_TAKEN_REASON = "product_type_taken"
 
 #: Валюта чека по его формату. Не спрашивается у пользователя и не извлекается
-#: из расшифровки: формат ФНС физически рублёвый — суммы в нём приходят целыми
-#: копейками, — и «валюта чека» для него не переменная, а свойство формата.
-#: Сербский чек добавится сюда строкой вместе со своим парсером.
-_CHECK_CURRENCY: dict[CheckKind, Currency] = {CheckKind.RU_FNS: Currency.RUB}
+#: из расшифровки: каждый из форматов привязан к своей стране и своей валюте, и
+#: «валюта чека» для него не переменная, а свойство формата. Чек ФНС физически
+#: рублёвый — суммы в нём приходят целыми копейками; сербский так же жёстко
+#: динарный. Зеркало `_CHECK_CURRENCY` в `telegram_bot.checks.models`, где по
+#: этой же причине валюта проставляется разобранному чеку.
+_CHECK_CURRENCY: dict[CheckKind, Currency] = {
+    CheckKind.RU_FNS: Currency.RUB,
+    CheckKind.SRB_SUF: Currency.RSD,
+}
 
 
 class CheckService(BaseSpreadsheetService):
