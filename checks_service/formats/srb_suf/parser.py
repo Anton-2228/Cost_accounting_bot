@@ -21,7 +21,7 @@ import base64
 import binascii
 from datetime import UTC, datetime
 from decimal import Decimal
-from urllib.parse import parse_qs, urlsplit
+from urllib.parse import SplitResult, quote, unquote, urlsplit, urlunsplit
 
 from checks_service import constants
 from checks_service.enums import CheckKind
@@ -42,14 +42,15 @@ class SrbSufQrParser:
         ссылку, но внутри мусор» обязана уйти в общий отказ «формат не
         распознан», а не свалиться исключением из середины разбора.
         """
-        return self._header(qr_raw) is not None
+        return self._payload(qr_raw) is not None
 
     def parse(self, qr_raw: str) -> ParsedCheck:
         """Разбирает ссылку в номер чека, реквизиты и плашку."""
         url = qr_raw.strip()
-        header = self._header(url)
-        if header is None:
+        found = self._payload(url)
+        if found is None:
             raise FormatNotSupportedError("В ссылке нет разбираемых данных чека")
+        parts, value, header = found
 
         invoice_number = constants.SRB_SUF_KEY_SEPARATOR.join(
             (
@@ -63,8 +64,13 @@ class SrbSufQrParser:
             kind=self.kind,
             qr_raw=url,
             external_key=invoice_number,
-            # Фетчер ходит по самой ссылке: страница чека и есть его источник.
-            credentials={"url": url, "invoice_number": invoice_number},
+            # Фетчер ходит по странице чека, и адрес ей собирается заново, а не
+            # берётся как напечатан: см. `_canonical_url`. `qr_raw` при этом
+            # хранит напечатанное — он первоисточник.
+            credentials={
+                "url": _canonical_url(parts, value),
+                "invoice_number": invoice_number,
+            },
             preview=CheckPreview(
                 total=self._total(header),
                 purchased_at=self._purchased_at(header),
@@ -72,30 +78,39 @@ class SrbSufQrParser:
         )
 
     @staticmethod
-    def _header(qr_raw: str) -> bytes | None:
-        """Двоичный заголовок из `vl` или `None`, если это не сербский чек."""
+    def _payload(qr_raw: str) -> tuple[SplitResult, str, bytes] | None:
+        """Разобранная ссылка, значение `vl` и его двоичное содержимое.
+
+        `None`, если строка не сербский чек. Всё три части возвращаются
+        вместе затем, что адрес запроса собирается из первых двух, а разбор
+        читает третью, — и добывать их дважды значило бы позволить `matches` и
+        `parse` разойтись в том, что они считают чеком.
+        """
         parts = urlsplit(qr_raw.strip())
-        if parts.scheme != constants.SRB_SUF_SCHEME:
+        # Схема сравнивается со списком: касса вольна печатать `http`, и
+        # отказывать ей значило бы говорить «это не чек» про настоящий чек.
+        # Ходим мы всё равно по `https`.
+        if parts.scheme not in constants.SRB_SUF_SCHEMES:
             return None
         # `hostname` вместо `netloc`: последний несёт порт и логин, и сравнение
-        # с ними никогда не сойдётся.
+        # с ними никогда не сойдётся. Регистр `urlsplit` приводит сам.
         if parts.hostname != constants.SRB_SUF_HOST:
             return None
 
-        values = parse_qs(parts.query).get(constants.SRB_SUF_QUERY_FIELD)
-        if not values or not values[0]:
+        value = _query_value(parts.query, constants.SRB_SUF_QUERY_FIELD)
+        if not value:
             return None
 
         try:
             # `validate=False`: сайт кладёт в ссылку обычный base64, но лишний
             # перевод строки при копировании руками ронять разбор не должен.
-            decoded = base64.b64decode(_padded(values[0]))
+            decoded = base64.b64decode(_padded(value))
         except (binascii.Error, ValueError):
             return None
 
         if len(decoded) < constants.SRB_SUF_HEADER_SIZE:
             return None
-        return decoded
+        return parts, value, decoded
 
     @staticmethod
     def _text(header: bytes, where: slice) -> str:
@@ -127,6 +142,57 @@ class SrbSufQrParser:
         millis = _be(header[constants.SRB_SUF_DATE_TIME_SLICE])
         seconds, remainder = divmod(millis, 1000)
         return datetime.fromtimestamp(seconds, tz=UTC).replace(microsecond=remainder * 1000)
+
+
+def _canonical_url(parts: SplitResult, value: str) -> str:
+    """Адрес страницы чека в том виде, который сервер ПУРС заведомо примет.
+
+    Собирается заново, а не берётся как напечатан, — и каждая часть этой сборки
+    проверена запросом к самому сайту:
+
+    * **схема всегда `https`.** По `http` сайт уводит клиента в бесконечную
+      цепочку перенаправлений, а не просто отвечает редиректом;
+    * **имя параметра всегда `vl` строчными.** Путь сайт разбирает без учёта
+      регистра (`/V/` работает), а вот параметр — с учётом: на `?VL=` он
+      отвечает 400. Узнавать ссылку мы обязаны в любом написании, но просить
+      надо в единственном, которое работает;
+    * **значение экранируется.** Сырой `+` сайт принимает, но `%2B` он
+      принимает тоже, и полагаться на первое незачем;
+    * **прочие параметры отбрасываются.** Странице нужен только `vl`, а лишний
+      `lang` в ссылке спорил бы с кукой, которой мы выбираем язык.
+
+    Хост и путь остаются напечатанными: регистр в них сайту безразличен, а
+    трогать их значит угадывать за кассу.
+    """
+    query = f"{constants.SRB_SUF_QUERY_FIELD}={quote(value, safe='')}"
+    return urlunsplit(
+        (constants.SRB_SUF_SCHEME, parts.netloc, parts.path, query, "")
+    )
+
+
+def _query_value(query: str, field: str) -> str:
+    """Значение параметра ссылки — так, как его записала касса.
+
+    Своими руками, а не `parse_qs`, по двум причинам, и обе стоили отказа на
+    настоящем чеке:
+
+    * **имя параметра сравнивается без учёта регистра.** Часть касс печатает
+      ссылку капсом целиком (`…/V/?VL=`) — так QR-кодировщик умещает начало
+      строки в компактный алфавитно-цифровой режим. Сервер ПУРС имена
+      параметров тоже не различает по регистру, и такая ссылка открывается в
+      браузере как ни в чём не бывало;
+    * **`+` остаётся плюсом.** `parse_qs` разбирает значение как поле формы, а
+      там `+` означает пробел. Но в `vl` лежит обычный base64, где `+` — цифра
+      алфавита, и касса вправе не экранировать его вовсе. Превращать его в
+      пробел значит портить каждый чек, которому не повезло с содержимым.
+    """
+    wanted = field.casefold()
+    for pair in query.split("&"):
+        name, separator, value = pair.partition("=")
+        if separator and name.casefold() == wanted:
+            # `unquote`, а не `unquote_plus`: см. выше про `+`.
+            return unquote(value).strip()
+    return ""
 
 
 def _le(raw: bytes) -> int:
