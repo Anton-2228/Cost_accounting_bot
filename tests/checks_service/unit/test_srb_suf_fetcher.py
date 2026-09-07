@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import json
 from collections.abc import Callable
+from decimal import Decimal
 from typing import Any
 
 import httpx
@@ -278,3 +279,45 @@ async def test_values_are_collapsed_to_one_line() -> None:
         if isinstance(value, str) and value != payload[labels.SR_FIELD].get("Журнал"):
             assert value == value.strip()
             assert "\n" not in value
+
+
+async def test_thousands_separator_does_not_corrupt_the_total() -> None:
+    """Сумма от тысячи разбирается на обеих страницах, а не только на одной.
+
+    Каждый язык печатает её по своим правилам, и оба разделителя в них
+    участвуют: «3.584,00» по-сербски и «3,584.00» по-английски. Прежняя
+    сборка знала только про запятую и меняла её на точку, отчего обе версии
+    превращались в «3.584.00» — строку, которую `Decimal` не берёт вовсе.
+    Наружу это выходило уже в боте, сообщением «суммы записаны не числами», и
+    чек к тому моменту лежал в БД.
+
+    На суммах меньше тысячи разделителя разрядов нет, поэтому подмена
+    сходилась случайно — как раз на них ошибку и не видели.
+    """
+    totals = {constants.SRB_SUF_LOCALE_SR: ("610,38", "3.584,00")}
+    totals[constants.SRB_SUF_LOCALE_EN] = ("610.38", "3,584.00")
+
+    def handle(request: httpx.Request) -> httpx.Response:
+        if request.url.path == constants.SRB_SUF_SPECIFICATIONS_PATH:
+            return httpx.Response(200, text=suf_specifications())
+        locale = request.headers.get("cookie", "").split("=")[-1]
+        printed, thousands = totals[locale]
+        return httpx.Response(200, text=suf_page(locale).replace(printed, thousands))
+
+    payload = await _fetch(handle)
+
+    for field, locale in (
+        (labels.SR_FIELD, constants.SRB_SUF_LOCALE_SR),
+        (labels.EN_FIELD, constants.SRB_SUF_LOCALE_EN),
+    ):
+        total = payload[field][_total_label().of(locale)]
+        assert total == "3584.00"
+        # Именно этим разбор в боте и падал: строку «3.584.00» `Decimal` не берёт.
+        assert Decimal(total) == Decimal("3584.00")
+
+
+def _total_label() -> labels.Label:
+    """Подпись итоговой суммы — по её `id`, а не по повторённому здесь тексту."""
+    return next(
+        label for element_id, label in labels.SPAN_FIELDS if element_id == "totalAmountLabel"
+    )
