@@ -12,6 +12,10 @@ from typing import Any
 from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse
 
+from checks_service.logging import get_logger
+
+logger = get_logger(__name__)
+
 
 class ChecksError(Exception):
     """Базовое исключение сервиса добавления чеков."""
@@ -104,6 +108,34 @@ class ApiError(ChecksError):
 
 async def _checks_error_handler(_: Request, exc: Exception) -> JSONResponse:
     assert isinstance(exc, ChecksError)  # noqa: S101 — гарантировано регистрацией
+    # Пишем отказ здесь, а не на каждом `raise`. Причина не в удобстве: Mini App
+    # выбирает текст плашки по коду, поэтому все девять способов не расшифровать
+    # чек читаются пользователем одинаково — «сервис недоступен», — а больше
+    # половины мест бросали исключение молча. На своей машине это незаметно, на
+    # чужой означает отказ вообще без следа в логах. Единая точка гарантирует
+    # строку любому отказу, включая те, которые появятся позже.
+    #
+    # Пятисотые едут с цепочкой исключений: настоящая причина (ошибка `httpx`,
+    # тело чужого ответа) лежит в `__cause__`, и без неё в логе остаётся наша
+    # формулировка, по которой ничего не чинится. Клиентские отказы — сценарий,
+    # а не сбой, и уровня `info` им хватает.
+    if exc.status_code >= 500:  # noqa: PLR2004 — граница «сбой/сценарий»
+        logger.error(
+            "Отказ %s (%s): %s; детали: %s",
+            exc.code,
+            exc.status_code,
+            exc.message,
+            exc.details,
+            exc_info=exc,
+        )
+    else:
+        logger.info(
+            "Отказ %s (%s): %s; детали: %s",
+            exc.code,
+            exc.status_code,
+            exc.message,
+            exc.details,
+        )
     return JSONResponse(
         status_code=exc.status_code,
         content={"code": exc.code, "message": exc.message, "details": exc.details},
