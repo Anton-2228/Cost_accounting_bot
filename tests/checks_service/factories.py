@@ -40,6 +40,29 @@ SRB_SUF_QR = (
     "tuLP0TNGGI%2Bqw4caaQ%2BHnmlcTKl0I46FxDcUBUCRYhsJNuCS44rrqhZl7nu6p%2Fyg%3D"
 )
 SRB_SUF_KEY = "YMQQWGKC-YMQQWGKC-81803"
+
+#: Второй настоящий чек, и взят он ровно за тем, чем отличается от первого: в
+#: заголовке первого оба счётчика равны (81803), а здесь расходятся — общий
+#: 79404, свой 77869. На чеке с равными счётчиками номер собирался правильно из
+#: любого из двух, и подмена одного другим не проявлялась ничем. На этом
+#: проявляется: `/specifications` отвечает на чужой номер `success: false`.
+SRB_SUF_QR_DIFFERING_COUNTERS = (
+    "https://suf.purs.gov.rs/v/?vl=A04yVjVZUFA3TjJWNVlQUDcsNgEALTABACDfUAAAAAAAAA"
+    "ABoHyR0HAAAAA8ouKr63v1JiJBmQI8n80YP8vgpeGrMVCsBG3fVPdsNnPnVCgLX1qNybB7NEZCSZ"
+    "iJjTQvpx4a7i888JqFlnJXZpweH%2F1aPIWPbFterNQta2ZBYdo8wjJ3N3UMtNRNU%2B%2Fmx828"
+    "rZ6XQ7yTgOVChjBS1J%2BQJ3pBdz0ay5DAjNyBnQrOzAMIcoOmi6iFlzCdSYPbafi5QFxFpI%2Br"
+    "0u1y%2Fq9YtXLyOahl74CP9kkifHsV5senmahnQvmB2h25YiWuRBZ8rMhQiT%2BoZXAqB7%2B%2F"
+    "vEQeUDEJnrp11j9vXKYrtFDWDnedBu%2F%2F4Bc0BiM4%2BQfqryduA9lIsJmvXXTdtJ9G3vMDno"
+    "mwjj8P6FbEpnO%2BZsTx5166xtkW%2BYbKufI4B0i2rsrvGW33QREwj2B%2FUVqtTvAcJTI4upQp"
+    "Szl3x9BPnfZ9EoJNMfX%2Fm4khQkkFeZ2aUu4jt6fsV2sE8HMAPwpuc%2BCyW2B%2FOnQLt0FIZn"
+    "t9%2Fr77tTlygIot03JGp%2B5XeFXuIUs7q685gqakKtkfYFqZ0eu3vtqG7Gbs6ngmHyMiCIMQMo"
+    "f6YLomsolQpywLB38LKTg%2FwP%2BP3Q%2BNDE7IjupEu4RAv2%2F82adPcVlZ1OCg6qIVGS0zpk"
+    "UJ5V1zpTA0EnGGtD1bJoCBz8cTd46dWTpTKnkmJT5ysg5NwWNMBgsYefWq68sdCJRvEUWcZiksqZ"
+    "ZNHjw%3D"
+)
+#: Номер этого чека — тот, который печатает сама страница ПУРС.
+SRB_SUF_KEY_DIFFERING_COUNTERS = "N2V5YPP7-N2V5YPP7-79404"
+
 #: Токен запроса позиций — он же лежит в фикстурах страниц.
 SRB_SUF_TOKEN = "68d61815-760e-45d6-a230-7a300d363837"
 
@@ -61,6 +84,7 @@ def suf_page(locale: str) -> str:
 def suf_specifications() -> str:
     """Сохранённый ответ `/specifications` с позициями чека."""
     return (_FIXTURES / "suf_specifications.json").read_text(encoding="utf-8")
+
 
 #: Правдоподобный ответ proverkacheka: суммы в копейках, как и в жизни.
 PROVERKACHEKA_PAYLOAD = {

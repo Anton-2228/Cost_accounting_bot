@@ -52,11 +52,18 @@ class SrbSufQrParser:
             raise FormatNotSupportedError("В ссылке нет разбираемых данных чека")
         parts, value, header = found
 
+        # Третья часть номера — **общий** счётчик, а не счётчик своего типа.
+        # Оба лежат в заголовке рядом, и на чеке первого в жизни кассы они
+        # совпадают — на таком чеке подмена и не замечена. Дальше они
+        # расходятся: на живом чеке общий был 79404, а свой 77869, и
+        # `/specifications` на номер со вторым отвечал `success: false` с кодом
+        # 200. Наружу это выглядело как «сервис проверки чеков недоступен»,
+        # хотя сервис отвечал исправно и отказывал по существу.
         invoice_number = constants.SRB_SUF_KEY_SEPARATOR.join(
             (
                 self._text(header, constants.SRB_SUF_REQUESTED_BY_SLICE),
                 self._text(header, constants.SRB_SUF_SIGNED_BY_SLICE),
-                str(_le(header[constants.SRB_SUF_TX_COUNTER_SLICE])),
+                str(_le(header[constants.SRB_SUF_TOTAL_COUNTER_SLICE])),
             )
         )
 

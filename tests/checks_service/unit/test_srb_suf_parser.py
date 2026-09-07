@@ -11,7 +11,13 @@ import pytest
 from checks_service.enums import CheckKind
 from checks_service.exceptions import FormatNotSupportedError
 from checks_service.formats.srb_suf.parser import SrbSufQrParser
-from tests.checks_service.factories import RU_FNS_QR, SRB_SUF_KEY, SRB_SUF_QR
+from tests.checks_service.factories import (
+    RU_FNS_QR,
+    SRB_SUF_KEY,
+    SRB_SUF_KEY_DIFFERING_COUNTERS,
+    SRB_SUF_QR,
+    SRB_SUF_QR_DIFFERING_COUNTERS,
+)
 
 parser = SrbSufQrParser()
 
@@ -30,6 +36,22 @@ def test_link_is_parsed_without_any_network_call() -> None:
     assert parsed.credentials == {"url": SRB_SUF_QR, "invoice_number": SRB_SUF_KEY}
     assert parsed.preview.total == Decimal("610.38")
     assert parsed.preview.purchased_at == datetime(2026, 8, 27, 13, 0, 0, 108_000, tzinfo=UTC)
+
+
+def test_invoice_number_is_built_from_the_total_counter() -> None:
+    """Номер чека собирается из общего счётчика, а не из счётчика своего типа.
+
+    Проверять это на первом чеке нельзя вовсе: там оба счётчика равны, и любой
+    из них даёт верный номер. Здесь они расходятся, и ошибка стоила дорого —
+    `/specifications` отвечает на чужой номер `success: false` с кодом 200, а
+    пользователь читал «сервис проверки чеков недоступен».
+    """
+    parsed = parser.parse(SRB_SUF_QR_DIFFERING_COUNTERS)
+
+    assert parsed.external_key == SRB_SUF_KEY_DIFFERING_COUNTERS
+    assert parsed.credentials["invoice_number"] == SRB_SUF_KEY_DIFFERING_COUNTERS
+    # Счётчик своего типа лежит в заголовке рядом, и подставлялся именно он.
+    assert not parsed.external_key.endswith("-77869")
 
 
 def test_total_is_decimal_not_float() -> None:
