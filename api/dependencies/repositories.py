@@ -20,10 +20,8 @@ from api.repositories.period_repository import PeriodRepository
 from api.repositories.record_repository import RecordRepository
 from api.repositories.sheet_mapping_repository import SheetMappingRepository
 from api.repositories.sheet_sync_task_repository import SheetSyncTaskRepository
-from api.repositories.source_repository import SourceRepository
 from api.repositories.spreadsheet_access_repository import SpreadsheetAccessRepository
 from api.repositories.spreadsheet_repository import SpreadsheetRepository
-from api.repositories.transfer_repository import TransferRepository
 from api.repositories.user_notification_repository import UserNotificationRepository
 from api.repositories.user_repository import UserRepository
 
@@ -57,19 +55,9 @@ def get_category_repository(session: AsyncSession = Depends(get_session)) -> Cat
     return CategoryRepository(session)
 
 
-def get_source_repository(session: AsyncSession = Depends(get_session)) -> SourceRepository:
-    """Репозиторий счетов."""
-    return SourceRepository(session)
-
-
 def get_record_repository(session: AsyncSession = Depends(get_session)) -> RecordRepository:
     """Репозиторий операций."""
     return RecordRepository(session)
-
-
-def get_transfer_repository(session: AsyncSession = Depends(get_session)) -> TransferRepository:
-    """Репозиторий переводов."""
-    return TransferRepository(session)
 
 
 def get_cashed_record_repository(

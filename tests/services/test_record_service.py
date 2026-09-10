@@ -17,7 +17,6 @@ from api.repositories.check_repository import CheckRepository
 from api.repositories.period_repository import PeriodRepository
 from api.repositories.record_repository import RecordRepository
 from api.repositories.sheet_sync_task_repository import SheetSyncTaskRepository
-from api.repositories.source_repository import SourceRepository
 from api.services.record_service import RecordService
 from tests import factories
 
@@ -33,14 +32,12 @@ async def test_expense_is_stored_with_negative_amount(
     """
     spreadsheet = await factories.create_spreadsheet(session, ready=True)
     category = await factories.create_category(session, spreadsheet, kind=CategoryKind.EXPENSE)
-    source = await factories.create_source(session, spreadsheet)
     await session.commit()
-    assert spreadsheet.id is not None and category.id is not None and source.id is not None
+    assert spreadsheet.id is not None and category.id is not None
 
     record = await record_service.create(
         spreadsheet.id,
         category_id=category.id,
-        source_id=source.id,
         amount=Decimal("100.50"),
         currency=Currency.RUB,
     )
@@ -56,14 +53,12 @@ async def test_income_is_stored_positive(
     """Доход остаётся положительным."""
     spreadsheet = await factories.create_spreadsheet(session, ready=True)
     category = await factories.create_category(session, spreadsheet, kind=CategoryKind.INCOME)
-    source = await factories.create_source(session, spreadsheet)
     await session.commit()
-    assert spreadsheet.id is not None and category.id is not None and source.id is not None
+    assert spreadsheet.id is not None and category.id is not None
 
     record = await record_service.create(
         spreadsheet.id,
         category_id=category.id,
-        source_id=source.id,
         amount=Decimal("100.50"),
         currency=Currency.RUB,
     )
@@ -74,17 +69,15 @@ async def test_record_marks_three_sheets_stale(
     session: AsyncSession,
     record_service: RecordService,
 ) -> None:
-    """Операция устаревает реестр, статистику и балансы — три листа сразу."""
+    """Операция устаревает реестр и статистику — два листа сразу."""
     spreadsheet = await factories.create_spreadsheet(session, ready=True)
     category = await factories.create_category(session, spreadsheet)
-    source = await factories.create_source(session, spreadsheet)
     await session.commit()
-    assert spreadsheet.id is not None and category.id is not None and source.id is not None
+    assert spreadsheet.id is not None and category.id is not None
 
     await record_service.create(
         spreadsheet.id,
         category_id=category.id,
-        source_id=source.id,
         amount=Decimal("10.00"),
         currency=Currency.RUB,
     )
@@ -93,7 +86,7 @@ async def test_record_marks_three_sheets_stale(
         task.target
         for task in await SheetSyncTaskRepository(session).list_by_spreadsheet(spreadsheet.id)
     }
-    assert targets == {SheetTarget.OPERATIONS, SheetTarget.STATISTICS, SheetTarget.BILLS}
+    assert targets == {SheetTarget.OPERATIONS, SheetTarget.STATISTICS}
 
 
 async def test_ten_records_leave_one_task_per_sheet(
@@ -107,21 +100,19 @@ async def test_ten_records_leave_one_task_per_sheet(
     """
     spreadsheet = await factories.create_spreadsheet(session, ready=True)
     category = await factories.create_category(session, spreadsheet)
-    source = await factories.create_source(session, spreadsheet)
     await session.commit()
-    assert spreadsheet.id is not None and category.id is not None and source.id is not None
+    assert spreadsheet.id is not None and category.id is not None
 
     for _ in range(10):
         await record_service.create(
             spreadsheet.id,
             category_id=category.id,
-            source_id=source.id,
             amount=Decimal("1.00"),
             currency=Currency.RUB,
         )
 
     tasks = await SheetSyncTaskRepository(session).list_by_spreadsheet(spreadsheet.id)
-    assert len(tasks) == 3
+    assert len(tasks) == 2
 
 
 async def test_period_is_created_lazily(
@@ -135,15 +126,13 @@ async def test_period_is_created_lazily(
     """
     spreadsheet = await factories.create_spreadsheet(session, ready=True)
     category = await factories.create_category(session, spreadsheet)
-    source = await factories.create_source(session, spreadsheet)
     await session.commit()
-    assert spreadsheet.id is not None and category.id is not None and source.id is not None
+    assert spreadsheet.id is not None and category.id is not None
     assert await PeriodRepository(session).list_by_spreadsheet(spreadsheet.id) == []
 
     record = await record_service.create(
         spreadsheet.id,
         category_id=category.id,
-        source_id=source.id,
         amount=Decimal("5.00"),
         currency=Currency.RUB,
     )
@@ -161,17 +150,15 @@ async def test_zero_and_negative_amounts_are_rejected(
     """Ноль и минус отвергаются: знак — дело категории, а нулевой операции нет смысла."""
     spreadsheet = await factories.create_spreadsheet(session, ready=True)
     category = await factories.create_category(session, spreadsheet)
-    source = await factories.create_source(session, spreadsheet)
     await session.commit()
-    assert spreadsheet.id is not None and category.id is not None and source.id is not None
+    assert spreadsheet.id is not None and category.id is not None
 
     for amount in (Decimal("0.00"), Decimal("-1.00")):
         with pytest.raises(BusinessRuleError):
             await record_service.create(
                 spreadsheet.id,
                 category_id=category.id,
-                source_id=source.id,
-                amount=amount,
+                        amount=amount,
                 currency=Currency.RUB,
             )
 
@@ -188,17 +175,15 @@ async def test_category_of_another_document_is_not_found(
     spreadsheet = await factories.create_spreadsheet(session, ready=True)
     stranger = await factories.create_spreadsheet(session, ready=True)
     alien_category = await factories.create_category(session, stranger)
-    source = await factories.create_source(session, spreadsheet)
     await session.commit()
     assert spreadsheet.id is not None
-    assert alien_category.id is not None and source.id is not None
+    assert alien_category.id is not None
 
     with pytest.raises(NotFoundError):
         await record_service.create(
             spreadsheet.id,
             category_id=alien_category.id,
-            source_id=source.id,
-            amount=Decimal("1.00"),
+                amount=Decimal("1.00"),
             currency=Currency.RUB,
         )
 
@@ -214,9 +199,8 @@ async def test_delete_last_forgets_learned_product_type(
     """
     spreadsheet = await factories.create_spreadsheet(session, ready=True)
     category = await factories.create_category(session, spreadsheet)
-    source = await factories.create_source(session, spreadsheet)
     await session.commit()
-    assert spreadsheet.id is not None and category.id is not None and source.id is not None
+    assert spreadsheet.id is not None and category.id is not None
 
     cache = CashedRecordRepository(session)
     await cache.upsert(
@@ -229,7 +213,6 @@ async def test_delete_last_forgets_learned_product_type(
     record = await record_service.create(
         spreadsheet.id,
         category_id=category.id,
-        source_id=source.id,
         amount=Decimal("50.00"),
         currency=Currency.RUB,
         product_name="молоко",
@@ -241,30 +224,26 @@ async def test_delete_last_forgets_learned_product_type(
     assert await cache.get(spreadsheet.id, "молоко") is None
 
 
-async def test_delete_is_soft_and_balance_recovers(
+async def test_delete_is_soft(
     session: AsyncSession,
     record_service: RecordService,
 ) -> None:
-    """Удаление мягкое, а баланс пересчитывается сам: он не хранится."""
+    """Удаление мягкое: строка остаётся с меткой, а не исчезает.
+
+    Разобраться в реестре после ошибочного `/del` иначе нечем.
+    """
     spreadsheet = await factories.create_spreadsheet(session, ready=True)
     category = await factories.create_category(session, spreadsheet)
-    source = await factories.create_source(session, spreadsheet, start_balance=Decimal("1000.00"))
     await session.commit()
-    assert spreadsheet.id is not None and category.id is not None and source.id is not None
+    assert spreadsheet.id is not None and category.id is not None
 
     record = await record_service.create(
         spreadsheet.id,
         category_id=category.id,
-        source_id=source.id,
         amount=Decimal("250.00"),
         currency=Currency.RUB,
     )
     assert record.id is not None
-
-    sources = SourceRepository(session)
-    balance = await sources.balance_of(source.id)
-    assert balance is not None
-    assert balance.balance == Decimal("750.00")
 
     await record_service.delete(spreadsheet.id, record.id)
 
@@ -273,10 +252,6 @@ async def test_delete_is_soft_and_balance_recovers(
     )
     assert stored is not None
     assert stored.deleted_at is not None
-
-    balance = await sources.balance_of(source.id)
-    assert balance is not None
-    assert balance.balance == Decimal("1000.00")
 
 
 async def test_last_record_of_check_takes_the_check_with_it(
@@ -292,13 +267,12 @@ async def test_last_record_of_check_takes_the_check_with_it(
     spreadsheet = await factories.create_spreadsheet(session, ready=True)
     period = await factories.create_period(session, spreadsheet)
     category = await factories.create_category(session, spreadsheet)
-    source = await factories.create_source(session, spreadsheet)
     check = await factories.create_check(session, spreadsheet)
     await session.commit()
     assert spreadsheet.id is not None and check.id is not None
 
     record = await factories.create_record(
-        session, spreadsheet, period, category, source,
+        session, spreadsheet, period, category,
         amount=Decimal("-89.90"), check_id=check.id,
     )
     await session.commit()
@@ -326,17 +300,16 @@ async def test_check_outlives_deletion_of_one_of_its_records(
     spreadsheet = await factories.create_spreadsheet(session, ready=True)
     period = await factories.create_period(session, spreadsheet)
     category = await factories.create_category(session, spreadsheet)
-    source = await factories.create_source(session, spreadsheet)
     check = await factories.create_check(session, spreadsheet)
     await session.commit()
     assert spreadsheet.id is not None and check.id is not None
 
     first = await factories.create_record(
-        session, spreadsheet, period, category, source,
+        session, spreadsheet, period, category,
         amount=Decimal("-89.90"), check_id=check.id,
     )
     await factories.create_record(
-        session, spreadsheet, period, category, source,
+        session, spreadsheet, period, category,
         amount=Decimal("-10.00"), check_id=check.id,
     )
     await session.commit()
@@ -361,16 +334,14 @@ async def test_delete_of_ordinary_record_touches_no_check(
     """Операция без чека удаляется как раньше: архив ни при чём."""
     spreadsheet = await factories.create_spreadsheet(session, ready=True)
     category = await factories.create_category(session, spreadsheet)
-    source = await factories.create_source(session, spreadsheet)
     check = await factories.create_check(session, spreadsheet)
     await session.commit()
     assert spreadsheet.id is not None and check.id is not None
-    assert category.id is not None and source.id is not None
+    assert category.id is not None
 
     record = await record_service.create(
         spreadsheet.id,
         category_id=category.id,
-        source_id=source.id,
         amount=Decimal("10.00"),
         currency=Currency.RUB,
     )
@@ -385,7 +356,7 @@ async def test_delete_of_ordinary_record_touches_no_check(
         task.target
         for task in await SheetSyncTaskRepository(session).list_by_spreadsheet(spreadsheet.id)
     }
-    assert targets == {SheetTarget.OPERATIONS, SheetTarget.STATISTICS, SheetTarget.BILLS}
+    assert targets == {SheetTarget.OPERATIONS, SheetTarget.STATISTICS}
 
 
 async def test_record_of_closed_period_is_not_deletable(
@@ -399,14 +370,12 @@ async def test_record_of_closed_period_is_not_deletable(
     """
     spreadsheet = await factories.create_spreadsheet(session, ready=True)
     category = await factories.create_category(session, spreadsheet)
-    source = await factories.create_source(session, spreadsheet)
     await session.commit()
-    assert spreadsheet.id is not None and category.id is not None and source.id is not None
+    assert spreadsheet.id is not None and category.id is not None
 
     record = await record_service.create(
         spreadsheet.id,
         category_id=category.id,
-        source_id=source.id,
         amount=Decimal("10.00"),
         currency=Currency.RUB,
     )
@@ -440,11 +409,10 @@ async def test_list_by_period_defaults_to_current_and_checks_owner(
     """Без периода отдаётся текущий; чужой период — 404."""
     spreadsheet = await factories.create_spreadsheet(session, ready=True)
     category = await factories.create_category(session, spreadsheet)
-    source = await factories.create_source(session, spreadsheet)
     stranger = await factories.create_spreadsheet(session, ready=True)
     alien_period = await factories.create_period(session, stranger, day=date(2026, 8, 1))
     await session.commit()
-    assert spreadsheet.id is not None and category.id is not None and source.id is not None
+    assert spreadsheet.id is not None and category.id is not None
     assert alien_period.id is not None
 
     assert await record_service.list_by_period(spreadsheet.id) == []
@@ -452,7 +420,6 @@ async def test_list_by_period_defaults_to_current_and_checks_owner(
     record = await record_service.create(
         spreadsheet.id,
         category_id=category.id,
-        source_id=source.id,
         amount=Decimal("7.00"),
         currency=Currency.RUB,
     )

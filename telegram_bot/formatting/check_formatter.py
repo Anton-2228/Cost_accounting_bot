@@ -111,9 +111,9 @@ class CheckFormatter:
         return f"{number}) {escape(item.name)}\n{_INDENT}<b>{escape(shown)}</b>"
 
     @staticmethod
-    def saved(draft: CheckDraft, *, count: int, source_title: str) -> str:
+    def saved(draft: CheckDraft, *, count: int) -> str:
         """Итог записи чека и то, чему бот на нём научился."""
-        lines = [f"Записано операций: {count}", f"Счёт: {source_title}"]
+        lines = [f"Записано операций: {count}"]
         lines.extend(f"Запомнил: {name} → {product_type}" for name, product_type in draft.learned())
         return "\n".join(lines)
 

@@ -12,7 +12,7 @@ from telegram_bot.resources.messages import SYNC_REQUESTED_MESSAGE
 
 
 class TableSyncCommand(BaseCommand):
-    """Просит api вчитать листы `Categories` и `Bills` в базу.
+    """Просит api вчитать лист `Categories` в базу.
 
     Ответ приходит сразу и означает только «задачу поставили»: лист читает
     `google_sheets_service` по очереди, и результат разбора — успех или русский

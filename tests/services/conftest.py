@@ -20,10 +20,8 @@ from api.repositories.period_repository import PeriodRepository
 from api.repositories.record_repository import RecordRepository
 from api.repositories.sheet_mapping_repository import SheetMappingRepository
 from api.repositories.sheet_sync_task_repository import SheetSyncTaskRepository
-from api.repositories.source_repository import SourceRepository
 from api.repositories.spreadsheet_access_repository import SpreadsheetAccessRepository
 from api.repositories.spreadsheet_repository import SpreadsheetRepository
-from api.repositories.transfer_repository import TransferRepository
 from api.repositories.user_notification_repository import UserNotificationRepository
 from api.repositories.user_repository import UserRepository
 from api.services.category_import_service import CategoryImportService
@@ -35,9 +33,7 @@ from api.services.record_service import RecordService
 from api.services.rollover_service import RolloverService
 from api.services.sheet_mapping_service import SheetMappingService
 from api.services.sheet_sync_task_service import SheetSyncTaskService
-from api.services.source_import_service import SourceImportService
 from api.services.spreadsheet_service import SpreadsheetService
-from api.services.transfer_service import TransferService
 from tests.fakes import FakeRateProvider
 
 
@@ -63,10 +59,7 @@ def rate_service(session: AsyncSession, rate_provider: FakeRateProvider) -> Exch
 
 
 @pytest.fixture
-def spreadsheet_service(
-    session: AsyncSession,
-    rate_service: ExchangeRateService,
-) -> SpreadsheetService:
+def spreadsheet_service(session: AsyncSession) -> SpreadsheetService:
     """Сервис жизненного цикла документа."""
     return SpreadsheetService(
         session,
@@ -74,11 +67,9 @@ def spreadsheet_service(
         users=UserRepository(session),
         periods=PeriodRepository(session),
         categories=CategoryRepository(session),
-        sources=SourceRepository(session),
         accesses=SpreadsheetAccessRepository(session),
         tasks=SheetSyncTaskRepository(session),
         notifications=UserNotificationRepository(session),
-        rates=rate_service,
     )
 
 
@@ -90,23 +81,9 @@ def record_service(session: AsyncSession) -> RecordService:
         SpreadsheetRepository(session),
         periods=PeriodRepository(session),
         categories=CategoryRepository(session),
-        sources=SourceRepository(session),
         records=RecordRepository(session),
         cashed_records=CashedRecordRepository(session),
         checks=CheckRepository(session),
-        tasks=SheetSyncTaskRepository(session),
-    )
-
-
-@pytest.fixture
-def transfer_service(session: AsyncSession) -> TransferService:
-    """Сервис переводов."""
-    return TransferService(
-        session,
-        SpreadsheetRepository(session),
-        periods=PeriodRepository(session),
-        sources=SourceRepository(session),
-        transfers=TransferRepository(session),
         tasks=SheetSyncTaskRepository(session),
     )
 
@@ -119,7 +96,6 @@ def check_service(session: AsyncSession) -> CheckService:
         SpreadsheetRepository(session),
         periods=PeriodRepository(session),
         categories=CategoryRepository(session),
-        sources=SourceRepository(session),
         records=RecordRepository(session),
         cashed_records=CashedRecordRepository(session),
         checks=CheckRepository(session),
@@ -148,19 +124,6 @@ def category_import_service(session: AsyncSession) -> CategoryImportService:
         categories=CategoryRepository(session),
         periods=PeriodRepository(session),
         cashed_records=CashedRecordRepository(session),
-        tasks=SheetSyncTaskRepository(session),
-        notifications=UserNotificationRepository(session),
-    )
-
-
-@pytest.fixture
-def source_import_service(session: AsyncSession) -> SourceImportService:
-    """Сервис импорта листа `Bills`."""
-    return SourceImportService(
-        session,
-        SpreadsheetRepository(session),
-        sources=SourceRepository(session),
-        periods=PeriodRepository(session),
         tasks=SheetSyncTaskRepository(session),
         notifications=UserNotificationRepository(session),
     )

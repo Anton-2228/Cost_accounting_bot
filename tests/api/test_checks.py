@@ -120,7 +120,6 @@ async def test_commit_flow(client: AsyncClient, session: AsyncSession) -> None:
     """Разобранный чек записывается целиком: операции, кэш и типы товаров."""
     spreadsheet = await factories.create_spreadsheet(session, ready=True)
     food = await factories.create_category(session, spreadsheet, title="Еда")
-    source = await factories.create_source(session, spreadsheet)
     check = await factories.create_check(session, spreadsheet)
     await session.commit()
 
@@ -129,8 +128,7 @@ async def test_commit_flow(client: AsyncClient, session: AsyncSession) -> None:
         f"{base}/checks/commit",
         json={
             "check_id": check.id,
-            "source_id": source.id,
-            "items": [
+                "items": [
                 {
                     "product_name": "молоко",
                     "product_type": "продукты",
@@ -160,13 +158,12 @@ async def test_commit_flow(client: AsyncClient, session: AsyncSession) -> None:
 async def test_commit_without_items_is_422(client: AsyncClient, session: AsyncSession) -> None:
     """Чек без позиций — 422: записывать нечего."""
     spreadsheet = await factories.create_spreadsheet(session, ready=True)
-    source = await factories.create_source(session, spreadsheet)
     check = await factories.create_check(session, spreadsheet)
     await session.commit()
 
     response = await client.post(
         f"/api/v1/spreadsheets/{spreadsheet.id}/checks/commit",
-        json={"check_id": check.id, "source_id": source.id, "items": []},
+        json={"check_id": check.id, "items": []},
     )
     assert response.status_code == 422
 
@@ -178,7 +175,6 @@ async def test_unprocessed_filter_hides_parsed_checks(
     """`?unprocessed=true` отдаёт очередь разбора, а не весь архив чеков."""
     spreadsheet = await factories.create_spreadsheet(session, ready=True)
     category = await factories.create_category(session, spreadsheet, title="Еда")
-    source = await factories.create_source(session, spreadsheet)
     first = await factories.create_check(session, spreadsheet, external_key="первый")
     second = await factories.create_check(session, spreadsheet, external_key="второй")
     await session.commit()
@@ -188,8 +184,7 @@ async def test_unprocessed_filter_hides_parsed_checks(
         f"{base}/checks/commit",
         json={
             "check_id": first.id,
-            "source_id": source.id,
-            "items": [
+                "items": [
                 {"product_name": "молоко", "category_id": category.id, "amount": "89.90"}
             ],
         },
@@ -214,7 +209,6 @@ async def test_period_filter_returns_the_archive_of_that_month(
     """
     spreadsheet = await factories.create_spreadsheet(session, ready=True)
     category = await factories.create_category(session, spreadsheet, title="Еда")
-    source = await factories.create_source(session, spreadsheet)
     parsed = await factories.create_check(session, spreadsheet, external_key="разобран")
     await factories.create_check(session, spreadsheet, external_key="в очереди")
     await session.commit()
@@ -224,8 +218,7 @@ async def test_period_filter_returns_the_archive_of_that_month(
         f"{base}/checks/commit",
         json={
             "check_id": parsed.id,
-            "source_id": source.id,
-            "items": [
+                "items": [
                 {"product_name": "молоко", "category_id": category.id, "amount": "89.90"}
             ],
         },
@@ -264,14 +257,12 @@ async def test_repeated_commit_is_409(client: AsyncClient, session: AsyncSession
     """Второй разбор того же чека — 409, а не вторая пачка операций."""
     spreadsheet = await factories.create_spreadsheet(session, ready=True)
     category = await factories.create_category(session, spreadsheet, title="Еда")
-    source = await factories.create_source(session, spreadsheet)
     check = await factories.create_check(session, spreadsheet)
     await session.commit()
 
     base = f"/api/v1/spreadsheets/{spreadsheet.id}"
     body = {
         "check_id": check.id,
-        "source_id": source.id,
         "items": [{"product_name": "молоко", "category_id": category.id, "amount": "89.90"}],
     }
     assert (await client.post(f"{base}/checks/commit", json=body)).status_code == 201
@@ -289,7 +280,6 @@ async def test_zero_priced_item_is_accepted(
     """Позиция с нулевой ценой записывается: «второй товар в подарок» законен."""
     spreadsheet = await factories.create_spreadsheet(session, ready=True)
     category = await factories.create_category(session, spreadsheet, title="Еда")
-    source = await factories.create_source(session, spreadsheet)
     check = await factories.create_check(session, spreadsheet)
     await session.commit()
 
@@ -297,8 +287,7 @@ async def test_zero_priced_item_is_accepted(
         f"/api/v1/spreadsheets/{spreadsheet.id}/checks/commit",
         json={
             "check_id": check.id,
-            "source_id": source.id,
-            "items": [{"product_name": "подарок", "category_id": category.id, "amount": "0"}],
+                "items": [{"product_name": "подарок", "category_id": category.id, "amount": "0"}],
         },
     )
     assert response.status_code == 201
@@ -327,7 +316,6 @@ async def test_processed_check_is_not_deleted(
     """Разобранный чек этим путём не убрать: он уходит вслед за своими операциями."""
     spreadsheet = await factories.create_spreadsheet(session, ready=True)
     category = await factories.create_category(session, spreadsheet, title="Еда")
-    source = await factories.create_source(session, spreadsheet)
     check = await factories.create_check(session, spreadsheet)
     await session.commit()
 
@@ -336,8 +324,7 @@ async def test_processed_check_is_not_deleted(
         f"{base}/checks/commit",
         json={
             "check_id": check.id,
-            "source_id": source.id,
-            "items": [{"product_name": "молоко", "category_id": category.id, "amount": "1.00"}],
+                "items": [{"product_name": "молоко", "category_id": category.id, "amount": "1.00"}],
         },
     )
 

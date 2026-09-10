@@ -8,7 +8,6 @@ from google_sheets_service import constants
 from google_sheets_service.sheets import requests, values
 from google_sheets_service.sheets.layout import SheetPayload
 from google_sheets_service.sheets.layouts import (
-    BILLS_LAYOUT,
     CATEGORIES_LAYOUT,
     OPERATIONS_LAYOUT,
 )
@@ -38,21 +37,6 @@ def test_create_sheet_adds_spare_columns_to_the_grid() -> None:
     assert CATEGORIES_LAYOUT.column_count == 7
     assert grid["columnCount"] == 7 + constants.SPARE_COLUMN_COUNT
     assert grid["frozenRowCount"] == constants.HEADER_ROW_COUNT
-
-
-def test_header_requests_protect_id_and_current_balance() -> None:
-    """Колонки, которые заполняет система, закрываются от правки.
-
-    У листа счетов таких две: идентификатор и вычисляемый баланс.
-    """
-    batch = requests.header_requests(SHEET_ID, BILLS_LAYOUT)
-    protections = [item["addProtectedRange"] for item in batch if "addProtectedRange" in item]
-    descriptions = [item["protectedRange"]["description"] for item in protections]
-    assert "Заголовки" in descriptions
-    assert "Колонка «ID»" in descriptions
-    assert "Колонка «Current balance»" in descriptions
-    # Пустой список редакторов означает «править может только владелец файла».
-    assert all(item["protectedRange"]["editors"] == {"users": []} for item in protections)
 
 
 def test_header_requests_protect_operations_system_columns_only() -> None:
@@ -172,59 +156,16 @@ def test_redraw_appends_data_dependent_formatting_last() -> None:
     assert _kinds(batch)[-1] == "repeatCell"
 
 
-def test_bills_sheet_gets_a_currency_dropdown() -> None:
-    """Колонка `Currency` листа счетов получает выпадающий список.
+def test_no_sheet_has_dropdowns() -> None:
+    """Выпадающих списков в документе не осталось ни одного.
 
-    Набор валют закрыт и меняется только вместе с миграцией, поэтому список
-    ставится один раз при создании листа: он не устаревает, в отличие от перечня
-    категорий, который пользователь правит сам.
-    """
-    batch = requests.header_requests(SHEET_ID, BILLS_LAYOUT)
-
-    rules = [item["setDataValidation"] for item in batch if "setDataValidation" in item]
-    assert len(rules) == 1
-    rule = rules[0]
-
-    column = next(
-        index for index, item in enumerate(BILLS_LAYOUT.columns) if item.header == "Currency"
-    )
-    assert rule["range"]["startColumnIndex"] == column
-    assert rule["range"]["endColumnIndex"] == column + 1
-    # Шапку список не покрывает: в ней стоит слово «Currency», а не валюта.
-    assert rule["range"]["startRowIndex"] == constants.HEADER_ROW_COUNT
-    # Нижней границы нет: список достаётся и строкам, которых ещё нет, иначе
-    # счёт, дописанный после последней, вводился бы руками.
-    assert "endRowIndex" not in rule["range"]
-
-    assert rule["rule"]["condition"]["type"] == "ONE_OF_LIST"
-    assert [item["userEnteredValue"] for item in rule["rule"]["condition"]["values"]] == list(
-        constants.CURRENCY_CODES
-    )
-    # `strict` отвергает значение вне списка прямо в интерфейсе Google.
-    assert rule["rule"]["strict"] is True
-
-
-def test_other_sheets_have_no_dropdowns() -> None:
-    """Список ставится только там, где набор значений закрыт.
-
-    На листе операций валюта печатается системой и правке не подлежит, а
-    категории пользователь заводит сам — список из них устаревал бы к следующему
-    импорту.
+    Единственный жил в колонке `Currency` листа счетов и ушёл вместе с ним. На
+    листе операций валюта печатается системой и правке не подлежит, а категории
+    пользователь заводит сам — список из них устаревал бы к следующему импорту.
     """
     for layout in (OPERATIONS_LAYOUT, CATEGORIES_LAYOUT):
         batch = requests.header_requests(SHEET_ID, layout)
         assert not any("setDataValidation" in item for item in batch)
-
-
-def test_currency_codes_mirror_the_api_enum() -> None:
-    """Список валют здесь совпадает с перечислением api.
-
-    Это копия, и она обязана сойтись: разойдясь, выпадающий список предложил бы
-    валюту, которую импорт затем отвергнет, — или скрыл бы существующую.
-    """
-    from api.enums import Currency
-
-    assert set(constants.CURRENCY_CODES) == {item.value for item in Currency}
 
 
 def test_statistics_currency_mirrors_the_api_constant() -> None:

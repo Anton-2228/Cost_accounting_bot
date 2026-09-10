@@ -5,7 +5,7 @@ from __future__ import annotations
 from decimal import Decimal, InvalidOperation
 
 from telegram_bot import constants
-from telegram_bot.parsers.results import NotANumberError, ParseError
+from telegram_bot.parsers.results import ParseError
 
 _MAX_AMOUNT = Decimal("999999999999")
 
@@ -33,10 +33,10 @@ class AmountParser:
         try:
             amount = Decimal(normalized)
         except InvalidOperation:
-            raise NotANumberError(f"«{raw}» не похоже на сумму") from None
+            raise ParseError(f"«{raw}» не похоже на сумму") from None
 
         if not amount.is_finite():
-            raise NotANumberError(f"«{raw}» не похоже на сумму")
+            raise ParseError(f"«{raw}» не похоже на сумму")
         if amount <= 0:
             raise ParseError("Сумма должна быть больше нуля")
         if amount > _MAX_AMOUNT:

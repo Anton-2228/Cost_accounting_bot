@@ -24,7 +24,7 @@ from api.enums import Currency
 
 
 class RecordORM(PkMixin, TimestampMixin, SoftDeleteMixin, Base):
-    """Одна операция: расход или доход по конкретному счёту.
+    """Одна операция: расход или доход.
 
     `amount` **знаковая**: расход отрицателен, доход положителен. Знак ставит
     сервис по виду категории, пользователь его не задаёт. Тип — `NUMERIC(14,2)`,
@@ -36,7 +36,7 @@ class RecordORM(PkMixin, TimestampMixin, SoftDeleteMixin, Base):
     не `server_default`. Прежний `TIMEZONE('utc-3', now())` при контейнере в UTC
     давал операциям, введённым поздно вечером, дату следующего дня.
 
-    Связи с периодом, категорией и счётом — **составные** внешние ключи,
+    Связи с периодом и категорией — **составные** внешние ключи,
     включающие `spreadsheet_id`. Поэтому сослаться на категорию из чужого
     документа физически нельзя; раньше это проверялось руками в каждом сервисе.
     Ключи отложенные (`DEFERRABLE INITIALLY DEFERRED`): при удалении документа
@@ -75,13 +75,6 @@ class RecordORM(PkMixin, TimestampMixin, SoftDeleteMixin, Base):
             name="fk_records_category_id_categories",
         ),
         ForeignKeyConstraint(
-            ["source_id", "spreadsheet_id"],
-            ["sources.id", "sources.spreadsheet_id"],
-            deferrable=True,
-            initially="DEFERRED",
-            name="fk_records_source_id_sources",
-        ),
-        ForeignKeyConstraint(
             ["check_id", "spreadsheet_id"],
             ["checks.id", "checks.spreadsheet_id"],
             deferrable=True,
@@ -93,12 +86,6 @@ class RecordORM(PkMixin, TimestampMixin, SoftDeleteMixin, Base):
             "ix_records_period_id_alive",
             "period_id",
             "id",
-            postgresql_where="deleted_at IS NULL",
-        ),
-        # Агрегат баланса счёта.
-        Index(
-            "ix_records_source_id_alive",
-            "source_id",
             postgresql_where="deleted_at IS NULL",
         ),
         # Дневные итоги по категориям для листа статистики.
@@ -122,12 +109,10 @@ class RecordORM(PkMixin, TimestampMixin, SoftDeleteMixin, Base):
     )
     period_id: Mapped[int] = mapped_column(BigInteger, nullable=False)
     category_id: Mapped[int] = mapped_column(BigInteger, nullable=False)
-    source_id: Mapped[int] = mapped_column(BigInteger, nullable=False)
     amount: Mapped[Decimal] = mapped_column(MONEY, nullable=False)
-    # Валюта суммы — не обязательно валюта счёта. Хранится исходная: она факт,
-    # а приведение к валюте счёта и к валюте статистики зависит от курса и
-    # потому считается на лету. Записать сюда уже сконвертированное значило бы
-    # похоронить настоящую сумму покупки.
+    # Валюта суммы. Хранится исходная: она факт, а приведение к валюте
+    # статистики зависит от курса и потому считается на лету. Записать сюда уже
+    # сконвертированное значило бы похоронить настоящую сумму покупки.
     currency: Mapped[Currency] = mapped_column(CURRENCY, nullable=False)
     added_at: Mapped[date] = mapped_column(Date, nullable=False)
     notes: Mapped[str] = mapped_column(

@@ -44,7 +44,7 @@ _BRANCH_STATES: dict[str, tuple[State, ...]] = {
     BRANCH_EMAIL: (States.ADD_EMAIL,),
     BRANCH_UNLINK: (States.CONFIRM_UNLINK_TABLE,),
     BRANCH_LLM: (States.SETTINGS_ASK_TELEGRAM_ID,),
-    BRANCH_CHECK: (States.CHECK_TYPES, States.CHECK_CATEGORIES, States.CHECK_SOURCE),
+    BRANCH_CHECK: (States.CHECK_TYPES, States.CHECK_CATEGORIES),
 }
 
 #: Обратное отображение, чтобы по текущему состоянию узнать ветку. Считается

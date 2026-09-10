@@ -49,7 +49,7 @@ async def test_fail_returns_task_to_the_queue(
     await session.commit()
     assert spreadsheet.id is not None
 
-    await SheetSyncTaskRepository(session).enqueue(spreadsheet.id, SheetTarget.BILLS)
+    await SheetSyncTaskRepository(session).enqueue(spreadsheet.id, SheetTarget.STRUCTURE)
     await session.commit()
 
     task = (await client.post("/api/v1/sheet-sync-tasks/claim")).json()["items"][0]

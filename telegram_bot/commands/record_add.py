@@ -14,10 +14,10 @@ from telegram_bot.parsers import ParseError, RecordParser
 
 
 class RecordAddCommand(BaseCommand):
-    """`[валюта] сумма категория счёт [пометка...]` одной строкой.
+    """`валюта сумма категория [пометка...]` одной строкой.
 
-    Валюта необязательна: без неё операция записывается в валюте счёта, а это
-    почти всегда и есть нужное.
+    Валюта обязательна: подставить её больше неоткуда, а умолчание молча
+    приписывало бы валюту той трате, где пользователь про неё забыл.
 
     Знак суммы не спрашивается и не принимается: расход это или доход,
     определяет вид категории. Так пользователь не может ошибиться знаком, а
@@ -36,13 +36,11 @@ class RecordAddCommand(BaseCommand):
             return
 
         categories = await self.api.catalog.categories(spreadsheet.id)
-        sources = await self.api.catalog.sources(spreadsheet.id)
 
         try:
             parsed = RecordParser.parse(
                 command.args if command else None,
                 categories=categories,
-                sources=sources,
             )
         except ParseError as error:
             await self.aiogram.answer_message(message, error.message)
@@ -51,7 +49,6 @@ class RecordAddCommand(BaseCommand):
         record = await self.api.records.create(
             spreadsheet.id,
             category_id=parsed.category_id,
-            source_id=parsed.source_id,
             amount=parsed.amount,
             currency=parsed.currency,
             notes=parsed.notes,

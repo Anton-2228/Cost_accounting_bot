@@ -2,9 +2,9 @@
 
 from __future__ import annotations
 
-from telegram_bot.api_client.models import Category, Source
+from telegram_bot.api_client.models import Category
 from telegram_bot.parsers import AssociationMatcher
-from tests.telegram_bot.conftest import make_category, make_source
+from tests.telegram_bot.conftest import make_category
 
 
 def test_matches_by_alias(categories: list[Category]) -> None:
@@ -42,19 +42,6 @@ def test_first_match_wins() -> None:
     assert found.id == 1
 
 
-def test_namespaces_are_separate(categories: list[Category], sources: list[Source]) -> None:
-    """Псевдоним счёта не находится среди категорий и наоборот."""
-    assert AssociationMatcher.category("карта", categories) is None
-    assert AssociationMatcher.source("еда", sources) is None
-
-
-def test_source_matches_by_alias(sources: list[Source]) -> None:
-    """Счёт находится по сокращению."""
-    found = AssociationMatcher.source("нал", sources)
-    assert found is not None
-    assert found.title == "Наличные"
-
-
 def test_hint_lists_titles() -> None:
     """Подсказка перечисляет названия через запятую."""
     assert AssociationMatcher.hint(["Еда", "Кафе"]) == "Еда, Кафе"
@@ -72,7 +59,6 @@ def test_hint_of_empty_list() -> None:
     assert AssociationMatcher.hint([]) == ""
 
 
-def test_source_and_category_helpers_ignore_surrounding_spaces(sources: list[Source]) -> None:
-    """Пробелы вокруг слова не мешают подбору счёта."""
-    assert AssociationMatcher.source(" карта ", sources) is not None
-    assert make_source(title="Копилка").associations == ["копилка"]
+def test_category_lookup_ignores_surrounding_spaces(categories: list[Category]) -> None:
+    """Пробелы вокруг слова не мешают подбору категории."""
+    assert AssociationMatcher.category(" еда ", categories) is not None

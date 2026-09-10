@@ -22,10 +22,8 @@ from api.dependencies.repositories import (
     get_record_repository,
     get_sheet_mapping_repository,
     get_sheet_sync_task_repository,
-    get_source_repository,
     get_spreadsheet_access_repository,
     get_spreadsheet_repository,
-    get_transfer_repository,
     get_user_notification_repository,
     get_user_repository,
 )
@@ -38,10 +36,8 @@ from api.repositories.period_repository import PeriodRepository
 from api.repositories.record_repository import RecordRepository
 from api.repositories.sheet_mapping_repository import SheetMappingRepository
 from api.repositories.sheet_sync_task_repository import SheetSyncTaskRepository
-from api.repositories.source_repository import SourceRepository
 from api.repositories.spreadsheet_access_repository import SpreadsheetAccessRepository
 from api.repositories.spreadsheet_repository import SpreadsheetRepository
-from api.repositories.transfer_repository import TransferRepository
 from api.repositories.user_notification_repository import UserNotificationRepository
 from api.repositories.user_repository import UserRepository
 from api.services.category_import_service import CategoryImportService
@@ -53,9 +49,7 @@ from api.services.period_service import PeriodService
 from api.services.record_service import RecordService
 from api.services.sheet_mapping_service import SheetMappingService
 from api.services.sheet_sync_task_service import SheetSyncTaskService
-from api.services.source_import_service import SourceImportService
 from api.services.spreadsheet_service import SpreadsheetService
-from api.services.transfer_service import TransferService
 
 
 def get_exchange_rate_service(
@@ -79,11 +73,9 @@ def get_spreadsheet_service(
     users: UserRepository = Depends(get_user_repository),
     periods: PeriodRepository = Depends(get_period_repository),
     categories: CategoryRepository = Depends(get_category_repository),
-    sources: SourceRepository = Depends(get_source_repository),
     accesses: SpreadsheetAccessRepository = Depends(get_spreadsheet_access_repository),
     tasks: SheetSyncTaskRepository = Depends(get_sheet_sync_task_repository),
     notifications: UserNotificationRepository = Depends(get_user_notification_repository),
-    rates: ExchangeRateService = Depends(get_exchange_rate_service),
 ) -> SpreadsheetService:
     """Сервис жизненного цикла документа."""
     return SpreadsheetService(
@@ -92,11 +84,9 @@ def get_spreadsheet_service(
         users=users,
         periods=periods,
         categories=categories,
-        sources=sources,
         accesses=accesses,
         tasks=tasks,
         notifications=notifications,
-        rates=rates,
     )
 
 
@@ -105,7 +95,6 @@ def get_record_service(
     spreadsheets: SpreadsheetRepository = Depends(get_spreadsheet_repository),
     periods: PeriodRepository = Depends(get_period_repository),
     categories: CategoryRepository = Depends(get_category_repository),
-    sources: SourceRepository = Depends(get_source_repository),
     records: RecordRepository = Depends(get_record_repository),
     cashed_records: CashedRecordRepository = Depends(get_cashed_record_repository),
     checks: CheckRepository = Depends(get_check_repository),
@@ -117,29 +106,9 @@ def get_record_service(
         spreadsheets,
         periods=periods,
         categories=categories,
-        sources=sources,
         records=records,
         cashed_records=cashed_records,
         checks=checks,
-        tasks=tasks,
-    )
-
-
-def get_transfer_service(
-    session: AsyncSession = Depends(get_session),
-    spreadsheets: SpreadsheetRepository = Depends(get_spreadsheet_repository),
-    periods: PeriodRepository = Depends(get_period_repository),
-    sources: SourceRepository = Depends(get_source_repository),
-    transfers: TransferRepository = Depends(get_transfer_repository),
-    tasks: SheetSyncTaskRepository = Depends(get_sheet_sync_task_repository),
-) -> TransferService:
-    """Сервис переводов между счетами."""
-    return TransferService(
-        session,
-        spreadsheets,
-        periods=periods,
-        sources=sources,
-        transfers=transfers,
         tasks=tasks,
     )
 
@@ -149,7 +118,6 @@ def get_check_service(
     spreadsheets: SpreadsheetRepository = Depends(get_spreadsheet_repository),
     periods: PeriodRepository = Depends(get_period_repository),
     categories: CategoryRepository = Depends(get_category_repository),
-    sources: SourceRepository = Depends(get_source_repository),
     records: RecordRepository = Depends(get_record_repository),
     cashed_records: CashedRecordRepository = Depends(get_cashed_record_repository),
     checks: CheckRepository = Depends(get_check_repository),
@@ -161,7 +129,6 @@ def get_check_service(
         spreadsheets,
         periods=periods,
         categories=categories,
-        sources=sources,
         records=records,
         cashed_records=cashed_records,
         checks=checks,
@@ -211,25 +178,6 @@ def get_category_import_service(
         categories=categories,
         periods=periods,
         cashed_records=cashed_records,
-        tasks=tasks,
-        notifications=notifications,
-    )
-
-
-def get_source_import_service(
-    session: AsyncSession = Depends(get_session),
-    spreadsheets: SpreadsheetRepository = Depends(get_spreadsheet_repository),
-    sources: SourceRepository = Depends(get_source_repository),
-    periods: PeriodRepository = Depends(get_period_repository),
-    tasks: SheetSyncTaskRepository = Depends(get_sheet_sync_task_repository),
-    notifications: UserNotificationRepository = Depends(get_user_notification_repository),
-) -> SourceImportService:
-    """Сервис вчитывания листа `Bills`."""
-    return SourceImportService(
-        session,
-        spreadsheets,
-        sources=sources,
-        periods=periods,
         tasks=tasks,
         notifications=notifications,
     )

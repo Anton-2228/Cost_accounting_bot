@@ -16,11 +16,10 @@ from datetime import date
 #: Ссылка на документ. Бот получает готовое сообщение и не собирает URL сам.
 GOOGLE_SPREADSHEET_URL = "https://docs.google.com/spreadsheets/d/{google_spreadsheet_id}"
 
-#: Названия листов, которые читаются обратно в базу. Они попадают в текст
+#: Название листа, который читается обратно в базу. Оно попадает в текст
 #: сообщения, поэтому лежат здесь: раскладку документа api не знает и знать не
 #: должен, а вот назвать пользователю вкладку, о которой идёт речь, обязан.
 CATEGORIES_SHEET_TITLE = "Categories"
-BILLS_SHEET_TITLE = "Bills"
 
 
 def table_ready(google_spreadsheet_id: str) -> str:

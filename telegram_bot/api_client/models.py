@@ -133,19 +133,6 @@ class Category(BaseModel):
     product_types: list[str]
 
 
-class Source(BaseModel):
-    """Счёт."""
-
-    model_config = ConfigDict(extra="ignore")
-
-    id: int
-    status: EntityStatus
-    title: str
-    associations: list[str]
-    currency: Currency
-    start_balance: Decimal
-
-
 class Record(BaseModel):
     """Операция.
 
@@ -158,7 +145,6 @@ class Record(BaseModel):
     id: int
     period_id: int
     category_id: int
-    source_id: int
     amount: Decimal
     currency: Currency
     added_at: date
@@ -167,20 +153,6 @@ class Record(BaseModel):
     #: держится в зеркале схемы api: расхождение мирно живёт до первого
     #: обращения, а потом обходится дороже.
     check_id: int | None = None
-
-
-class Transfer(BaseModel):
-    """Перевод между счетами."""
-
-    model_config = ConfigDict(extra="ignore")
-
-    id: int
-    period_id: int
-    from_source_id: int
-    to_source_id: int
-    amount: Decimal
-    added_at: date
-    notes: str
 
 
 class Check(BaseModel):

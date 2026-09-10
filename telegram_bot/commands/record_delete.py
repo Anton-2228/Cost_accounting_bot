@@ -45,8 +45,7 @@ class RecordDeleteCommand(BaseCommand):
         )
 
         categories = await self.api.catalog.categories(spreadsheet.id, only_active=False)
-        sources = await self.api.catalog.sources(spreadsheet.id, only_active=False)
         await self.aiogram.answer_message(
             message,
-            RecordFormatter.deleted(record, categories=categories, sources=sources),
+            RecordFormatter.deleted(record, categories=categories),
         )

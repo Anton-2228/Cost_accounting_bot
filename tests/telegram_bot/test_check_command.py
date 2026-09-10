@@ -38,7 +38,6 @@ from telegram_bot.api_client.models import (
     LlmOperation,
     NotificationKind,
     Record,
-    Source,
 )
 from telegram_bot.checks.models import currency_of
 from telegram_bot.commands.cancel import CANCEL_BUTTON_TEXT, CancelCommand
@@ -55,7 +54,7 @@ from telegram_bot.enums import CommandName
 from telegram_bot.errors import TABLE_CREATING_MESSAGE
 from telegram_bot.notifications import NotificationCatchUp
 from telegram_bot.states import States
-from tests.telegram_bot.conftest import make_category, make_source
+from tests.telegram_bot.conftest import make_category
 
 _USER_ID = 7
 _CHAT_ID = 7
@@ -64,7 +63,6 @@ _TOKEN = "123456:AAHtesttesttesttesttesttesttesttest"
 _FOOD = make_category(category_id=1, title="Еда", associations=["еда", "продукты"])
 _FOOD.product_types.append("молочка")
 _BASKET = make_category(category_id=2, title="НеопределенныеТраты", associations=["прочее"])
-_CARD = make_source(source_id=1, title="Карта", associations=["карта"])
 
 
 def _payload(*items: tuple[str, int]) -> dict[str, Any]:
@@ -189,17 +187,13 @@ class FakeSpreadsheets:
 
 
 class FakeCatalog:
-    """Справочники документа."""
+    """Справочник документа."""
 
-    def __init__(self, categories: list[Category], sources: list[Source]) -> None:
+    def __init__(self, categories: list[Category]) -> None:
         self._categories = categories
-        self._sources = sources
 
     async def categories(self, spreadsheet_id: int, *, only_active: bool = True) -> list[Category]:
         return list(self._categories)
-
-    async def sources(self, spreadsheet_id: int, *, only_active: bool = True) -> list[Source]:
-        return list(self._sources)
 
 
 class FakeChecks:
@@ -233,14 +227,12 @@ class FakeChecks:
         spreadsheet_id: int,
         *,
         check_id: int,
-        source_id: int,
         items: Any,
         new_product_types: Any = (),
     ) -> list[Record]:
         self.committed.append(
             {
                 "check_id": check_id,
-                "source_id": source_id,
                 "items": list(items),
                 "new_product_types": list(new_product_types),
             }
@@ -251,7 +243,6 @@ class FakeChecks:
                 id=index,
                 period_id=1,
                 category_id=item.category_id,
-                source_id=source_id,
                 amount=-item.amount,
                 currency=currency_of(CheckKind.RU_FNS),
                 added_at=datetime(2026, 7, 26, tzinfo=UTC).date(),
@@ -413,7 +404,7 @@ class Harness:
     ) -> None:
         self.aiogram = FakeAiogram()
         self.checks = FakeChecks(checks, cached or {})
-        self.catalog = FakeCatalog(categories or [_FOOD, _BASKET], [_CARD])
+        self.catalog = FakeCatalog(categories or [_FOOD, _BASKET])
         self.ai = ai or FakeAi()
         self.llm_usages = llm_usages or FakeLlmUsages()
         api = cast(
@@ -475,16 +466,15 @@ class Harness:
         return await self.state.get_state()
 
 
-async def _walk_to_commit(harness: Harness, source: str = "карта") -> None:
-    """Проходит все три стадии без правок."""
+async def _walk_to_commit(harness: Harness) -> None:
+    """Проходит обе стадии без правок: второе «Готово» и записывает чек."""
     await harness.send("/check")
     await harness.press_done()
     await harness.press_done()
-    await harness.send(source)
 
 
 async def test_whole_check_reaches_commit() -> None:
-    """Чек проходит три стадии и уезжает в api одним запросом.
+    """Чек проходит обе стадии и уезжает в api одним запросом.
 
     Тип из кэша берётся без модели, незнакомый — у неё; категорию для нового
     типа спрашивают отдельно и только про сам тип, а не про каждую позицию.
@@ -503,7 +493,6 @@ async def test_whole_check_reaches_commit() -> None:
     committed = harness.checks.committed
     assert len(committed) == 1
     assert committed[0]["check_id"] == 1
-    assert committed[0]["source_id"] == _CARD.id
     assert committed[0]["items"] == [
         CommitItem(
             product_name="молоко",
@@ -735,9 +724,9 @@ async def test_declined_deletion_returns_to_the_stage() -> None:
 async def test_every_stage_can_drop_the_check() -> None:
     """«Отложить» и «Удалить» есть на каждой стадии, а не только на первой.
 
-    Заметить «этот чек лишний» можно и на счёте: уводить за таким решением
-    обратно в начало значило бы просить пройти разбор ещё раз, чтобы от него
-    отказаться.
+    Заметить «этот чек лишний» можно и на категориях: уводить за таким
+    решением обратно в начало значило бы просить пройти разбор ещё раз, чтобы
+    от него отказаться.
     """
     harness = Harness(checks=[_check(1, ("молоко", 8990))], cached={"молоко": "молочка"})
 
@@ -756,8 +745,10 @@ async def test_every_stage_can_drop_the_check() -> None:
     ]
 
     await harness.press_done()
-    # На счёте «Готово» не над чем нажимать: следующий шаг делает ответ.
-    assert harness.aiogram.rows() == [[SKIP_BUTTON, DELETE_BUTTON], [CANCEL_BUTTON_TEXT]]
+    # Стадий всего две, и «Готово» второй из них уже записывает чек: дальше
+    # спрашивать нечего, и ветка кончается вместе с очередью.
+    assert harness.checks.committed != []
+    assert await harness.current_state() is None
 
 
 async def test_cancel_leaves_the_check_unprocessed() -> None:

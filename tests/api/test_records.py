@@ -2,8 +2,6 @@
 
 from __future__ import annotations
 
-from decimal import Decimal
-
 from httpx import AsyncClient
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -21,7 +19,6 @@ async def test_expense_and_income_get_their_sign(
     spreadsheet = await factories.create_spreadsheet(session, ready=True)
     expense = await factories.create_category(session, spreadsheet, kind=CategoryKind.EXPENSE)
     income = await factories.create_category(session, spreadsheet, kind=CategoryKind.INCOME)
-    source = await factories.create_source(session, spreadsheet)
     await session.commit()
 
     base = f"/api/v1/spreadsheets/{spreadsheet.id}/records"
@@ -29,8 +26,7 @@ async def test_expense_and_income_get_their_sign(
         base,
         json={
             "category_id": expense.id,
-            "source_id": source.id,
-            "amount": "100.50",
+                "amount": "100.50",
             "currency": "RUB",
         },
     )
@@ -42,8 +38,7 @@ async def test_expense_and_income_get_their_sign(
         base,
         json={
             "category_id": income.id,
-            "source_id": source.id,
-            "amount": "100.50",
+                "amount": "100.50",
             "currency": "RUB",
         },
     )
@@ -57,15 +52,13 @@ async def test_negative_amount_is_rejected_by_schema(
     """Отрицательная сумма не проходит схему: знак — не дело клиента."""
     spreadsheet = await factories.create_spreadsheet(session, ready=True)
     category = await factories.create_category(session, spreadsheet)
-    source = await factories.create_source(session, spreadsheet)
     await session.commit()
 
     response = await client.post(
         f"/api/v1/spreadsheets/{spreadsheet.id}/records",
         json={
             "category_id": category.id,
-            "source_id": source.id,
-            "amount": "-5.00",
+                "amount": "-5.00",
             "currency": "RUB",
         },
     )
@@ -84,7 +77,6 @@ async def test_check_reference_is_exposed_in_list(
     """
     spreadsheet = await factories.create_spreadsheet(session, ready=True)
     category = await factories.create_category(session, spreadsheet)
-    source = await factories.create_source(session, spreadsheet)
     check = await factories.create_check(session, spreadsheet)
     await session.commit()
 
@@ -93,8 +85,7 @@ async def test_check_reference_is_exposed_in_list(
         f"{base}/records",
         json={
             "category_id": category.id,
-            "source_id": source.id,
-            "amount": "10.00",
+                "amount": "10.00",
             "currency": "RUB",
         },
     )
@@ -102,8 +93,7 @@ async def test_check_reference_is_exposed_in_list(
         f"{base}/checks/commit",
         json={
             "check_id": check.id,
-            "source_id": source.id,
-            "items": [
+                "items": [
                 {"product_name": "молоко", "category_id": category.id, "amount": "89.90"}
             ],
         },
@@ -123,7 +113,6 @@ async def test_last_route_is_declared_before_id_route(
     """
     spreadsheet = await factories.create_spreadsheet(session, ready=True)
     category = await factories.create_category(session, spreadsheet)
-    source = await factories.create_source(session, spreadsheet)
     await session.commit()
 
     base = f"/api/v1/spreadsheets/{spreadsheet.id}/records"
@@ -131,8 +120,7 @@ async def test_last_route_is_declared_before_id_route(
         base,
         json={
             "category_id": category.id,
-            "source_id": source.id,
-            "amount": "7.00",
+                "amount": "7.00",
             "currency": "RUB",
         },
     )
@@ -153,7 +141,6 @@ async def test_deleting_record_of_closed_period_is_422(
     """Закрытый месяц не меняется: 422 с кодом бизнес-правила."""
     spreadsheet = await factories.create_spreadsheet(session, ready=True)
     category = await factories.create_category(session, spreadsheet)
-    source = await factories.create_source(session, spreadsheet)
     await session.commit()
 
     base = f"/api/v1/spreadsheets/{spreadsheet.id}/records"
@@ -161,8 +148,7 @@ async def test_deleting_record_of_closed_period_is_422(
         base,
         json={
             "category_id": category.id,
-            "source_id": source.id,
-            "amount": "7.00",
+                "amount": "7.00",
             "currency": "RUB",
         },
     )
@@ -186,7 +172,6 @@ async def test_list_by_explicit_period(client: AsyncClient, session: AsyncSessio
     """
     spreadsheet = await factories.create_spreadsheet(session, ready=True)
     category = await factories.create_category(session, spreadsheet)
-    source = await factories.create_source(session, spreadsheet)
     await session.commit()
 
     base = f"/api/v1/spreadsheets/{spreadsheet.id}/records"
@@ -194,8 +179,7 @@ async def test_list_by_explicit_period(client: AsyncClient, session: AsyncSessio
         base,
         json={
             "category_id": category.id,
-            "source_id": source.id,
-            "amount": "3.00",
+                "amount": "3.00",
             "currency": "RUB",
         },
     )
@@ -207,25 +191,3 @@ async def test_list_by_explicit_period(client: AsyncClient, session: AsyncSessio
     alien = await client.get(base, params={"period_id": period_id + 1000})
     assert alien.status_code == 404
 
-
-async def test_balance_follows_records(client: AsyncClient, session: AsyncSession) -> None:
-    """Баланс счёта уменьшается ровно на сумму расхода: он считается, не хранится."""
-    spreadsheet = await factories.create_spreadsheet(session, ready=True)
-    category = await factories.create_category(session, spreadsheet)
-    source = await factories.create_source(
-        session, spreadsheet, start_balance=Decimal("1000.00")
-    )
-    await session.commit()
-
-    await client.post(
-        f"/api/v1/spreadsheets/{spreadsheet.id}/records",
-        json={
-            "category_id": category.id,
-            "source_id": source.id,
-            "amount": "250.25",
-            "currency": "RUB",
-        },
-    )
-
-    balances = await client.get(f"/api/v1/spreadsheets/{spreadsheet.id}/balances")
-    assert balances.json()["items"][0]["balance"] == "749.75"

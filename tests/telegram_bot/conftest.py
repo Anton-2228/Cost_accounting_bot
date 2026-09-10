@@ -12,7 +12,6 @@
 from __future__ import annotations
 
 import os
-from decimal import Decimal
 
 os.environ.setdefault("TELEGRAM_BOT_TOKEN", "123456:AAHtesttesttesttesttesttesttesttest")
 os.environ.setdefault("API_BASE_URL", "http://api:8000/api/v1")
@@ -28,9 +27,7 @@ import pytest  # noqa: E402
 from telegram_bot.api_client.models import (  # noqa: E402
     Category,
     CategoryKind,
-    Currency,
     EntityStatus,
-    Source,
 )
 
 
@@ -56,24 +53,6 @@ def make_category(
     )
 
 
-def make_source(
-    *,
-    source_id: int = 1,
-    title: str = "Карта",
-    currency: Currency = Currency.RUB,
-    associations: list[str] | None = None,
-) -> Source:
-    """Счёт для тестов."""
-    return Source(
-        id=source_id,
-        status=EntityStatus.ACTIVE,
-        title=title,
-        currency=currency,
-        associations=associations if associations is not None else [title.lower()],
-        start_balance=Decimal("0.00"),
-    )
-
-
 @pytest.fixture
 def categories() -> list[Category]:
     """Пара категорий: расход и доход."""
@@ -88,10 +67,3 @@ def categories() -> list[Category]:
     ]
 
 
-@pytest.fixture
-def sources() -> list[Source]:
-    """Пара счетов."""
-    return [
-        make_source(source_id=1, title="Карта", associations=["карта"]),
-        make_source(source_id=2, title="Наличные", associations=["наличные", "нал"]),
-    ]

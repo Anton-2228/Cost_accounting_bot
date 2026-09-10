@@ -20,7 +20,6 @@ class RecordsClient:
         spreadsheet_id: int,
         *,
         category_id: int,
-        source_id: int,
         amount: Decimal,
         currency: Currency,
         notes: str,
@@ -34,7 +33,6 @@ class RecordsClient:
             f"/spreadsheets/{spreadsheet_id}/records",
             body={
                 "category_id": category_id,
-                "source_id": source_id,
                 "amount": str(amount),
                 "currency": currency.value,
                 "notes": notes,

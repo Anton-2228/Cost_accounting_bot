@@ -11,7 +11,6 @@ from telegram_bot.formatting.llm_usage_formatter import LlmUsageFormatter, Sprea
 from telegram_bot.formatting.money_formatter import MoneyFormatter
 from telegram_bot.formatting.record_formatter import RecordFormatter
 from telegram_bot.formatting.table_formatter import TableFormatter
-from telegram_bot.formatting.transfer_formatter import TransferFormatter
 
 __all__ = [
     "CheckFormatter",
@@ -20,5 +19,4 @@ __all__ = [
     "RecordFormatter",
     "SpreadsheetUsage",
     "TableFormatter",
-    "TransferFormatter",
 ]

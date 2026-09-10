@@ -48,9 +48,8 @@ async def test_statistics_are_daily_and_signed(
         session, spreadsheet, day=today_in_timezone(_TIMEZONE)
     )
     category = await factories.create_category(session, spreadsheet, kind=CategoryKind.EXPENSE)
-    source = await factories.create_source(session, spreadsheet)
     await factories.create_record(
-        session, spreadsheet, period, category, source, amount=Decimal("-1234.56")
+        session, spreadsheet, period, category, amount=Decimal("-1234.56")
     )
     await session.commit()
 

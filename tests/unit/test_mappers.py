@@ -22,7 +22,6 @@ def test_to_orm_does_not_set_database_managed_fields() -> None:
             spreadsheet_id=1,
             period_id=2,
             category_id=3,
-            source_id=4,
             amount=Decimal("-10.00"),
             currency=Currency.RUB,
             added_at=date(2026, 7, 20),

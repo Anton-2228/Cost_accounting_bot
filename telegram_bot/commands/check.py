@@ -4,14 +4,16 @@
 псевдонимам и русские тексты, а Mini App пришлось бы заводить всё это заново.
 Mini App остаётся тем, чем был, — входом.
 
-Три стадии на один чек:
+Две стадии на один чек:
 
 1. **типы** — товар из кэша получает тип без модели, остальные уходят в первый
    вызов; правки строками «1,3 - молочка»;
 2. **категории** — тип определяет категорию детерминированно
    (`UNIQUE (spreadsheet_id, product_type)`), модель зовётся только для новых
-   типов;
-3. **счёт** — один на весь чек, затем `POST /checks/commit`.
+   типов. «Готово» на этой стадии и записывает чек: `POST /checks/commit`.
+
+Валюта у чека своя и не спрашивается: её задаёт формат чека, и api проставляет
+операциям ровно ту же. Счёт не спрашивается тоже — его в системе нет.
 
 Что из старой реализации сознательно не повторяется:
 
@@ -57,7 +59,6 @@ from telegram_bot.parsers import AssociationMatcher, CheckParser, ParseError
 from telegram_bot.resources.messages import (
     CHECK_AI_UNAVAILABLE_MESSAGE,
     CHECK_ASK_CATEGORIES_MESSAGE,
-    CHECK_ASK_SOURCE_MESSAGE,
     CHECK_ASK_TYPES_MESSAGE,
     CHECK_BROKEN_MESSAGE,
     CHECK_LOST_MESSAGE,
@@ -126,9 +127,6 @@ class CheckCommand(BaseCommand):
         if current == States.CHECK_CATEGORIES.state:
             await self._edit_categories(message, state)
             return
-        if current == States.CHECK_SOURCE.state:
-            await self._pick_source(message, state)
-            return
 
         spreadsheet = await self.spreadsheet(message)
         if spreadsheet is None:
@@ -169,7 +167,7 @@ class CheckCommand(BaseCommand):
         if current == States.CHECK_TYPES.state:
             await self._to_categories(chat_id, state, draft, spreadsheet)
         elif current == States.CHECK_CATEGORIES.state:
-            await self._to_source(chat_id, state, draft)
+            await self._commit(chat_id, state, draft, spreadsheet)
 
     # --- Очередь ---------------------------------------------------------
 
@@ -594,60 +592,32 @@ class CheckCommand(BaseCommand):
         await self._save_draft(state, draft)
         await self._show_categories(chat_id, state, draft)
 
-    # --- Стадия 3: счёт и запись -----------------------------------------
+    # --- Запись чека -----------------------------------------------------
 
-    async def _to_source(self, chat_id: int, state: FSMContext, draft: CheckDraft) -> None:
-        """Спрашивает счёт: один на весь чек."""
-        await self.aiogram.set_state(state, States.CHECK_SOURCE)
-        await self._ask_source(chat_id, state, draft)
+    async def _commit(
+        self,
+        chat_id: int,
+        state: FSMContext,
+        draft: CheckDraft,
+        spreadsheet: Spreadsheet,
+    ) -> None:
+        """Записывает разобранный чек и переходит к следующему.
 
-    async def _ask_source(self, chat_id: int, state: FSMContext, draft: CheckDraft) -> None:
-        """Вопрос про счёт с клавиатурой стадии.
+        Отдельной стадии подтверждения нет: «Готово» на категориях и есть
+        подтверждение. Прежде здесь спрашивался счёт, и запись была побочным
+        следствием ответа на этот вопрос; со счётом ушёл и вопрос, а проверка
+        «у всех позиций есть категория» осталась — она про сам чек, а не про
+        то, о чём спрашивали.
 
-        Кнопки «Готово» здесь нет: следующий шаг делает ответ пользователя, и
-        нажимать «Готово» было бы не над чем.
+        Валюта не спрашивается и здесь: её знает формат чека, и api проставляет
+        операциям ровно ту же — см. `telegram_bot.checks.models`.
         """
-        await self.ask(
-            chat_id=chat_id,
-            state=state,
-            text=CHECK_ASK_SOURCE_MESSAGE,
-            rows=self.stage_rows(draft, stage=None),
-        )
-
-    async def _pick_source(self, message: Message, state: FSMContext) -> None:
-        """Находит счёт по псевдониму и записывает чек."""
-        chat_id = message.chat.id
-        draft = await self._require_draft(message, state)
-        if draft is None:
-            return
-
-        text = self.text_of(message)
-        if text is None:
-            await self._ask_source(chat_id, state, draft)
-            return
-
-        spreadsheet = await self.spreadsheet(message)
-        if spreadsheet is None:
-            return
-
-        sources = await self.api.catalog.sources(spreadsheet.id)
-        source = AssociationMatcher.source(text, sources)
-        if source is None:
-            hint = AssociationMatcher.hint([item.title for item in sources])
-            await self.ask(
-                chat_id=chat_id,
-                state=state,
-                text=f"Счёта «{text.strip()}» нет, либо он выключен.\nЕсть такие: {hint}",
-                rows=self.stage_rows(draft, stage=None),
-            )
-            return
-
         if any(item.category_id is None for item in draft.items):
             await self.ask(
                 chat_id=chat_id,
                 state=state,
                 text=CHECK_NO_CATEGORY_MESSAGE,
-                rows=self.stage_rows(draft, stage=None),
+                rows=self.stage_rows(draft, stage=_STAGE_CATEGORIES),
             )
             return
 
@@ -659,7 +629,6 @@ class CheckCommand(BaseCommand):
             records = await self.api.checks.commit(
                 spreadsheet.id,
                 check_id=draft.check_id,
-                source_id=source.id,
                 items=self._commit_items(draft, default_id),
                 new_product_types=self._new_product_types(draft, categories, default_id),
             )
@@ -667,7 +636,7 @@ class CheckCommand(BaseCommand):
             if error.reason != TYPE_TAKEN_REASON:
                 raise
             # Чек не записан. Возвращаем на стадию типов: чинить надо именно
-            # тип, а не счёт, о котором пользователя только что спросили.
+            # тип, из-за которого отказали.
             await self.aiogram.set_state(state, States.CHECK_TYPES)
             await self.ask(
                 chat_id=chat_id,
@@ -679,7 +648,7 @@ class CheckCommand(BaseCommand):
 
         await self.aiogram.send_message(
             chat_id,
-            CheckFormatter.saved(draft, count=len(records), source_title=source.title),
+            CheckFormatter.saved(draft, count=len(records)),
         )
         await self._bump_saved(state)
         await self.show_next(chat_id=chat_id, state=state, spreadsheet=spreadsheet)
@@ -803,8 +772,6 @@ class CheckCommand(BaseCommand):
             await self._show_types(chat_id, state, draft, categories)
         elif current == States.CHECK_CATEGORIES.state:
             await self._show_categories(chat_id, state, draft)
-        elif current == States.CHECK_SOURCE.state:
-            await self._ask_source(chat_id, state, draft)
 
     # --- Кнопки ----------------------------------------------------------
 
@@ -813,8 +780,7 @@ class CheckCommand(BaseCommand):
         """Клавиатура блока: переход, судьба чека и выход.
 
         `stage` — метка стадии для кнопки «Готово»; `None` означает, что
-        переходить некуда: на счёте следующий шаг делает ответ пользователя, а
-        у неразобранного чека следующего шага нет вовсе.
+        переходить некуда: у неразобранного чека следующего шага нет вовсе.
 
         «Отложить» и «Удалить» стоят рядом одним рядом и есть на каждом блоке
         ветки: заметить «этот чек лишний» можно на любой стадии, а не только на

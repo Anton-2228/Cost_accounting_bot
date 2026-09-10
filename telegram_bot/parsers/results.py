@@ -26,21 +26,6 @@ class ParsedRecord(BaseModel):
     category_id: int
     category_title: str
     category_is_income: bool
-    source_id: int
-    source_title: str
-    notes: str
-
-
-class ParsedTransfer(BaseModel):
-    """Разобранная строка перевода."""
-
-    model_config = ConfigDict(frozen=True)
-
-    amount: Decimal
-    from_source_id: int
-    from_source_title: str
-    to_source_id: int
-    to_source_title: str
     notes: str
 
 
@@ -61,9 +46,9 @@ class ParsedCheckEdit(BaseModel):
 class ParseError(Exception):
     """Ввод разобрать не удалось; текст уже готов для пользователя.
 
-    Исключение, а не возвращаемое значение: разбор идёт по шагам (сумма,
-    категория, счёт, валюта), и каждый шаг иначе пришлось бы оборачивать
-    проверкой результата предыдущего.
+    Исключение, а не возвращаемое значение: разбор идёт по шагам (валюта,
+    сумма, категория), и каждый шаг иначе пришлось бы оборачивать проверкой
+    результата предыдущего.
     """
 
     def __init__(self, message: str) -> None:
@@ -71,14 +56,3 @@ class ParseError(Exception):
         super().__init__(message)
 
 
-class NotANumberError(ParseError):
-    """Слово вообще не число — в отличие от числа, которое не подошло.
-
-    Разница нужна одному месту: в `/add` первое слово может быть и суммой, и
-    валютой, и на нераспознанном слове разбор обязан назвать обе развилки. А
-    «сумма должна быть больше нуля» — уже про настоящее число, и предлагать
-    там список валют значило бы уводить от причины.
-
-    Подкласс, а не отдельный тип: все, кто ловит :class:`ParseError`, ловят и
-    эту ошибку и остаются в неведении о различии.
-    """

@@ -45,7 +45,7 @@ class SheetSyncTaskORM(PkMixin, Base):
     оставляют одну строку, и лист перерисовывается один раз, а не десять.
 
     ``UNIQUE NULLS NOT DISTINCT`` обязателен и требует PostgreSQL 15+. У листов
-    `CATEGORIES`, `BILLS` и `STRUCTURE` периода нет, то есть `period_id IS NULL`;
+    `CATEGORIES` и `STRUCTURE` периода нет, то есть `period_id IS NULL`;
     по умолчанию Postgres считает NULL-ы различными, и схлопывание для них
     просто не сработало бы — задачи копились бы без предела.
     """
@@ -74,11 +74,11 @@ class SheetSyncTaskORM(PkMixin, Base):
             "(target IN ('OPERATIONS', 'STATISTICS', 'CHECKS')) = (period_id IS NOT NULL)",
             name="period_matches_target",
         ),
-        # Читать обратно можно только справочники: лист операций и статистика
-        # целиком производны от БД. Вместе с ограничением выше это делает
-        # «импорт листа операций» и «импорт с периодом» невыразимыми.
+        # Читать обратно можно только справочник категорий: лист операций и
+        # статистика целиком производны от БД. Вместе с ограничением выше это
+        # делает «импорт листа операций» и «импорт с периодом» невыразимыми.
         CheckConstraint(
-            "kind <> 'IMPORT' OR target IN ('CATEGORIES', 'BILLS')",
+            "kind <> 'IMPORT' OR target = 'CATEGORIES'",
             name="import_target",
         ),
         # Выборка воркером: задачи, у которых подошёл срок и истёк захват.

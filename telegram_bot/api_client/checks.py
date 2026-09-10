@@ -66,7 +66,6 @@ class ChecksClient:
         spreadsheet_id: int,
         *,
         check_id: int,
-        source_id: int,
         items: Sequence[CommitItem],
         new_product_types: Sequence[NewProductType] = (),
     ) -> list[Record]:
@@ -80,7 +79,6 @@ class ChecksClient:
             f"/spreadsheets/{spreadsheet_id}/checks/commit",
             body={
                 "check_id": check_id,
-                "source_id": source_id,
                 "items": [
                     {
                         "product_name": item.product_name,

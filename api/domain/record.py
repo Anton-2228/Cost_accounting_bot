@@ -18,9 +18,8 @@ class Record(BaseModel):
     отрицательное значение от него не может «перевернуть» операцию, как это
     происходило раньше.
 
-    `currency` — валюта самой суммы, а не счёта. Хранится исходная: приведение
-    к валюте счёта (для остатка) и к валюте статистики зависит от курса на
-    :attr:`added_at` и считается на лету.
+    `currency` — валюта самой суммы. Хранится исходная: приведение к валюте
+    статистики зависит от курса на :attr:`added_at` и считается на лету.
     """
 
     model_config = ConfigDict(from_attributes=True)
@@ -29,7 +28,6 @@ class Record(BaseModel):
     spreadsheet_id: int
     period_id: int
     category_id: int
-    source_id: int
     amount: SignedMoneyDecimal
     currency: Currency
     added_at: date

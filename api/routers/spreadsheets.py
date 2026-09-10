@@ -11,8 +11,6 @@ from api.requests.spreadsheets.set_google_id_request import SetGoogleIdRequest
 from api.responses.categories.category_response import CategoryResponse
 from api.responses.common.data_response import DataResponse
 from api.responses.common.items_response import ItemsResponse
-from api.responses.sources.source_balance_response import SourceBalanceResponse
-from api.responses.sources.source_response import SourceResponse
 from api.responses.spreadsheets.spreadsheet_access_response import SpreadsheetAccessResponse
 from api.responses.spreadsheets.spreadsheet_response import SpreadsheetResponse
 from api.services.spreadsheet_service import SpreadsheetService
@@ -111,41 +109,6 @@ async def list_categories(
     return ItemsResponse(items=[CategoryResponse.model_validate(item) for item in categories])
 
 
-@router.get("/{spreadsheet_id}/sources", response_model=ItemsResponse[SourceResponse])
-async def list_sources(
-    spreadsheet_id: int,
-    only_active: bool = False,
-    include_deleted: bool = False,
-    service: SpreadsheetService = Depends(get_spreadsheet_service),
-) -> ItemsResponse[SourceResponse]:
-    """Счета документа. Параметры — как у категорий."""
-    sources = await service.list_sources(
-        spreadsheet_id,
-        only_active=only_active,
-        include_deleted=include_deleted,
-    )
-    return ItemsResponse(items=[SourceResponse.model_validate(item) for item in sources])
-
-
-@router.get(
-    "/{spreadsheet_id}/balances",
-    response_model=ItemsResponse[SourceBalanceResponse],
-)
-async def list_balances(
-    spreadsheet_id: int,
-    only_active: bool = False,
-    service: SpreadsheetService = Depends(get_spreadsheet_service),
-) -> ItemsResponse[SourceBalanceResponse]:
-    """Текущие балансы счетов.
-
-    Баланс не хранится, а считается из начального остатка, операций и переводов:
-    потерянная правка не может разойтись с реестром навсегда, как это было с
-    колонкой `current_balance`.
-    """
-    balances = await service.list_balances(spreadsheet_id, only_active=only_active)
-    return ItemsResponse(items=[SourceBalanceResponse.model_validate(item) for item in balances])
-
-
 @router.get(
     "/{spreadsheet_id}/accesses",
     response_model=ItemsResponse[SpreadsheetAccessResponse],
@@ -186,7 +149,7 @@ async def request_import(
     spreadsheet_id: int,
     service: SpreadsheetService = Depends(get_spreadsheet_service),
 ) -> None:
-    """Просит вчитать правки листов `Categories` и `Bills` (команда `/sync`).
+    """Просит вчитать правки листа `Categories` (команда `/sync`).
 
     Ответ 202, а не 200: работа только поставлена в очередь. Результат приедет
     асинхронно — ошибка разбора попадёт в уведомления.

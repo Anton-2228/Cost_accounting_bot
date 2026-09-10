@@ -14,10 +14,8 @@ from telegram_bot.parsers.record_parser import RecordParser
 from telegram_bot.parsers.results import (
     ParsedCheckEdit,
     ParsedRecord,
-    ParsedTransfer,
     ParseError,
 )
-from telegram_bot.parsers.transfer_parser import TransferParser
 
 __all__ = [
     "AmountParser",
@@ -27,7 +25,5 @@ __all__ = [
     "ParseError",
     "ParsedCheckEdit",
     "ParsedRecord",
-    "ParsedTransfer",
     "RecordParser",
-    "TransferParser",
 ]

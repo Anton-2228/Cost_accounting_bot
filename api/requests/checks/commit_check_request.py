@@ -23,6 +23,5 @@ class CommitCheckRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     check_id: int = Field(gt=0)
-    source_id: int = Field(gt=0)
     items: list[CheckItemRequest] = Field(min_length=1)
     new_product_types: list[ProductTypeAssignmentRequest] = []

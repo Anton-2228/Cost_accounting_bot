@@ -24,7 +24,6 @@ from api.repositories.check_repository import CheckRepository
 from api.repositories.period_repository import PeriodRepository
 from api.repositories.record_repository import RecordRepository
 from api.repositories.sheet_sync_task_repository import SheetSyncTaskRepository, TaskKey
-from api.repositories.source_repository import SourceRepository
 from api.repositories.spreadsheet_repository import SpreadsheetRepository
 from api.services._periods import ensure_current_period, today_for
 from api.services.base import BaseSpreadsheetService
@@ -79,7 +78,6 @@ class CheckService(BaseSpreadsheetService):
         *,
         periods: PeriodRepository,
         categories: CategoryRepository,
-        sources: SourceRepository,
         records: RecordRepository,
         cashed_records: CashedRecordRepository,
         checks: CheckRepository,
@@ -88,7 +86,6 @@ class CheckService(BaseSpreadsheetService):
         super().__init__(session, spreadsheets)
         self._periods = periods
         self._categories = categories
-        self._sources = sources
         self._records = records
         self._cashed_records = cashed_records
         self._checks = checks
@@ -211,7 +208,6 @@ class CheckService(BaseSpreadsheetService):
         spreadsheet_id: int,
         *,
         check_id: int,
-        source_id: int,
         items: Sequence[CheckItem],
         new_product_types: Sequence[ProductTypeAssignment] = (),
     ) -> list[Record]:
@@ -234,8 +230,6 @@ class CheckService(BaseSpreadsheetService):
                 "Чек уже разобран",
                 details={"reason": ALREADY_PROCESSED_REASON},
             )
-        if await self._sources.get_for_spreadsheet(source_id, spreadsheet_id) is None:
-            raise NotFoundError("source")
 
         # Все категории документа, а не только активные: неактивная категория
         # скрыта из подсказок, но продолжает существовать, и позиция чека,
@@ -267,7 +261,6 @@ class CheckService(BaseSpreadsheetService):
                         spreadsheet_id=spreadsheet_id,
                         period_id=period.id,
                         category_id=item.category_id,
-                        source_id=source_id,
                         amount=signed,
                         currency=currency,
                         added_at=today,
@@ -301,7 +294,6 @@ class CheckService(BaseSpreadsheetService):
             (spreadsheet_id, SyncTaskKind.REDRAW, SheetTarget.OPERATIONS, period.id),
             (spreadsheet_id, SyncTaskKind.REDRAW, SheetTarget.STATISTICS, period.id),
             (spreadsheet_id, SyncTaskKind.REDRAW, SheetTarget.CHECKS, period.id),
-            (spreadsheet_id, SyncTaskKind.REDRAW, SheetTarget.BILLS, None),
         ]
         if new_product_types:
             keys.append((spreadsheet_id, SyncTaskKind.REDRAW, SheetTarget.CATEGORIES, None))

@@ -45,7 +45,6 @@ _CREATE_TABLE_STATES = (
 _CHECK_STATES = (
     States.CHECK_TYPES,
     States.CHECK_CATEGORIES,
-    States.CHECK_SOURCE,
 )
 
 #: Все состояния диалогов разом. Список нужен трижды — `/start` как выходу,
@@ -95,8 +94,6 @@ _BUTTON_PREFIXES = tuple(f"{name}:" for name in _BUTTON_COMMANDS)
 _ARGUMENT_COMMANDS = (
     CommandName.ADD,
     CommandName.DEL,
-    CommandName.ADD_TRANS,
-    CommandName.DEL_TRANS,
 )
 
 #: Меню команд Telegram. Здесь только то, что действительно зарегистрировано:
@@ -122,8 +119,6 @@ _MENU = [
     BotCommand(command=CommandName.MENU, description="Меню"),
     BotCommand(command=CommandName.ADD, description="Добавить операцию"),
     BotCommand(command=CommandName.DEL, description="Удалить операцию"),
-    BotCommand(command=CommandName.ADD_TRANS, description="Перевод между счетами"),
-    BotCommand(command=CommandName.DEL_TRANS, description="Удалить перевод"),
     BotCommand(command=CommandName.CHECK, description="Разобрать чек"),
     BotCommand(command=CommandName.HELP, description="Справка"),
 ]

@@ -12,7 +12,6 @@ from api.exceptions.base import ConflictError, NotFoundError
 from api.repositories.category_repository import CategoryRepository
 from api.repositories.period_repository import PeriodRepository
 from api.repositories.sheet_sync_task_repository import SheetSyncTaskRepository
-from api.repositories.source_repository import SourceRepository
 from api.repositories.spreadsheet_access_repository import SpreadsheetAccessRepository
 from api.repositories.user_notification_repository import UserNotificationRepository
 from api.repositories.user_repository import UserRepository
@@ -108,7 +107,7 @@ async def test_set_google_id_notifies_and_redraws(
         task.target
         for task in await SheetSyncTaskRepository(session).list_by_spreadsheet(spreadsheet.id)
     }
-    assert {SheetTarget.CATEGORIES, SheetTarget.BILLS, SheetTarget.OPERATIONS} <= targets
+    assert {SheetTarget.CATEGORIES, SheetTarget.OPERATIONS} <= targets
 
 
 async def test_set_google_id_is_idempotent_but_rejects_another_document(
@@ -203,7 +202,6 @@ async def test_request_import_asks_for_both_sheets(
     tasks = await SheetSyncTaskRepository(session).list_by_spreadsheet(spreadsheet.id)
     assert {(task.kind, task.target) for task in tasks} == {
         (SyncTaskKind.IMPORT, SheetTarget.CATEGORIES),
-        (SyncTaskKind.IMPORT, SheetTarget.BILLS),
     }
 
 
@@ -309,55 +307,29 @@ async def test_get_by_telegram_id_of_unknown_user(
         await spreadsheet_service.get_by_telegram_id(999_999)
 
 
-async def test_deleted_catalogues_are_available_on_demand(
+async def test_deleted_categories_are_available_on_demand(
     session: AsyncSession,
     spreadsheet_service: SpreadsheetService,
 ) -> None:
-    """Удалённые категории и счета отдаются по запросу.
+    """Удалённые категории отдаются по запросу.
 
     Удаление мягкое, а операции удалённой категории остаются в реестре навсегда.
-    Без этого у архивного листа неоткуда взять название в колонках `Category` и
-    `Source`: осталась бы пустая ячейка у операции, которая точно была.
+    Без этого у архивного листа неоткуда взять название в колонке `Category`:
+    осталась бы пустая ячейка у операции, которая точно была.
     """
     spreadsheet = await factories.create_spreadsheet(session, ready=True)
     category = await factories.create_category(session, spreadsheet, title="Былое")
-    source = await factories.create_source(session, spreadsheet, title="Закрытый")
     await session.commit()
-    assert spreadsheet.id is not None and category.id is not None and source.id is not None
+    assert spreadsheet.id is not None and category.id is not None
 
     moment = now_in_timezone(spreadsheet.timezone)
     assert await CategoryRepository(session).soft_delete(category.id, at=moment)
-    assert await SourceRepository(session).soft_delete(source.id, at=moment)
     await session.commit()
 
     assert await spreadsheet_service.list_categories(spreadsheet.id) == []
-    assert await spreadsheet_service.list_sources(spreadsheet.id) == []
 
     categories = await spreadsheet_service.list_categories(
         spreadsheet.id, include_deleted=True
     )
-    sources = await spreadsheet_service.list_sources(spreadsheet.id, include_deleted=True)
     assert [item.title for item in categories] == ["Былое"]
-    assert [item.title for item in sources] == ["Закрытый"]
 
-
-async def test_balances_ignore_deleted_sources(
-    session: AsyncSession,
-    spreadsheet_service: SpreadsheetService,
-) -> None:
-    """А вот в балансах удалённого счёта нет: счёта больше не существует.
-
-    Название для архива — это история, а баланс — текущее состояние, и
-    показывать остаток закрытого счёта значило бы предлагать им пользоваться.
-    """
-    spreadsheet = await factories.create_spreadsheet(session, ready=True)
-    source = await factories.create_source(session, spreadsheet, title="Закрытый")
-    await session.commit()
-    assert spreadsheet.id is not None and source.id is not None
-
-    assert await SourceRepository(session).soft_delete(
-        source.id, at=now_in_timezone(spreadsheet.timezone)
-    )
-    await session.commit()
-
-    assert await spreadsheet_service.list_balances(spreadsheet.id) == []

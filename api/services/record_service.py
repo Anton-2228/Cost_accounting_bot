@@ -18,7 +18,6 @@ from api.repositories.check_repository import CheckRepository
 from api.repositories.period_repository import PeriodRepository
 from api.repositories.record_repository import RecordRepository
 from api.repositories.sheet_sync_task_repository import SheetSyncTaskRepository, TaskKey
-from api.repositories.source_repository import SourceRepository
 from api.repositories.spreadsheet_repository import SpreadsheetRepository
 from api.services._periods import assert_open, ensure_current_period, resolve_period, today_for
 from api.services.base import BaseSpreadsheetService
@@ -36,7 +35,6 @@ class RecordService(BaseSpreadsheetService):
         *,
         periods: PeriodRepository,
         categories: CategoryRepository,
-        sources: SourceRepository,
         records: RecordRepository,
         cashed_records: CashedRecordRepository,
         checks: CheckRepository,
@@ -45,7 +43,6 @@ class RecordService(BaseSpreadsheetService):
         super().__init__(session, spreadsheets)
         self._periods = periods
         self._categories = categories
-        self._sources = sources
         self._records = records
         self._cashed_records = cashed_records
         self._checks = checks
@@ -71,7 +68,6 @@ class RecordService(BaseSpreadsheetService):
         spreadsheet_id: int,
         *,
         category_id: int,
-        source_id: int,
         amount: Decimal,
         currency: Currency,
         notes: str = "",
@@ -84,11 +80,10 @@ class RecordService(BaseSpreadsheetService):
         модуль. Прежде знак приходил вместе с суммой, и расход с минусом
         превращался в доход.
 
-        Валюта сохраняется как есть и **не сверяется** с валютой счёта:
-        расхождение — это не ошибка, а обычное дело, ради которого всё и
-        затевалось. Курс здесь не спрашивается: он понадобится при подсчёте
-        остатка, и тянуть его в момент записи значило бы поставить `/add` в
-        зависимость от доступности стороннего сайта.
+        Валюта сохраняется как есть. Курс здесь не спрашивается: он
+        понадобится только листу статистики, и тянуть его в момент записи
+        значило бы поставить `/add` в зависимость от доступности стороннего
+        сайта.
 
         Период под сегодняшнюю дату создаётся здесь же, если его ещё нет:
         ждать фонового ролловера нельзя, иначе первая операция после простоя
@@ -101,9 +96,6 @@ class RecordService(BaseSpreadsheetService):
         category = await self._categories.get_for_spreadsheet(category_id, spreadsheet_id)
         if category is None:
             raise NotFoundError("category")
-        source = await self._sources.get_for_spreadsheet(source_id, spreadsheet_id)
-        if source is None:
-            raise NotFoundError("source")
 
         today = today_for(spreadsheet)
         period = await ensure_current_period(self._periods, spreadsheet, today)
@@ -115,7 +107,6 @@ class RecordService(BaseSpreadsheetService):
                 spreadsheet_id=spreadsheet_id,
                 period_id=period.id,
                 category_id=category_id,
-                source_id=source_id,
                 amount=signed,
                 currency=currency,
                 added_at=today,
@@ -132,8 +123,8 @@ class RecordService(BaseSpreadsheetService):
     async def delete(self, spreadsheet_id: int, record_id: int | None = None) -> Record:
         """Удаляет операцию (по id или последнюю в текущем периоде).
 
-        Удаление мягкое: разобраться в спорном балансе после ошибочного `/del`
-        иначе нечем. Баланс счёта пересчитается сам — он не хранится.
+        Удаление мягкое: разобраться в реестре после ошибочного `/del` иначе
+        нечем.
 
         Вместе с последней живой операцией чека умирает и сам чек. Иначе он
         оставался бы навсегда: разобранный, он не вернётся в очередь `/check`,
@@ -202,11 +193,10 @@ class RecordService(BaseSpreadsheetService):
 def _affected_sheets(spreadsheet_id: int, period_id: int) -> list[TaskKey]:
     """Листы, устаревающие от любой правки операции.
 
-    Операция попадает в реестр периода, в дневную статистику своей категории и
-    меняет баланс счёта — то есть три листа сразу.
+    Операция попадает в реестр периода и в дневную статистику своей
+    категории — то есть в два листа сразу.
     """
     return [
         (spreadsheet_id, SyncTaskKind.REDRAW, SheetTarget.OPERATIONS, period_id),
         (spreadsheet_id, SyncTaskKind.REDRAW, SheetTarget.STATISTICS, period_id),
-        (spreadsheet_id, SyncTaskKind.REDRAW, SheetTarget.BILLS, None),
     ]

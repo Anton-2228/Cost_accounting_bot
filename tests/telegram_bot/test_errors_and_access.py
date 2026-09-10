@@ -23,9 +23,7 @@ class TestNotFound:
         [
             ("spreadsheet", "Сначала создайте таблицу"),
             ("category", "категории"),
-            ("source", "счёта"),
             ("record", "Операции с таким id"),
-            ("transfer", "Перевода с таким id"),
         ],
     )
     def test_known_resources(self, resource: str, fragment: str) -> None:

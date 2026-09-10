@@ -8,8 +8,6 @@ from api.core import constants, messages
 from api.core.logging import get_logger
 from api.core.period import now_in_timezone, period_bounds
 from api.domain.category import Category
-from api.domain.source import Source
-from api.domain.source_balance import SourceBalance
 from api.domain.spreadsheet import Spreadsheet
 from api.domain.spreadsheet_access import SpreadsheetAccess
 from api.domain.user import User
@@ -18,14 +16,12 @@ from api.exceptions.base import ConflictError, NotFoundError
 from api.repositories.category_repository import CategoryRepository
 from api.repositories.period_repository import PeriodRepository
 from api.repositories.sheet_sync_task_repository import SheetSyncTaskRepository, TaskKey
-from api.repositories.source_repository import SourceRepository
 from api.repositories.spreadsheet_access_repository import SpreadsheetAccessRepository
 from api.repositories.spreadsheet_repository import SpreadsheetRepository
 from api.repositories.user_notification_repository import UserNotificationRepository
 from api.repositories.user_repository import UserRepository
 from api.services._periods import today_for
 from api.services.base import BaseSpreadsheetService
-from api.services.exchange_rate_service import ExchangeRateService
 
 logger = get_logger(__name__)
 
@@ -41,21 +37,17 @@ class SpreadsheetService(BaseSpreadsheetService):
         users: UserRepository,
         periods: PeriodRepository,
         categories: CategoryRepository,
-        sources: SourceRepository,
         accesses: SpreadsheetAccessRepository,
         tasks: SheetSyncTaskRepository,
         notifications: UserNotificationRepository,
-        rates: ExchangeRateService,
     ) -> None:
         super().__init__(session, spreadsheets)
         self._users = users
         self._periods = periods
         self._categories = categories
-        self._sources = sources
         self._accesses = accesses
         self._tasks = tasks
         self._notifications = notifications
-        self._rates = rates
 
     # --- чтение ---
 
@@ -107,52 +99,6 @@ class SpreadsheetService(BaseSpreadsheetService):
             only_active=only_active,
             include_deleted=include_deleted,
         )
-
-    async def list_sources(
-        self,
-        spreadsheet_id: int,
-        *,
-        only_active: bool = False,
-        include_deleted: bool = False,
-    ) -> list[Source]:
-        """Счета документа.
-
-        `include_deleted` — по той же причине, что и у категорий: колонке
-        `Source` архивного реестра нужно название удалённого счёта.
-        """
-        await self._get_ready(spreadsheet_id)
-        return await self._sources.list_by_spreadsheet(
-            spreadsheet_id,
-            only_active=only_active,
-            include_deleted=include_deleted,
-        )
-
-    async def list_balances(
-        self,
-        spreadsheet_id: int,
-        *,
-        only_active: bool = False,
-    ) -> list[SourceBalance]:
-        """Текущие балансы счетов, каждый в валюте своего счёта.
-
-        Баланс не хранится, а считается из начального остатка, операций и
-        переводов. Прежняя схема держала `current_balance` колонкой, и любая
-        потерянная правка расходилась с реестром навсегда.
-
-        Три шага вместо одного: операция и перевод бывают в чужой валюте, курс
-        нужен на день каждого из них, а тянуть его из SQL нельзя. Поэтому
-        сначала запрос собирает список недостающих курсов, затем они
-        догружаются в кэш, и только потом считается агрегат.
-
-        Порядок обязателен. Пропущенный курс не даёт ошибки в SQL — он даёт
-        `NULL`, который `SUM` молча выбрасывает, и остаток занижается на эту
-        операцию. Если источник курсов недоступен, `ensure` бросает 502: задача
-        перерисовки листа повторится позже, а в таблице до тех пор останутся
-        прежние верные числа.
-        """
-        await self._get_ready(spreadsheet_id)
-        await self._rates.ensure(await self._sources.balance_requirements(spreadsheet_id))
-        return await self._sources.balances(spreadsheet_id, only_active=only_active)
 
     async def list_accesses(self, spreadsheet_id: int) -> list[SpreadsheetAccess]:
         """Все выданные и ожидающие выдачи доступы (служебное, для gsheets)."""
@@ -326,7 +272,7 @@ class SpreadsheetService(BaseSpreadsheetService):
         return access
 
     async def request_import(self, spreadsheet_id: int) -> None:
-        """Просит вчитать правки листов `Categories` и `Bills` (команда `/sync`).
+        """Просит вчитать правки листа `Categories` (команда `/sync`).
 
         Бот не имеет доступа к Google API, поэтому просьба едет в
         `google_sheets_service` единственным доступным каналом — очередью.
@@ -335,7 +281,6 @@ class SpreadsheetService(BaseSpreadsheetService):
         await self._get_ready(spreadsheet_id)
         keys: list[TaskKey] = [
             (spreadsheet_id, SyncTaskKind.IMPORT, SheetTarget.CATEGORIES, None),
-            (spreadsheet_id, SyncTaskKind.IMPORT, SheetTarget.BILLS, None),
         ]
         await self._tasks.enqueue_many(keys)
         await self._commit()
@@ -382,7 +327,6 @@ class SpreadsheetService(BaseSpreadsheetService):
         """
         keys: list[TaskKey] = [
             (spreadsheet_id, SyncTaskKind.REDRAW, SheetTarget.CATEGORIES, None),
-            (spreadsheet_id, SyncTaskKind.REDRAW, SheetTarget.BILLS, None),
         ]
         for period in await self._periods.list_open(spreadsheet_id):
             keys += [

@@ -115,7 +115,6 @@ async def commit_check(
     records = await service.commit_check(
         spreadsheet_id,
         check_id=payload.check_id,
-        source_id=payload.source_id,
         items=[
             CheckItem(
                 product_name=item.product_name,

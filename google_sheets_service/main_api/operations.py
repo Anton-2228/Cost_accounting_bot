@@ -1,18 +1,13 @@
-"""Клиент содержимого реестра: операции и переводы."""
+"""Клиент содержимого реестра: операции периода."""
 
 from __future__ import annotations
 
-from google_sheets_service.main_api.dto import Record, Transfer
+from google_sheets_service.main_api.dto import Record
 from google_sheets_service.main_api.http import ApiHttpClient
 
 
 class OperationsApiClient:
-    """То, что печатается строками листа операций.
-
-    Операции и переводы читаются раздельно, а в реестре идут вперемешку: перевод
-    печатается такой же строкой, просто в колонке `Category` у него подпись
-    «Перевод», а в `Source` — оба счёта.
-    """
+    """То, что печатается строками листа операций."""
 
     def __init__(self, http: ApiHttpClient) -> None:
         self._http = http
@@ -25,10 +20,3 @@ class OperationsApiClient:
         )
         return [Record.from_json(item) for item in items]
 
-    async def list_transfers(self, spreadsheet_id: int, period_id: int) -> list[Transfer]:
-        """Переводы периода."""
-        items = await self._http.get_items(
-            f"/spreadsheets/{spreadsheet_id}/transfers",
-            params={"period_id": period_id},
-        )
-        return [Transfer.from_json(item) for item in items]

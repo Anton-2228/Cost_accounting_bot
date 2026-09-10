@@ -35,7 +35,6 @@ def _catalogue_plan() -> list[SheetPlan]:
     """
     return [
         (constants.CATEGORIES_SHEET_TITLE, layouts.CATEGORIES_LAYOUT, "CATEGORIES", None),
-        (constants.BILLS_SHEET_TITLE, layouts.BILLS_LAYOUT, "BILLS", None),
     ]
 
 

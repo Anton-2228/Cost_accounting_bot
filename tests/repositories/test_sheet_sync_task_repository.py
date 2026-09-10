@@ -64,7 +64,7 @@ async def test_enqueue_moves_requested_at_forward(session: AsyncSession) -> None
 async def test_targets_without_period_also_collapse(session: AsyncSession) -> None:
     """Схлопывание работает и для листов без периода.
 
-    У `CATEGORIES`, `BILLS` и `STRUCTURE` период пуст. По умолчанию PostgreSQL
+    У `CATEGORIES` и `STRUCTURE` период пуст. По умолчанию PostgreSQL
     считает NULL-ы различными, и без `NULLS NOT DISTINCT` уникальный ключ не
     сработал бы — задачи копились бы без предела.
     """
@@ -87,14 +87,14 @@ async def test_different_targets_do_not_collapse(session: AsyncSession) -> None:
     repository = SheetSyncTaskRepository(session)
 
     await repository.enqueue(spreadsheet.id, SheetTarget.CATEGORIES)
-    await repository.enqueue(spreadsheet.id, SheetTarget.BILLS)
+    await repository.enqueue(spreadsheet.id, SheetTarget.STRUCTURE)
     await repository.enqueue(spreadsheet.id, SheetTarget.OPERATIONS, period.id)
     await session.commit()
 
     tasks = await repository.list_by_spreadsheet(spreadsheet.id)
     assert {task.target for task in tasks} == {
         SheetTarget.CATEGORIES,
-        SheetTarget.BILLS,
+        SheetTarget.STRUCTURE,
         SheetTarget.OPERATIONS,
     }
 
@@ -114,7 +114,7 @@ async def test_enqueue_many_tolerates_duplicate_keys(session: AsyncSession) -> N
         [
             (spreadsheet.id, SyncTaskKind.REDRAW, SheetTarget.CATEGORIES, None),
             (spreadsheet.id, SyncTaskKind.REDRAW, SheetTarget.CATEGORIES, None),
-            (spreadsheet.id, SyncTaskKind.REDRAW, SheetTarget.BILLS, None),
+            (spreadsheet.id, SyncTaskKind.REDRAW, SheetTarget.STRUCTURE, None),
         ]
     )
     await session.commit()
@@ -151,7 +151,7 @@ async def test_two_workers_never_get_the_same_task(
         assert spreadsheet.id is not None
         repository = SheetSyncTaskRepository(setup)
         await repository.enqueue(spreadsheet.id, SheetTarget.CATEGORIES)
-        await repository.enqueue(spreadsheet.id, SheetTarget.BILLS)
+        await repository.enqueue(spreadsheet.id, SheetTarget.STRUCTURE)
         await setup.commit()
         spreadsheet_id = spreadsheet.id
 
@@ -315,7 +315,7 @@ async def test_fresh_claim_is_not_stolen(session: AsyncSession) -> None:
     assert spreadsheet.id is not None
     repository = SheetSyncTaskRepository(session)
 
-    await repository.enqueue(spreadsheet.id, SheetTarget.BILLS)
+    await repository.enqueue(spreadsheet.id, SheetTarget.STRUCTURE)
     await session.commit()
     await repository.claim()
     await session.commit()

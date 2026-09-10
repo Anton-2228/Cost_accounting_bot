@@ -30,10 +30,9 @@ logger = get_logger(__name__)
 _TARGET_ORDER = {
     "STRUCTURE": 0,
     "CATEGORIES": 1,
-    "BILLS": 2,
-    "CHECKS": 3,
-    "OPERATIONS": 4,
-    "STATISTICS": 5,
+    "CHECKS": 2,
+    "OPERATIONS": 3,
+    "STATISTICS": 4,
 }
 
 

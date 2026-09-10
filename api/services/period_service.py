@@ -78,8 +78,9 @@ class PeriodService(BaseSpreadsheetService):
         Всё сведено к одной валюте, :data:`api.core.constants.STATISTICS_CURRENCY`:
         складывать динары с евро бессмысленно, а лист статистики именно
         складывает. Операции в других валютах приводятся по курсу на свой день,
-        и курсы для этого сначала догружаются в кэш — порядок тот же и по той же
-        причине, что в :meth:`SpreadsheetService.list_balances`.
+        и курсы для этого сначала догружаются в кэш. Порядок обязателен:
+        пропущенный курс не даёт ошибки в SQL — он даёт `NULL`, который `SUM`
+        молча выбрасывает, и итог занижается ровно на эту операцию.
         """
         spreadsheet = await self._get_ready(spreadsheet_id)
         period = await resolve_period(self._periods, spreadsheet, period_id)

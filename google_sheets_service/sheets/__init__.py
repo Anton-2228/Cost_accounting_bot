@@ -8,7 +8,6 @@ from __future__ import annotations
 
 from google_sheets_service.sheets.layout import Column, SheetLayout, SheetPayload
 from google_sheets_service.sheets.layouts import (
-    BILLS_LAYOUT,
     CATEGORIES_LAYOUT,
     OPERATIONS_LAYOUT,
     operations_sheet_title,
@@ -18,7 +17,6 @@ from google_sheets_service.sheets.layouts import (
 )
 
 __all__ = [
-    "BILLS_LAYOUT",
     "CATEGORIES_LAYOUT",
     "OPERATIONS_LAYOUT",
     "Column",

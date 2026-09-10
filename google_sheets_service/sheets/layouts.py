@@ -1,4 +1,4 @@
-"""Описания четырёх листов документа.
+"""Описания листов документа.
 
 Состав колонок и ширины унаследованы от старой версии дословно: пользователь
 открывает ту же таблицу, что и раньше. Изменились только защиты — они стали
@@ -26,38 +26,11 @@ CATEGORIES_LAYOUT = SheetLayout(
     )
 )
 
-#: Лист счетов. `Current balance` защищён: он вычисляется из операций и
-#: переводов, и правка в нём была бы стёрта следующей же перерисовкой.
-#:
-#: `Currency` стоит перед денежными колонками, которые она и описывает: в ней
-#: задан `Start balance` и в ней же выражен `Current balance`. Заполняется
-#: выпадающим списком — см. `CURRENCY_COLUMN_INDEX` ниже.
-BILLS_LAYOUT = SheetLayout(
-    columns=(
-        Column(header="ID", width=50, protected=True),
-        Column(header="Active", width=100),
-        Column(header="Name", width=200),
-        Column(header="Associations", width=300),
-        Column(header="Currency", width=90),
-        Column(header="Start balance", width=120),
-        Column(header="Current balance", width=120, protected=True),
-    )
-)
-
-#: Позиция колонки `Currency` на листе счетов. Нужна дважды: под выпадающий
-#: список при создании листа и в разборе прочитанных строк на стороне api
-#: (`api.validation`). Вычисляется из раскладки, а не пишется числом, чтобы
-#: вставка колонки не разъехалась с местом, куда вешается список.
-CURRENCY_COLUMN_INDEX = next(
-    index for index, column in enumerate(BILLS_LAYOUT.columns) if column.header == "Currency"
-)
-
 #: Реестр операций периода. Защищён целиком: производен от базы.
 #:
 #: `Currency` идёт сразу за суммой: валюта относится именно к ней, и «500 RSD»
-#: читается только рядом. Это валюта **операции**, а не счёта — они совпадают не
-#: всегда, и приведённой к счёту суммы на листе нет: она зависит от курса и
-#: живёт в `Current balance` листа счетов.
+#: читается только рядом. Приведённой к общей валюте суммы на листе нет: она
+#: зависит от курса и считается только для листа статистики.
 OPERATIONS_LAYOUT = SheetLayout(
     columns=(
         Column(header="ID", width=50),
@@ -68,7 +41,6 @@ OPERATIONS_LAYOUT = SheetLayout(
         Column(header="Category", width=200),
         Column(header="Type", width=150),
         Column(header="Notes", width=200),
-        Column(header="Source", width=150),
         Column(header="Check", width=50),
     ),
     protect_whole_sheet=True,

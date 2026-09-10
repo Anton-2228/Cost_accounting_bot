@@ -7,7 +7,6 @@ from tests.google_sheets_service.factories import (
     make_category,
     make_check,
     make_record,
-    make_source,
     make_task,
 )
 from tests.google_sheets_service.sync.conftest import Harness
@@ -64,13 +63,13 @@ async def test_structure_task_needs_no_work_of_its_own(ready_harness: Harness) -
 async def test_document_structure_is_checked_once_per_tick(ready_harness: Harness) -> None:
     """Скелет сверяется один раз на документ, а не на каждую задачу.
 
-    Это чтение из Google, и повторять его для каждого из четырёх листов значило
-    бы вчетверо увеличить расход квоты без единого нового факта.
+    Это чтение из Google, и повторять его для каждого листа значило бы кратно
+    увеличить расход квоты без единого нового факта.
     """
     ready_harness.api.tasks.queue = [
         make_task(task_id=1, target="CATEGORIES"),
-        make_task(task_id=2, target="BILLS"),
-        make_task(task_id=3, target="OPERATIONS", period_id=7),
+        make_task(task_id=2, target="OPERATIONS", period_id=7),
+        make_task(task_id=3, target="STATISTICS", period_id=7),
     ]
 
     await ready_harness.engine.run_once()
@@ -135,7 +134,7 @@ async def test_one_failed_task_does_not_stop_the_others(ready_harness: Harness) 
     ready_harness.sheets.fail_batch_with = GoogleApiError("Слишком много", status_code=429)
     ready_harness.api.tasks.queue = [
         make_task(task_id=1, target="CATEGORIES"),
-        make_task(task_id=2, target="BILLS"),
+        make_task(task_id=2, target="CHECKS", period_id=7),
     ]
 
     report = await ready_harness.engine.run_once()
@@ -179,15 +178,14 @@ async def test_report_survives_unreachable_api(ready_harness: Harness) -> None:
     assert report.failed == 1
 
 
-async def test_operations_sheet_reads_deleted_catalogues(ready_harness: Harness) -> None:
-    """Реестр запрашивает справочники вместе с удалёнными.
+async def test_operations_sheet_reads_deleted_categories(ready_harness: Harness) -> None:
+    """Реестр запрашивает справочник вместе с удалёнными категориями.
 
     Операция удалённой категории остаётся в реестре навсегда, и её названию
     неоткуда взяться иначе.
     """
     ready_harness.api.operations.records = [make_record()]
     ready_harness.api.spreadsheets.categories = [make_category()]
-    ready_harness.api.spreadsheets.sources = [make_source()]
     ready_harness.api.tasks.queue = [make_task(target="OPERATIONS", period_id=7)]
 
     await ready_harness.engine.run_once()

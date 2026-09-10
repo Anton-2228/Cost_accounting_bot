@@ -72,7 +72,6 @@ def ready_harness(harness: Harness) -> Harness:
     harness.api.periods.periods = [make_period()]
     harness.api.sheet_mappings.mappings = [
         make_mapping(mapping_id=1, target="CATEGORIES", google_sheet_id=11, title="Categories"),
-        make_mapping(mapping_id=2, target="BILLS", google_sheet_id=12, title="Bills"),
         make_mapping(
             mapping_id=3,
             target="OPERATIONS",
@@ -98,7 +97,6 @@ def ready_harness(harness: Harness) -> Harness:
     # Ширина сетки — системные колонки плюс запас под формулы пользователя.
     harness.sheets.layout = [
         SheetProperties(sheet_id=11, title="Categories", row_count=200, column_count=17),
-        SheetProperties(sheet_id=12, title="Bills", row_count=200, column_count=16),
         SheetProperties(sheet_id=13, title="2026-08-01", row_count=200, column_count=19),
         SheetProperties(sheet_id=14, title="Stat. 2026-08-01", row_count=200, column_count=43),
         SheetProperties(sheet_id=15, title="Checks 2026-08-01", row_count=200, column_count=12),

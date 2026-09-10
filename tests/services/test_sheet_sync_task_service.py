@@ -52,7 +52,7 @@ async def test_complete_removes_task(
     assert spreadsheet.id is not None
 
     tasks = SheetSyncTaskRepository(session)
-    await tasks.enqueue(spreadsheet.id, SheetTarget.BILLS)
+    await tasks.enqueue(spreadsheet.id, SheetTarget.STRUCTURE)
     await session.commit()
 
     claimed = await sheet_sync_task_service.claim()
@@ -77,7 +77,7 @@ async def test_complete_keeps_task_changed_during_work(
     assert spreadsheet.id is not None
 
     tasks = SheetSyncTaskRepository(session)
-    await tasks.enqueue(spreadsheet.id, SheetTarget.BILLS)
+    await tasks.enqueue(spreadsheet.id, SheetTarget.STRUCTURE)
     await session.commit()
 
     claimed = await sheet_sync_task_service.claim()

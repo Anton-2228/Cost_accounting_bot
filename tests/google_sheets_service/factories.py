@@ -14,11 +14,8 @@ from google_sheets_service.main_api.dto import (
     Period,
     Record,
     SheetMapping,
-    Source,
-    SourceBalance,
     Spreadsheet,
     SyncTask,
-    Transfer,
 )
 
 #: Период по умолчанию: август 2026 целиком. Границы полуинтервальные, поэтому
@@ -101,48 +98,11 @@ def make_category(
     )
 
 
-def make_source(
-    *,
-    source_id: int = 1,
-    status: str = "ACTIVE",
-    title: str = "Карта",
-    associations: list[str] | None = None,
-    currency: str = "RUB",
-    start_balance: str = "1000.00",
-) -> Source:
-    """Счёт."""
-    return Source(
-        id=source_id,
-        status=status,
-        title=title,
-        associations=associations if associations is not None else [title.lower()],
-        currency=currency,
-        start_balance=Decimal(start_balance),
-    )
-
-
-def make_balance(
-    *,
-    source_id: int = 1,
-    title: str = "Карта",
-    start_balance: str = "1000.00",
-    balance: str = "850.50",
-) -> SourceBalance:
-    """Посчитанный баланс счёта."""
-    return SourceBalance(
-        source_id=source_id,
-        title=title,
-        start_balance=Decimal(start_balance),
-        balance=Decimal(balance),
-    )
-
-
 def make_record(
     *,
     record_id: int = 1,
     period_id: int = 7,
     category_id: int = 1,
-    source_id: int = 1,
     amount: str = "-149.50",
     currency: str = "RUB",
     added_at: date = PERIOD_START,
@@ -156,7 +116,6 @@ def make_record(
         id=record_id,
         period_id=period_id,
         category_id=category_id,
-        source_id=source_id,
         amount=Decimal(amount),
         currency=currency,
         added_at=added_at,
@@ -180,29 +139,6 @@ def make_check(
             "items": [{"name": "Молоко 3.2%", "sum": 8990}],
         }}},
     )
-
-
-def make_transfer(
-    *,
-    transfer_id: int = 1,
-    period_id: int = 7,
-    from_source_id: int = 1,
-    to_source_id: int = 2,
-    amount: str = "500.00",
-    added_at: date = PERIOD_START,
-    notes: str = "",
-) -> Transfer:
-    """Перевод между счетами."""
-    return Transfer(
-        id=transfer_id,
-        period_id=period_id,
-        from_source_id=from_source_id,
-        to_source_id=to_source_id,
-        amount=Decimal(amount),
-        added_at=added_at,
-        notes=notes,
-    )
-
 
 def make_total(
     *,

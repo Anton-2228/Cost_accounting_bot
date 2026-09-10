@@ -1,4 +1,4 @@
-"""Разбор и проверка строк листов `Categories` и `Bills`.
+"""Разбор и проверка строк листа `Categories`.
 
 Единственное место в api, где текст ошибки пишется по-русски и предназначен
 пользователю. Так сделано намеренно: сообщение собирается из пользовательских
@@ -10,11 +10,8 @@
 относительно листа (диапазон начинается со второй строки, а счёт идёт с
 первой) — пользователи привыкли к этим номерам, поэтому смещение сохранено.
 
-Отличий от старой версии два, оба чинят баги:
+Отличия от старой версии чинят баги:
 
-* `Balance` принимает дробное значение. Прежний текст требовал целое число, но
-  проверка стояла `float(...)`, то есть копейки проходили, а сообщение врало.
-  Деньги везде `Decimal`, ограничивать их целыми незачем.
 * Проверяется, что ID из строки существует в этом документе. Прежний код брал
   `by_id[int(row[0])]` без проверки, и опечатка в ID или строка, скопированная
   из чужой таблицы, роняли весь импорт с `KeyError`.
@@ -27,33 +24,16 @@
 from __future__ import annotations
 
 from collections.abc import Sequence
-from decimal import Decimal, InvalidOperation
 
 from api.core.text import normalize_terms
-from api.enums import Currency
 
 #: Колонки листа `Categories`: ID · Active · Income · Cost · Name · Associations · Product types
 CATEGORY_WIDTH = 7
-#: Колонки листа `Bills`:
-#: ID · Active · Name · Associations · Currency · Start balance · Current balance
-SOURCE_WIDTH = 7
-
-#: Позиция колонки `Currency` в строке листа `Bills`. Ниже по индексам едут
-#: `Start balance` и `Current balance`.
-SOURCE_CURRENCY_INDEX = 4
 
 #: Сколько полей после ID означают «строку очистили» (пустые ⇒ удаление).
-#: У источников последняя колонка (`Current balance`) не в счёт: её пишет
-#: перерисовка, пользователь её не заполняет.
 CATEGORY_MEANINGFUL_FIELDS = 6
-SOURCE_MEANINGFUL_FIELDS = 5
 
 _FLAGS = ("0", "1")
-
-#: Разделители разрядов, которые Google подставляет в отформатированное число.
-#: Второй — неразрывный пробел (U+00A0), именно он приходит из таблиц с русской
-#: локалью, и на глаз от обычного не отличается.
-_THOUSAND_SEPARATORS = (" ", " ")
 
 
 def pad(rows: Sequence[Sequence[str]], width: int) -> list[list[str]]:
@@ -101,45 +81,6 @@ def parse_aliases(cell: str, title: str) -> list[str]:
 def parse_product_types(cell: str) -> list[str]:
     """Типы товаров: перечисление через запятую."""
     return normalize_terms(cell.split(","))
-
-
-def parse_currency(cell: str) -> Currency | None:
-    """Читает валюту счёта. `None` — ячейка пуста или содержит не валюту.
-
-    Значения по умолчанию нет намеренно. Валюта задаётся выпадающим списком, и
-    пустая ячейка означает, что счёт просто не заполнили; подставить сюда рубль
-    значило бы завести счёт в валюте, которую пользователь не выбирал, и
-    молча пересчитать по ней все его операции.
-
-    Регистр не важен — `eur` из буфера обмена валиден так же, как `EUR` из
-    списка.
-    """
-    value = cell.strip().upper()
-    if value == "":
-        return None
-    try:
-        return Currency(value)
-    except ValueError:
-        return None
-
-
-def parse_money(cell: str) -> Decimal | None:
-    """Читает денежную сумму. `None`, если ячейка не похожа на число.
-
-    Принимает и запятую в роли десятичного разделителя, и пробелы-разделители
-    разрядов: Google отдаёт значение так, как его отформатировала таблица
-    пользователя, а не так, как удобно `Decimal`.
-    """
-    value = cell.strip()
-    for separator in _THOUSAND_SEPARATORS:
-        value = value.replace(separator, "")
-    value = value.replace(",", ".")
-    if value == "":
-        return None
-    try:
-        return Decimal(value)
-    except InvalidOperation:
-        return None
 
 
 def validate_category_rows(
@@ -200,56 +141,6 @@ def validate_category_rows(
         return "В категориях один association используется несколько раз"
     if _has_duplicates(product_types):
         return "В категориях один product type используется несколько раз"
-    return None
-
-
-def validate_source_rows(
-    rows: Sequence[Sequence[str]],
-    known_ids: set[int],
-) -> str | None:
-    """Проверяет лист `Bills`. `None` — можно писать в БД."""
-    if all(is_blank(row) for row in rows):
-        return "Добавьте хотя бы один источник"
-
-    ids: list[str] = []
-    titles: list[str] = []
-    aliases: list[str] = []
-
-    for number, row in enumerate(rows, start=1):
-        if is_blank(row):
-            continue
-        if is_cleared(row, SOURCE_MEANINGFUL_FIELDS):
-            error = _validate_known_id(row[0], known_ids, "источниках", number)
-            if error is not None:
-                return error
-            ids.append(row[0].strip())
-            continue
-
-        error = _validate_known_id(row[0], known_ids, "источниках", number, optional=True)
-        if error is not None:
-            return error
-        if row[0].strip() != "":
-            ids.append(row[0].strip())
-        if row[1] not in _FLAGS:
-            return f"В источниках в {number} строке Active странный"
-        if row[2].strip() == "":
-            return f"В источниках в {number} строке Name пустой"
-        if len(row[2].split()) > 1:
-            return f"В источниках в {number} строке Name записан не одним словом"
-        if parse_currency(row[SOURCE_CURRENCY_INDEX]) is None:
-            return f"В источниках в {number} строке Currency странная"
-        if parse_money(row[SOURCE_CURRENCY_INDEX + 1]) is None:
-            return f"В источниках в {number} строке Balance не число"
-
-        titles.append(row[2].strip().lower())
-        aliases += parse_aliases(row[3], row[2])
-
-    if _has_duplicates(ids):
-        return "В источниках один ID используется несколько раз"
-    if _has_duplicates(titles):
-        return "В источниках один name используется несколько раз"
-    if _has_duplicates(aliases):
-        return "В источниках один association используется несколько раз"
     return None
 
 

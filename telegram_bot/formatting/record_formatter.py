@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from telegram_bot.api_client.models import Category, Record, Source
+from telegram_bot.api_client.models import Category, Record
 from telegram_bot.formatting.money_formatter import MoneyFormatter
 from telegram_bot.parsers.results import ParsedRecord
 
@@ -21,7 +21,6 @@ class RecordFormatter:
         lines = [
             f"Записал {kind}: {MoneyFormatter.format(record.amount, record.currency)}",
             f"Категория: {parsed.category_title}",
-            f"Счёт: {parsed.source_title}",
         ]
         if parsed.notes:
             lines.append(f"Пометка: {parsed.notes}")
@@ -30,24 +29,17 @@ class RecordFormatter:
         return "\n".join(lines)
 
     @staticmethod
-    def deleted(
-        record: Record,
-        *,
-        categories: list[Category],
-        sources: list[Source],
-    ) -> str:
+    def deleted(record: Record, *, categories: list[Category]) -> str:
         """Подтверждение удаления.
 
-        Названия ищутся по спискам, а не запрашиваются поштучно: справочники и
-        так уже загружены, а лишний круг по сети на каждое удаление ничего бы
-        не добавил.
+        Название ищется по списку, а не запрашивается поштучно: справочник и
+        так уже загружен, а лишний круг по сети на каждое удаление ничего бы не
+        добавил.
         """
         category = next((item.title for item in categories if item.id == record.category_id), "")
-        source = next((item.title for item in sources if item.id == record.source_id), "")
         lines = [
             f"Удалил операцию: {MoneyFormatter.format(record.amount, record.currency)}",
             f"Категория: {category}" if category else "",
-            f"Счёт: {source}" if source else "",
             f"id: {record.id}",
         ]
         return "\n".join(line for line in lines if line)

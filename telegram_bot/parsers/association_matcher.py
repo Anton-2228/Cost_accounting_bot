@@ -1,24 +1,23 @@
-"""Подбор категории и счёта по псевдониму."""
+"""Подбор категории по псевдониму."""
 
 from __future__ import annotations
 
-from telegram_bot.api_client.models import Category, Source
+from telegram_bot.api_client.models import Category
 
 _MAX_HINTS = 15
 
 
 class AssociationMatcher:
-    """Сопоставляет слово пользователя с категорией или счётом.
+    """Сопоставляет слово пользователя с категорией.
 
-    Подбор остаётся в боте намеренно: только у него есть полные списки — они же
-    нужны, чтобы в ответ на опечатку показать, из чего выбирать.
+    Подбор остаётся в боте намеренно: только у него есть полный список — он же
+    нужен, чтобы в ответ на опечатку показать, из чего выбирать.
 
     Первое совпадение и есть ответ. Дублей не бывает: в схеме
-    `category_associations (spreadsheet_id, alias)` и `source_associations` —
-    UNIQUE с `CHECK alias = lower(alias)`, а пространства имён у категорий и
-    счетов раздельные. Старая версия продолжала перебор после совпадения и
-    молча брала последний дубль, то есть при коллизии писала операцию не в ту
-    категорию, ничего не сообщая.
+    `category_associations (spreadsheet_id, alias)` — UNIQUE с
+    `CHECK alias = lower(alias)`. Старая версия продолжала перебор после
+    совпадения и молча брала последний дубль, то есть при коллизии писала
+    операцию не в ту категорию, ничего не сообщая.
     """
 
     @staticmethod
@@ -28,15 +27,6 @@ class AssociationMatcher:
         for category in categories:
             if needle in category.associations:
                 return category
-        return None
-
-    @staticmethod
-    def source(alias: str, sources: list[Source]) -> Source | None:
-        """Счёт по псевдониму или `None`."""
-        needle = alias.strip().lower()
-        for source in sources:
-            if needle in source.associations:
-                return source
         return None
 
     @staticmethod

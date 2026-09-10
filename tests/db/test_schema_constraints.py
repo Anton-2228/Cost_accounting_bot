@@ -21,7 +21,6 @@ from api.orm.category_association import CategoryAssociationORM
 from api.orm.record import RecordORM
 from api.orm.sheet_sync_task import SheetSyncTaskORM
 from api.orm.spreadsheet import SpreadsheetORM
-from api.orm.transfer import TransferORM
 from api.orm.user import UserORM
 from tests import factories
 
@@ -43,7 +42,6 @@ async def test_record_cannot_reference_foreign_category(session: AsyncSession) -
     mine = await factories.create_spreadsheet(session)
     other = await factories.create_spreadsheet(session)
     my_period = await factories.create_period(session, mine)
-    my_source = await factories.create_source(session, mine)
     foreign_category = await factories.create_category(session, other)
     await session.commit()
 
@@ -52,7 +50,6 @@ async def test_record_cannot_reference_foreign_category(session: AsyncSession) -
             spreadsheet_id=mine.id,
             period_id=my_period.id,
             category_id=foreign_category.id,
-            source_id=my_source.id,
             amount=Decimal("-1.00"),
             added_at=my_period.start_date,
         )
@@ -64,15 +61,14 @@ async def test_record_cannot_reference_foreign_category(session: AsyncSession) -
 async def test_record_cannot_reference_foreign_check(session: AsyncSession) -> None:
     """Операция не может сослаться на чек из чужого документа.
 
-    Тот же составной ключ, что у категории, счёта и периода: принадлежность
-    чужому документу — невыразимое состояние, а не проверка, которую сервис
-    должен не забыть.
+    Тот же составной ключ, что у категории и периода: принадлежность чужому
+    документу — невыразимое состояние, а не проверка, которую сервис должен не
+    забыть.
     """
     mine = await factories.create_spreadsheet(session)
     other = await factories.create_spreadsheet(session)
     my_period = await factories.create_period(session, mine)
     my_category = await factories.create_category(session, mine)
-    my_source = await factories.create_source(session, mine)
     foreign_check = await factories.create_check(session, other)
     await session.commit()
 
@@ -81,7 +77,6 @@ async def test_record_cannot_reference_foreign_check(session: AsyncSession) -> N
             spreadsheet_id=mine.id,
             period_id=my_period.id,
             category_id=my_category.id,
-            source_id=my_source.id,
             amount=Decimal("-1.00"),
             added_at=my_period.start_date,
             check_id=foreign_check.id,
@@ -101,7 +96,6 @@ async def test_zero_amount_record_is_allowed(session: AsyncSession) -> None:
     spreadsheet = await factories.create_spreadsheet(session)
     period = await factories.create_period(session, spreadsheet)
     category = await factories.create_category(session, spreadsheet)
-    source = await factories.create_source(session, spreadsheet)
     await session.commit()
 
     session.add(
@@ -109,7 +103,6 @@ async def test_zero_amount_record_is_allowed(session: AsyncSession) -> None:
             spreadsheet_id=spreadsheet.id,
             period_id=period.id,
             category_id=category.id,
-            source_id=source.id,
             amount=Decimal("0.00"),
             currency=Currency.RUB,
             added_at=period.start_date,
@@ -221,53 +214,6 @@ async def test_alias_must_be_lowercase(session: AsyncSession) -> None:
             spreadsheet_id=spreadsheet.id,
             category_id=category.id,
             alias="ПРОДУКТЫ",
-        )
-    )
-    with pytest.raises(IntegrityError):
-        await session.commit()
-
-
-async def test_transfer_amount_must_be_positive(session: AsyncSession) -> None:
-    """Отрицательная сумма перевода отвергается.
-
-    Прежняя схема принимала знак от пользователя, и `/transfer -1000 А Б` тихо
-    переводил деньги в обратную сторону.
-    """
-    spreadsheet = await factories.create_spreadsheet(session)
-    period = await factories.create_period(session, spreadsheet)
-    first = await factories.create_source(session, spreadsheet, title="Карта")
-    second = await factories.create_source(session, spreadsheet, title="Нал")
-    await session.commit()
-
-    session.add(
-        TransferORM(
-            spreadsheet_id=spreadsheet.id,
-            period_id=period.id,
-            from_source_id=first.id,
-            to_source_id=second.id,
-            amount=Decimal("-1000.00"),
-            added_at=period.start_date,
-        )
-    )
-    with pytest.raises(IntegrityError):
-        await session.commit()
-
-
-async def test_transfer_to_itself_is_rejected(session: AsyncSession) -> None:
-    """Перевод на тот же счёт запрещён на уровне БД."""
-    spreadsheet = await factories.create_spreadsheet(session)
-    period = await factories.create_period(session, spreadsheet)
-    source = await factories.create_source(session, spreadsheet)
-    await session.commit()
-
-    session.add(
-        TransferORM(
-            spreadsheet_id=spreadsheet.id,
-            period_id=period.id,
-            from_source_id=source.id,
-            to_source_id=source.id,
-            amount=Decimal("100.00"),
-            added_at=period.start_date,
         )
     )
     with pytest.raises(IntegrityError):
@@ -399,13 +345,8 @@ async def test_deleting_spreadsheet_removes_everything(session: AsyncSession) ->
     spreadsheet = await factories.create_spreadsheet(session)
     period = await factories.create_period(session, spreadsheet)
     category = await factories.create_category(session, spreadsheet)
-    first = await factories.create_source(session, spreadsheet, title="Карта")
-    second = await factories.create_source(session, spreadsheet, title="Нал")
     await factories.create_record(
-        session, spreadsheet, period, category, first, amount=Decimal("-10.00")
-    )
-    await factories.create_transfer(
-        session, spreadsheet, period, first, second, amount=Decimal("50.00")
+        session, spreadsheet, period, category, amount=Decimal("-10.00")
     )
     assert spreadsheet.id is not None
     await SheetSyncTaskRepository(session).enqueue(
@@ -416,7 +357,7 @@ async def test_deleting_spreadsheet_removes_everything(session: AsyncSession) ->
     await session.execute(delete(SpreadsheetORM).where(SpreadsheetORM.id == spreadsheet.id))
     await session.commit()
 
-    for orm_type in (RecordORM, TransferORM, CategoryORM, CategoryAssociationORM, SheetSyncTaskORM):
+    for orm_type in (RecordORM, CategoryORM, CategoryAssociationORM, SheetSyncTaskORM):
         total = await session.scalar(select(func.count()).select_from(orm_type))
         assert total == 0, f"остались строки в {orm_type.__tablename__}"
 

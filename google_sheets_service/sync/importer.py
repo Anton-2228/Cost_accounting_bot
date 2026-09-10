@@ -10,7 +10,7 @@ from google_sheets_service.main_api import ApiGateway
 from google_sheets_service.main_api.dto import ImportResult
 from google_sheets_service.sheets.a1 import column_letter, qualify
 from google_sheets_service.sheets.layout import SheetLayout
-from google_sheets_service.sheets.layouts import BILLS_LAYOUT, CATEGORIES_LAYOUT
+from google_sheets_service.sheets.layouts import CATEGORIES_LAYOUT
 from google_sheets_service.sheets.values import to_cell_rows
 from google_sheets_service.sync.redraw import SheetRedrawer
 from google_sheets_service.sync.structure import DocumentState
@@ -86,8 +86,6 @@ class SheetImporter:
         """Отдаёт строки в соответствующий эндпоинт импорта."""
         if target == "CATEGORIES":
             return await self._api.imports.import_categories(spreadsheet_id, rows)
-        if target == "BILLS":
-            return await self._api.imports.import_bills(spreadsheet_id, rows)
         raise SyncError(f"Лист {target} не читается обратно")
 
     @staticmethod
@@ -95,8 +93,6 @@ class SheetImporter:
         """Описание читаемого листа."""
         if target == "CATEGORIES":
             return CATEGORIES_LAYOUT
-        if target == "BILLS":
-            return BILLS_LAYOUT
         raise SyncError(f"Лист {target} не читается обратно")
 
 

@@ -30,14 +30,6 @@ class ImportsApiClient:
         """Применяет лист `Categories` целиком."""
         return await self._import(spreadsheet_id, "categories", rows)
 
-    async def import_bills(
-        self,
-        spreadsheet_id: int,
-        rows: Sequence[Sequence[str]],
-    ) -> ImportResult:
-        """Применяет лист `Bills` целиком."""
-        return await self._import(spreadsheet_id, "bills", rows)
-
     async def _import(
         self,
         spreadsheet_id: int,

@@ -4,13 +4,7 @@ from __future__ import annotations
 
 import httpx
 
-from google_sheets_service.main_api.dto import (
-    Access,
-    Category,
-    Source,
-    SourceBalance,
-    Spreadsheet,
-)
+from google_sheets_service.main_api.dto import Access, Category, Spreadsheet
 from google_sheets_service.main_api.http import ApiHttpClient
 
 
@@ -81,22 +75,3 @@ class SpreadsheetsApiClient:
             params={"only_active": only_active, "include_deleted": include_deleted},
         )
         return [Category.from_json(item) for item in items]
-
-    async def list_sources(
-        self,
-        spreadsheet_id: int,
-        *,
-        only_active: bool = False,
-        include_deleted: bool = False,
-    ) -> list[Source]:
-        """Счета документа. Параметры — как у категорий."""
-        items = await self._http.get_items(
-            f"/spreadsheets/{spreadsheet_id}/sources",
-            params={"only_active": only_active, "include_deleted": include_deleted},
-        )
-        return [Source.from_json(item) for item in items]
-
-    async def list_balances(self, spreadsheet_id: int) -> list[SourceBalance]:
-        """Текущие балансы счетов — колонка `Current balance` листа `Bills`."""
-        items = await self._http.get_items(f"/spreadsheets/{spreadsheet_id}/balances")
-        return [SourceBalance.from_json(item) for item in items]

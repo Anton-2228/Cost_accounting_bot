@@ -13,18 +13,15 @@ from google_sheets_service.sheets.layout import (
     NEUTRAL_BACKGROUND,
     SheetLayout,
 )
-from google_sheets_service.sheets.layouts import BILLS_LAYOUT, OPERATIONS_LAYOUT
+from google_sheets_service.sheets.layouts import OPERATIONS_LAYOUT
 from google_sheets_service.sync import renderers
 from tests.google_sheets_service.factories import (
     PERIOD_END,
     PERIOD_START,
-    make_balance,
     make_category,
     make_check,
     make_record,
-    make_source,
     make_total,
-    make_transfer,
 )
 
 
@@ -46,13 +43,9 @@ AMOUNT = _at(OPERATIONS_LAYOUT, "Amount")
 NAME = _at(OPERATIONS_LAYOUT, "Name")
 CATEGORY = _at(OPERATIONS_LAYOUT, "Category")
 CURRENCY = _at(OPERATIONS_LAYOUT, "Currency")
-SOURCE = _at(OPERATIONS_LAYOUT, "Source")
 CHECK = _at(OPERATIONS_LAYOUT, "Check")
 
 #: Колонки листа счетов.
-BILL_CURRENCY = _at(BILLS_LAYOUT, "Currency")
-START_BALANCE = _at(BILLS_LAYOUT, "Start balance")
-CURRENT_BALANCE = _at(BILLS_LAYOUT, "Current balance")
 
 
 def _text(cell: dict[str, Any]) -> str:
@@ -109,60 +102,16 @@ def test_category_associations_and_types_use_their_own_separators() -> None:
     assert _text(row[6]) == "молочные продукты, выпечка"
 
 
-def test_bills_take_current_balance_from_computed_balances() -> None:
-    """Текущий баланс берётся из расчёта, а не из счёта: он не хранится."""
-    payload = renderers.render_bills(
-        [make_source(source_id=1, start_balance="1000.00")],
-        [make_balance(source_id=1, start_balance="1000.00", balance="850.50")],
-    )
-    row = payload.rows[0]
-    assert _number(row[START_BALANCE]) == 1000.0
-    assert _number(row[CURRENT_BALANCE]) == 850.5
-
-
-def test_bills_fall_back_to_start_balance_for_new_source() -> None:
-    """У счёта без расчёта в колонку идёт начальный остаток.
-
-    Так выглядит только что созданный счёт: операций по нему ещё нет.
-    """
-    payload = renderers.render_bills([make_source(start_balance="700.00")], [])
-    assert _number(payload.rows[0][CURRENT_BALANCE]) == 700.0
-
-
-def test_operations_mix_records_and_transfers_by_date() -> None:
-    """Операции и переводы идут одним списком по дате.
-
-    В реестре они равноправны: развести их по разным местам значило бы спрятать
-    от пользователя половину движения денег.
-    """
+def test_operations_are_ordered_by_date() -> None:
+    """Строки реестра идут по дате операции, а не в порядке выборки."""
     payload = renderers.render_operations(
         [
             make_record(record_id=5, added_at=date(2026, 8, 3), product_name="Хлеб"),
             make_record(record_id=6, added_at=date(2026, 8, 1), product_name="Молоко"),
         ],
-        [make_transfer(transfer_id=1, added_at=date(2026, 8, 2))],
         [make_category(category_id=1, title="Еда")],
-        [make_source(source_id=1, title="Карта"), make_source(source_id=2, title="Кошелёк")],
     )
-    assert [_text(row[NAME]) for row in payload.rows] == ["Молоко", "", "Хлеб"]
-
-
-def test_transfer_row_names_both_sources_and_keeps_amount_positive() -> None:
-    """Перевод печатается одной строкой с обоими счетами и без знака.
-
-    Деньги не появились и не исчезли, а переехали: знак означал бы неправду в
-    любую сторону.
-    """
-    payload = renderers.render_operations(
-        [],
-        [make_transfer(from_source_id=1, to_source_id=2, amount="500.00")],
-        [],
-        [make_source(source_id=1, title="Карта"), make_source(source_id=2, title="Кошелёк")],
-    )
-    row = payload.rows[0]
-    assert _text(row[CATEGORY]) == constants.TRANSFER_CATEGORY_TITLE
-    assert _text(row[SOURCE]) == "Карта → Кошелёк"
-    assert _number(row[AMOUNT]) == 500.0
+    assert [_text(row[NAME]) for row in payload.rows] == ["Молоко", "Хлеб"]
 
 
 def test_operation_of_deleted_category_keeps_its_title() -> None:
@@ -173,9 +122,7 @@ def test_operation_of_deleted_category_keeps_its_title() -> None:
     """
     payload = renderers.render_operations(
         [make_record(category_id=9)],
-        [],
         [make_category(category_id=9, status="INACTIVE", title="Старая")],
-        [make_source(source_id=1)],
     )
     assert _text(payload.rows[0][CATEGORY]) == "Старая"
 
@@ -187,7 +134,7 @@ def test_operation_carries_check_number() -> None:
     чек: галочка говорила лишь «чек был», и архивом это не являлось.
     """
     payload = renderers.render_operations(
-        [make_record(check_id=42)], [], [make_category()], [make_source()]
+        [make_record(check_id=42)], [make_category()]
     )
     assert _number(payload.rows[0][CHECK]) == 42
 
@@ -195,7 +142,7 @@ def test_operation_carries_check_number() -> None:
 def test_operation_without_check_leaves_column_empty() -> None:
     """Операция, введённая руками, оставляет колонку `Check` пустой."""
     payload = renderers.render_operations(
-        [make_record(check_id=None)], [], [make_category()], [make_source()]
+        [make_record(check_id=None)], [make_category()]
     )
     assert _text(payload.rows[0][CHECK]) == ""
 
@@ -402,40 +349,12 @@ def test_statistics_blocks_cover_their_rows() -> None:
     assert (expense["startRowIndex"], expense["endRowIndex"]) == (5, 7)
 
 
-def test_bill_row_carries_the_account_currency() -> None:
-    """У счёта печатается его валюта: обе денежные колонки выражены в ней."""
-    payload = renderers.render_bills([make_source(currency="RSD")], [])
-    assert _text(payload.rows[0][BILL_CURRENCY]) == "RSD"
-
-
 def test_operation_row_carries_its_own_currency() -> None:
-    """У операции печатается валюта **операции**, а не счёта.
+    """У операции печатается её собственная валюта.
 
-    Динарами можно расплатиться с еврового счёта, и в реестре обязана стоять
-    сумма, которую человек действительно заплатил.
+    В реестре обязана стоять сумма, которую человек действительно заплатил, и
+    та единица, в которой он её заплатил.
     """
-    payload = renderers.render_operations(
-        [make_record(currency="RSD")],
-        [],
-        [make_category()],
-        [make_source(currency="EUR")],
-    )
+    payload = renderers.render_operations([make_record(currency="RSD")], [make_category()])
     assert _text(payload.rows[0][CURRENCY]) == "RSD"
 
-
-def test_transfer_row_takes_currency_of_the_sending_account() -> None:
-    """У перевода печатается валюта счёта-источника: в ней названа сумма.
-
-    Зачисленного на счёт-получатель в реестре нет: оно зависит от курса и видно
-    только в остатке этого счёта.
-    """
-    payload = renderers.render_operations(
-        [],
-        [make_transfer(from_source_id=1, to_source_id=2, amount="500.00")],
-        [],
-        [
-            make_source(source_id=1, title="Карта", currency="EUR"),
-            make_source(source_id=2, title="Кошелёк", currency="RSD"),
-        ],
-    )
-    assert _text(payload.rows[0][CURRENCY]) == "EUR"

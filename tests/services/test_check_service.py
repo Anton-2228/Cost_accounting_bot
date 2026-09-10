@@ -108,10 +108,9 @@ async def test_commit_writes_whole_check_in_one_transaction(
     spreadsheet = await factories.create_spreadsheet(session, ready=True)
     food = await factories.create_category(session, spreadsheet, title="Еда")
     fun = await factories.create_category(session, spreadsheet, title="Развлечения")
-    source = await factories.create_source(session, spreadsheet, start_balance=Decimal("1000.00"))
     await session.commit()
     assert spreadsheet.id is not None
-    assert food.id is not None and fun.id is not None and source.id is not None
+    assert food.id is not None and fun.id is not None
 
     check = await factories.create_check(session, spreadsheet)
     await session.commit()
@@ -120,7 +119,6 @@ async def test_commit_writes_whole_check_in_one_transaction(
     records = await check_service.commit_check(
         spreadsheet.id,
         check_id=check.id,
-        source_id=source.id,
         items=[
             CheckItem(
                 product_name="молоко",
@@ -152,7 +150,6 @@ async def test_commit_writes_whole_check_in_one_transaction(
         SheetTarget.OPERATIONS,
         SheetTarget.STATISTICS,
         SheetTarget.CHECKS,
-        SheetTarget.BILLS,
     }
 
 
@@ -163,9 +160,8 @@ async def test_new_product_types_are_attached_and_redraw_categories(
     """Новый тип товара закрепляется за категорией и устаревает лист `Categories`."""
     spreadsheet = await factories.create_spreadsheet(session, ready=True)
     category = await factories.create_category(session, spreadsheet, title="Еда")
-    source = await factories.create_source(session, spreadsheet)
     await session.commit()
-    assert spreadsheet.id is not None and category.id is not None and source.id is not None
+    assert spreadsheet.id is not None and category.id is not None
 
     check = await factories.create_check(session, spreadsheet)
     await session.commit()
@@ -174,7 +170,6 @@ async def test_new_product_types_are_attached_and_redraw_categories(
     await check_service.commit_check(
         spreadsheet.id,
         check_id=check.id,
-        source_id=source.id,
         items=[
             CheckItem(
                 product_name="хлеб",
@@ -215,9 +210,8 @@ async def test_default_expense_category_never_learns_product_types(
         title=constants.DEFAULT_EXPENSE_CATEGORY,
         kind=CategoryKind.EXPENSE,
     )
-    source = await factories.create_source(session, spreadsheet)
     await session.commit()
-    assert spreadsheet.id is not None and basket.id is not None and source.id is not None
+    assert spreadsheet.id is not None and basket.id is not None
 
     check = await factories.create_check(session, spreadsheet)
     await session.commit()
@@ -226,7 +220,6 @@ async def test_default_expense_category_never_learns_product_types(
     await check_service.commit_check(
         spreadsheet.id,
         check_id=check.id,
-        source_id=source.id,
         items=[
             CheckItem(
                 product_name="нечто",
@@ -256,9 +249,8 @@ async def test_inactive_category_still_accepts_check_item(
     """
     spreadsheet = await factories.create_spreadsheet(session, ready=True)
     category = await factories.create_category(session, spreadsheet, title="Старая")
-    source = await factories.create_source(session, spreadsheet)
     await session.commit()
-    assert spreadsheet.id is not None and category.id is not None and source.id is not None
+    assert spreadsheet.id is not None and category.id is not None
 
     categories = CategoryRepository(session)
     hidden = await categories.update(category.model_copy(update={"status": EntityStatus.INACTIVE}))
@@ -272,7 +264,6 @@ async def test_inactive_category_still_accepts_check_item(
     records = await check_service.commit_check(
         spreadsheet.id,
         check_id=check.id,
-        source_id=source.id,
         items=[
             CheckItem(product_name="товар", category_id=category.id, amount=Decimal("15.00"))
         ],
@@ -287,9 +278,8 @@ async def test_item_without_product_type_is_not_cached(
     """Позиция без типа не попадает в кэш: кэшировать нечего."""
     spreadsheet = await factories.create_spreadsheet(session, ready=True)
     category = await factories.create_category(session, spreadsheet)
-    source = await factories.create_source(session, spreadsheet)
     await session.commit()
-    assert spreadsheet.id is not None and category.id is not None and source.id is not None
+    assert spreadsheet.id is not None and category.id is not None
 
     check = await factories.create_check(session, spreadsheet)
     await session.commit()
@@ -298,7 +288,6 @@ async def test_item_without_product_type_is_not_cached(
     await check_service.commit_check(
         spreadsheet.id,
         check_id=check.id,
-        source_id=source.id,
         items=[
             CheckItem(product_name="загадка", category_id=category.id, amount=Decimal("1.00"))
         ],
@@ -314,12 +303,11 @@ async def test_alien_category_aborts_whole_check(
     """Категория чужого документа — 404, и ни одна позиция не записана."""
     spreadsheet = await factories.create_spreadsheet(session, ready=True)
     own = await factories.create_category(session, spreadsheet)
-    source = await factories.create_source(session, spreadsheet)
     stranger = await factories.create_spreadsheet(session, ready=True)
     alien = await factories.create_category(session, stranger)
     await session.commit()
     assert spreadsheet.id is not None and own.id is not None
-    assert source.id is not None and alien.id is not None
+    assert alien.id is not None
 
     check = await factories.create_check(session, spreadsheet)
     await session.commit()
@@ -329,7 +317,6 @@ async def test_alien_category_aborts_whole_check(
         await check_service.commit_check(
             spreadsheet.id,
             check_id=check.id,
-            source_id=source.id,
             items=[
                 CheckItem(product_name="первый", category_id=own.id, amount=Decimal("1.00")),
                 CheckItem(product_name="второй", category_id=alien.id, amount=Decimal("2.00")),
@@ -365,16 +352,14 @@ async def test_commit_marks_check_processed_and_links_records(
     """
     spreadsheet = await factories.create_spreadsheet(session, ready=True)
     category = await factories.create_category(session, spreadsheet)
-    source = await factories.create_source(session, spreadsheet)
     check = await factories.create_check(session, spreadsheet)
     await session.commit()
     assert spreadsheet.id is not None and category.id is not None
-    assert source.id is not None and check.id is not None
+    assert check.id is not None
 
     records = await check_service.commit_check(
         spreadsheet.id,
         check_id=check.id,
-        source_id=source.id,
         items=[
             CheckItem(product_name="молоко", category_id=category.id, amount=Decimal("89.90"))
         ],
@@ -397,16 +382,14 @@ async def test_zero_priced_item_is_written_as_is(
     """
     spreadsheet = await factories.create_spreadsheet(session, ready=True)
     category = await factories.create_category(session, spreadsheet)
-    source = await factories.create_source(session, spreadsheet)
     check = await factories.create_check(session, spreadsheet)
     await session.commit()
     assert spreadsheet.id is not None and category.id is not None
-    assert source.id is not None and check.id is not None
+    assert check.id is not None
 
     records = await check_service.commit_check(
         spreadsheet.id,
         check_id=check.id,
-        source_id=source.id,
         items=[
             CheckItem(product_name="подарок", category_id=category.id, amount=Decimal("0.00"))
         ],
@@ -421,20 +404,19 @@ async def test_second_commit_of_same_check_is_conflict(
     """Повторный разбор того же чека — 409, а не вторая пачка операций."""
     spreadsheet = await factories.create_spreadsheet(session, ready=True)
     category = await factories.create_category(session, spreadsheet)
-    source = await factories.create_source(session, spreadsheet)
     check = await factories.create_check(session, spreadsheet)
     await session.commit()
     assert spreadsheet.id is not None and category.id is not None
-    assert source.id is not None and check.id is not None
+    assert check.id is not None
 
     items = [CheckItem(product_name="молоко", category_id=category.id, amount=Decimal("1.00"))]
     await check_service.commit_check(
-        spreadsheet.id, check_id=check.id, source_id=source.id, items=items
+        spreadsheet.id, check_id=check.id, items=items
     )
 
     with pytest.raises(ConflictError) as failure:
         await check_service.commit_check(
-            spreadsheet.id, check_id=check.id, source_id=source.id, items=items
+            spreadsheet.id, check_id=check.id, items=items
         )
     assert failure.value.details == {"reason": "check_already_processed"}
 
@@ -453,18 +435,16 @@ async def test_alien_check_is_not_found(
     """Чек чужого документа для разбора не существует."""
     mine = await factories.create_spreadsheet(session, ready=True)
     category = await factories.create_category(session, mine)
-    source = await factories.create_source(session, mine)
     stranger = await factories.create_spreadsheet(session, ready=True)
     alien = await factories.create_check(session, stranger)
     await session.commit()
     assert mine.id is not None and category.id is not None
-    assert source.id is not None and alien.id is not None
+    assert alien.id is not None
 
     with pytest.raises(NotFoundError):
         await check_service.commit_check(
             mine.id,
             check_id=alien.id,
-            source_id=source.id,
             items=[
                 CheckItem(product_name="молоко", category_id=category.id, amount=Decimal("1.00"))
             ],
@@ -486,17 +466,15 @@ async def test_product_type_taken_by_another_category_is_conflict(
         session, spreadsheet, title="Еда", product_types=["продукты"]
     )
     fun = await factories.create_category(session, spreadsheet, title="Развлечения")
-    source = await factories.create_source(session, spreadsheet)
     check = await factories.create_check(session, spreadsheet)
     await session.commit()
     assert spreadsheet.id is not None and food.id is not None
-    assert fun.id is not None and source.id is not None and check.id is not None
+    assert fun.id is not None and check.id is not None
 
     with pytest.raises(ConflictError) as failure:
         await check_service.commit_check(
             spreadsheet.id,
             check_id=check.id,
-            source_id=source.id,
             items=[
                 CheckItem(
                     product_name="молоко",
@@ -534,16 +512,14 @@ async def test_processed_check_cannot_be_deleted(
     """
     spreadsheet = await factories.create_spreadsheet(session, ready=True)
     category = await factories.create_category(session, spreadsheet)
-    source = await factories.create_source(session, spreadsheet)
     check = await factories.create_check(session, spreadsheet)
     await session.commit()
     assert spreadsheet.id is not None and category.id is not None
-    assert source.id is not None and check.id is not None
+    assert check.id is not None
 
     await check_service.commit_check(
         spreadsheet.id,
         check_id=check.id,
-        source_id=source.id,
         items=[
             CheckItem(product_name="молоко", category_id=category.id, amount=Decimal("1.00"))
         ],
@@ -587,11 +563,10 @@ async def test_deleted_check_cannot_be_committed(
     """
     spreadsheet = await factories.create_spreadsheet(session, ready=True)
     category = await factories.create_category(session, spreadsheet)
-    source = await factories.create_source(session, spreadsheet)
     check = await factories.create_check(session, spreadsheet)
     await session.commit()
     assert spreadsheet.id is not None and category.id is not None
-    assert source.id is not None and check.id is not None
+    assert check.id is not None
 
     await check_service.delete_check(spreadsheet.id, check.id)
 
@@ -599,7 +574,6 @@ async def test_deleted_check_cannot_be_committed(
         await check_service.commit_check(
             spreadsheet.id,
             check_id=check.id,
-            source_id=source.id,
             items=[
                 CheckItem(product_name="молоко", category_id=category.id, amount=Decimal("1.00"))
             ],

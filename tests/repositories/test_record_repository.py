@@ -26,11 +26,10 @@ async def test_records_are_selected_by_period_not_by_date_range(session: AsyncSe
     july = await factories.create_period(session, spreadsheet, day=date(2026, 7, 20))
     august = await factories.create_period(session, spreadsheet, day=date(2026, 8, 20))
     category = await factories.create_category(session, spreadsheet)
-    source = await factories.create_source(session, spreadsheet)
 
     # Дата 15 августа — граница: конец июльского периода и начало августовского.
     await factories.create_record(
-        session, spreadsheet, august, category, source,
+        session, spreadsheet, august, category,
         amount=Decimal("-10.00"), added_at=date(2026, 8, 15),
     )
     await session.commit()
@@ -47,9 +46,8 @@ async def test_soft_deleted_record_leaves_the_listing(session: AsyncSession) -> 
     spreadsheet = await factories.create_spreadsheet(session)
     period = await factories.create_period(session, spreadsheet)
     category = await factories.create_category(session, spreadsheet)
-    source = await factories.create_source(session, spreadsheet)
     record = await factories.create_record(
-        session, spreadsheet, period, category, source, amount=Decimal("-10.00")
+        session, spreadsheet, period, category, amount=Decimal("-10.00")
     )
     await session.commit()
 
@@ -73,9 +71,8 @@ async def test_soft_delete_is_idempotent(session: AsyncSession) -> None:
     spreadsheet = await factories.create_spreadsheet(session)
     period = await factories.create_period(session, spreadsheet)
     category = await factories.create_category(session, spreadsheet)
-    source = await factories.create_source(session, spreadsheet)
     record = await factories.create_record(
-        session, spreadsheet, period, category, source, amount=Decimal("-10.00")
+        session, spreadsheet, period, category, amount=Decimal("-10.00")
     )
     await session.commit()
 
@@ -104,12 +101,11 @@ async def test_get_last_in_period_skips_deleted(session: AsyncSession) -> None:
     spreadsheet = await factories.create_spreadsheet(session)
     period = await factories.create_period(session, spreadsheet)
     category = await factories.create_category(session, spreadsheet)
-    source = await factories.create_source(session, spreadsheet)
     first = await factories.create_record(
-        session, spreadsheet, period, category, source, amount=Decimal("-10.00")
+        session, spreadsheet, period, category, amount=Decimal("-10.00")
     )
     last = await factories.create_record(
-        session, spreadsheet, period, category, source, amount=Decimal("-20.00")
+        session, spreadsheet, period, category, amount=Decimal("-20.00")
     )
     await session.commit()
 
@@ -133,18 +129,17 @@ async def test_daily_totals_keep_kopeks(session: AsyncSession) -> None:
     spreadsheet = await factories.create_spreadsheet(session, reset_day=15)
     period = await factories.create_period(session, spreadsheet, day=date(2026, 7, 20))
     category = await factories.create_category(session, spreadsheet)
-    source = await factories.create_source(session, spreadsheet)
 
     await factories.create_record(
-        session, spreadsheet, period, category, source,
+        session, spreadsheet, period, category,
         amount=Decimal("-10.50"), added_at=date(2026, 7, 20),
     )
     await factories.create_record(
-        session, spreadsheet, period, category, source,
+        session, spreadsheet, period, category,
         amount=Decimal("-5.25"), added_at=date(2026, 7, 20),
     )
     await factories.create_record(
-        session, spreadsheet, period, category, source,
+        session, spreadsheet, period, category,
         amount=Decimal("-1.01"), added_at=date(2026, 7, 21),
     )
     await session.commit()
@@ -164,9 +159,8 @@ async def test_get_for_spreadsheet_rejects_foreign_record(session: AsyncSession)
     other = await factories.create_spreadsheet(session)
     period = await factories.create_period(session, other)
     category = await factories.create_category(session, other)
-    source = await factories.create_source(session, other)
     record = await factories.create_record(
-        session, other, period, category, source, amount=Decimal("-10.00")
+        session, other, period, category, amount=Decimal("-10.00")
     )
     await session.commit()
 

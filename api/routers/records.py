@@ -47,7 +47,6 @@ async def create_record(
     record = await service.create(
         spreadsheet_id,
         category_id=payload.category_id,
-        source_id=payload.source_id,
         amount=payload.amount,
         currency=payload.currency,
         notes=payload.notes,

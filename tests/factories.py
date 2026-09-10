@@ -20,9 +20,7 @@ from api.domain.check import Check
 from api.domain.exchange_rate import ExchangeRate
 from api.domain.period import Period
 from api.domain.record import Record
-from api.domain.source import Source
 from api.domain.spreadsheet import Spreadsheet
-from api.domain.transfer import Transfer
 from api.domain.user import User
 from api.enums import CategoryKind, CheckKind, Currency
 from api.repositories.category_repository import CategoryRepository
@@ -30,7 +28,6 @@ from api.repositories.check_repository import CheckRepository
 from api.repositories.exchange_rate_repository import ExchangeRateRepository
 from api.repositories.period_repository import PeriodRepository
 from api.repositories.record_repository import RecordRepository
-from api.repositories.source_repository import SourceRepository
 from api.repositories.spreadsheet_repository import SpreadsheetRepository
 from api.repositories.user_repository import UserRepository
 
@@ -121,29 +118,6 @@ async def create_category(
     )
 
 
-async def create_source(
-    session: AsyncSession,
-    spreadsheet: Spreadsheet,
-    *,
-    title: str | None = None,
-    currency: Currency = Currency.RUB,
-    start_balance: Decimal = Decimal("0.00"),
-    associations: list[str] | None = None,
-) -> Source:
-    """Создаёт счёт. Валюта по умолчанию рублёвая — как весь учёт до её появления."""
-    assert spreadsheet.id is not None
-    name = title if title is not None else f"Счёт{next(_titles)}"
-    return await SourceRepository(session).add(
-        Source(
-            spreadsheet_id=spreadsheet.id,
-            title=name,
-            currency=currency,
-            start_balance=start_balance,
-            associations=associations if associations is not None else [name.lower()],
-        )
-    )
-
-
 async def create_check(
     session: AsyncSession,
     spreadsheet: Spreadsheet,
@@ -183,64 +157,32 @@ async def create_record(
     spreadsheet: Spreadsheet,
     period: Period,
     category: Category,
-    source: Source,
     *,
     amount: Decimal,
-    currency: Currency | None = None,
+    currency: Currency = Currency.RUB,
     added_at: date | None = None,
     notes: str = "",
     check_id: int | None = None,
 ) -> Record:
     """Создаёт операцию. Сумма знаковая: расход отрицателен.
 
-    Валюта по умолчанию совпадает с валютой счёта — то есть конвертации нет и
-    курс не нужен. Так тесты, которым валюта безразлична, остаются про то, про
-    что были написаны.
+    Валюта по умолчанию рублёвая — та же у всех операций, то есть конвертации
+    нет и курс не нужен. Так тесты, которым валюта безразлична, остаются про
+    то, про что были написаны.
     """
     assert spreadsheet.id is not None
     assert period.id is not None
     assert category.id is not None
-    assert source.id is not None
     return await RecordRepository(session).add(
         Record(
             spreadsheet_id=spreadsheet.id,
             period_id=period.id,
             category_id=category.id,
-            source_id=source.id,
             amount=amount,
-            currency=currency if currency is not None else source.currency,
+            currency=currency,
             added_at=added_at if added_at is not None else period.start_date,
             notes=notes,
             check_id=check_id,
-        )
-    )
-
-
-async def create_transfer(
-    session: AsyncSession,
-    spreadsheet: Spreadsheet,
-    period: Period,
-    from_source: Source,
-    to_source: Source,
-    *,
-    amount: Decimal,
-    added_at: date | None = None,
-) -> Transfer:
-    """Создаёт перевод. Сумма строго положительна, направление задают счета."""
-    assert spreadsheet.id is not None
-    assert period.id is not None
-    assert from_source.id is not None
-    assert to_source.id is not None
-    from api.repositories.transfer_repository import TransferRepository
-
-    return await TransferRepository(session).add(
-        Transfer(
-            spreadsheet_id=spreadsheet.id,
-            period_id=period.id,
-            from_source_id=from_source.id,
-            to_source_id=to_source.id,
-            amount=amount,
-            added_at=added_at if added_at is not None else period.start_date,
         )
     )
 

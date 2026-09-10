@@ -162,15 +162,6 @@ class RecordRepository(BaseRepository[RecordORM, Record]):
         )
         return found is not None
 
-    async def exists_by_source(self, source_id: int) -> bool:
-        """Есть ли живые операции у счёта."""
-        found = await self._session.scalar(
-            select(RecordORM.id)
-            .where(RecordORM.source_id == source_id, RecordORM.deleted_at.is_(None))
-            .limit(1)
-        )
-        return found is not None
-
     async def exists_by_check(self, check_id: int) -> bool:
         """Есть ли живые операции у чека.
 

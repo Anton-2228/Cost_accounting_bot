@@ -120,7 +120,6 @@ async def test_rollover_enqueues_structure_and_new_period_sheets(
         SheetTarget.STRUCTURE,
         SheetTarget.OPERATIONS,
         SheetTarget.STATISTICS,
-        SheetTarget.BILLS,
     }
 
 

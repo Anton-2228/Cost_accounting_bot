@@ -167,7 +167,6 @@ async def test_period_archive_holds_only_checks_of_that_month(session: AsyncSess
     month = await factories.create_period(session, spreadsheet, day=date(2026, 7, 20))
     next_month = await factories.create_period(session, spreadsheet, day=date(2026, 8, 20))
     category = await factories.create_category(session, spreadsheet)
-    source = await factories.create_source(session, spreadsheet)
     await session.commit()
     assert spreadsheet.id is not None and month.id is not None
 
@@ -178,11 +177,11 @@ async def test_period_archive_holds_only_checks_of_that_month(session: AsyncSess
     await session.commit()
 
     await factories.create_record(
-        session, spreadsheet, month, category, source,
+        session, spreadsheet, month, category,
         amount=Decimal("-89.90"), check_id=parsed.id,
     )
     await factories.create_record(
-        session, spreadsheet, next_month, category, source,
+        session, spreadsheet, next_month, category,
         amount=Decimal("-10.00"), check_id=other_month.id,
     )
     await session.commit()
@@ -202,7 +201,6 @@ async def test_period_archive_survives_deletion_of_one_record(session: AsyncSess
     spreadsheet = await factories.create_spreadsheet(session, ready=True)
     period = await factories.create_period(session, spreadsheet)
     category = await factories.create_category(session, spreadsheet)
-    source = await factories.create_source(session, spreadsheet)
     await session.commit()
     assert spreadsheet.id is not None and period.id is not None
 
@@ -211,11 +209,11 @@ async def test_period_archive_survives_deletion_of_one_record(session: AsyncSess
     await session.commit()
 
     first = await factories.create_record(
-        session, spreadsheet, period, category, source,
+        session, spreadsheet, period, category,
         amount=Decimal("-89.90"), check_id=check.id,
     )
     await factories.create_record(
-        session, spreadsheet, period, category, source,
+        session, spreadsheet, period, category,
         amount=Decimal("-10.00"), check_id=check.id,
     )
     await session.commit()
@@ -237,7 +235,6 @@ async def test_deleted_check_disappears_from_archive_and_list(session: AsyncSess
     spreadsheet = await factories.create_spreadsheet(session, ready=True)
     period = await factories.create_period(session, spreadsheet)
     category = await factories.create_category(session, spreadsheet)
-    source = await factories.create_source(session, spreadsheet)
     await session.commit()
     assert spreadsheet.id is not None and period.id is not None
 
@@ -247,7 +244,7 @@ async def test_deleted_check_disappears_from_archive_and_list(session: AsyncSess
     assert check.id is not None
 
     record = await factories.create_record(
-        session, spreadsheet, period, category, source,
+        session, spreadsheet, period, category,
         amount=Decimal("-89.90"), check_id=check.id,
     )
     await session.commit()

@@ -109,14 +109,13 @@ async def test_daily_totals_keep_kopecks_and_sign(
     )
     expense = await factories.create_category(session, spreadsheet, kind=CategoryKind.EXPENSE)
     income = await factories.create_category(session, spreadsheet, kind=CategoryKind.INCOME)
-    source = await factories.create_source(session, spreadsheet)
     for amount, category in (
         (Decimal("-1234.56"), expense),
         (Decimal("-0.44"), expense),
         (Decimal("500.10"), income),
     ):
         await factories.create_record(
-            session, spreadsheet, period, category, source, amount=amount
+            session, spreadsheet, period, category, amount=amount
         )
     await session.commit()
     assert spreadsheet.id is not None and expense.id is not None and income.id is not None
@@ -158,14 +157,12 @@ async def test_statistics_are_converted_to_one_currency(
     spreadsheet = await factories.create_spreadsheet(session, ready=True)
     period = await factories.create_period(session, spreadsheet)
     category = await factories.create_category(session, spreadsheet, kind=CategoryKind.EXPENSE)
-    source = await factories.create_source(session, spreadsheet, currency=Currency.EUR)
     for currency in (Currency.EUR, Currency.RSD):
         await factories.create_record(
             session,
             spreadsheet,
             period,
             category,
-            source,
             amount=Decimal("-100.00"),
             currency=currency,
             added_at=period.start_date,
@@ -194,13 +191,11 @@ async def test_statistics_convert_the_original_amount_not_via_the_account(
     spreadsheet = await factories.create_spreadsheet(session, ready=True)
     period = await factories.create_period(session, spreadsheet)
     category = await factories.create_category(session, spreadsheet, kind=CategoryKind.EXPENSE)
-    source = await factories.create_source(session, spreadsheet, currency=Currency.RUB)
     await factories.create_record(
         session,
         spreadsheet,
         period,
         category,
-        source,
         amount=Decimal("-1000.00"),
         currency=Currency.RSD,
         added_at=period.start_date,
@@ -228,13 +223,11 @@ async def test_statistics_refuse_to_count_without_a_rate(
     spreadsheet = await factories.create_spreadsheet(session, ready=True)
     period = await factories.create_period(session, spreadsheet)
     category = await factories.create_category(session, spreadsheet, kind=CategoryKind.EXPENSE)
-    source = await factories.create_source(session, spreadsheet, currency=Currency.RUB)
     await factories.create_record(
         session,
         spreadsheet,
         period,
         category,
-        source,
         amount=Decimal("-1000.00"),
         currency=Currency.RSD,
         added_at=period.start_date,

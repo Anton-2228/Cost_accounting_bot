@@ -82,8 +82,8 @@ async def test_document_of_a_previous_database_is_not_adopted(harness: Harness) 
     assert "set_google_id:google-чужой" not in harness.api.spreadsheets.calls
 
 
-async def test_creates_five_sheets_for_open_period(harness: Harness) -> None:
-    """Новому документу заводятся справочники и все три листа периода."""
+async def test_creates_four_sheets_for_open_period(harness: Harness) -> None:
+    """Новому документу заводятся справочник и все три листа периода."""
     harness.api.spreadsheets.spreadsheet = make_spreadsheet()
     harness.api.periods.periods = [make_period()]
     harness.api.tasks.queue = [make_task(target="STRUCTURE")]
@@ -93,13 +93,12 @@ async def test_creates_five_sheets_for_open_period(harness: Harness) -> None:
     titles = [sheet.title for sheet in harness.sheets.layout]
     assert titles == [
         constants.CATEGORIES_SHEET_TITLE,
-        constants.BILLS_SHEET_TITLE,
         "2026-08-01",
         "Stat. 2026-08-01",
         "Checks 2026-08-01",
     ]
     assert harness.api.sheet_mappings.calls.count("list_mappings") == 1
-    assert len([call for call in harness.api.sheet_mappings.calls if "upsert" in call]) == 5
+    assert len([call for call in harness.api.sheet_mappings.calls if "upsert" in call]) == 4
 
 
 async def test_skips_sheets_of_closed_periods(harness: Harness) -> None:
@@ -117,7 +116,7 @@ async def test_skips_sheets_of_closed_periods(harness: Harness) -> None:
 
     await harness.engine.run_once()
 
-    assert len(harness.sheets.layout) == 5
+    assert len(harness.sheets.layout) == 4
 
 
 async def test_recreates_sheet_deleted_by_user(harness: Harness) -> None:
@@ -130,19 +129,16 @@ async def test_recreates_sheet_deleted_by_user(harness: Harness) -> None:
     harness.api.periods.periods = []
     harness.api.sheet_mappings.mappings = [
         make_mapping(target="CATEGORIES", google_sheet_id=11, title="Categories"),
-        make_mapping(mapping_id=2, target="BILLS", google_sheet_id=12, title="Bills"),
     ]
-    # В документе остался только один лист: второй пользователь удалил.
-    harness.sheets.layout = [
-        SheetProperties(sheet_id=11, title="Categories", row_count=200, column_count=7)
-    ]
+    # Лист справочника пользователь удалил: в документе не осталось ни одного.
+    harness.sheets.layout = []
     harness.api.tasks.queue = [make_task(target="STRUCTURE")]
 
     await harness.engine.run_once()
 
     recreated = [sheet.title for sheet in harness.sheets.layout]
-    assert recreated.count(constants.BILLS_SHEET_TITLE) == 1
-    assert "upsert_mapping:BILLS:None" in harness.api.sheet_mappings.calls
+    assert recreated.count(constants.CATEGORIES_SHEET_TITLE) == 1
+    assert "upsert_mapping:CATEGORIES:None" in harness.api.sheet_mappings.calls
 
 
 async def test_grants_pending_accesses(harness: Harness) -> None:
@@ -192,7 +188,7 @@ async def test_structure_failure_fails_every_task_of_document(harness: Harness) 
     harness.sheets.fail_batch_with = GoogleApiError("Нет доступа", status_code=403)
     harness.api.tasks.queue = [
         make_task(task_id=1, target="CATEGORIES"),
-        make_task(task_id=2, target="BILLS"),
+        make_task(task_id=2, target="OPERATIONS", period_id=7),
     ]
 
     report = await harness.engine.run_once()
@@ -239,8 +235,8 @@ async def test_document_is_created_with_catalogue_sheets(harness: Harness) -> No
     await harness.engine.run_once()
 
     titles = [sheet.title for sheet in harness.sheets.layout]
-    assert titles == [constants.CATEGORIES_SHEET_TITLE, constants.BILLS_SHEET_TITLE]
-    # Ни одного `addSheet`: оба листа приехали вместе с документом.
+    assert titles == [constants.CATEGORIES_SHEET_TITLE]
+    # Ни одного `addSheet`: лист приехал вместе с документом.
     assert not any("addSheet" in kinds for kinds in harness.sheets.calls)
 
 
@@ -255,7 +251,6 @@ async def test_created_catalogue_sheets_are_registered_and_formatted(
     await harness.engine.run_once()
 
     assert "upsert_mapping:CATEGORIES:None" in harness.api.sheet_mappings.calls
-    assert "upsert_mapping:BILLS:None" in harness.api.sheet_mappings.calls
     protections = [
         request
         for batch in harness.sheets.batches
@@ -331,11 +326,9 @@ async def test_sheet_of_closed_period_is_restored_when_a_task_needs_it(
     harness.api.periods.periods = [make_period(period_id=6, status="CLOSED")]
     harness.api.sheet_mappings.mappings = [
         make_mapping(target="CATEGORIES", google_sheet_id=11, title="Categories"),
-        make_mapping(mapping_id=2, target="BILLS", google_sheet_id=12, title="Bills"),
     ]
     harness.sheets.layout = [
-        SheetProperties(sheet_id=11, title="Categories", row_count=200, column_count=7),
-        SheetProperties(sheet_id=12, title="Bills", row_count=200, column_count=6),
+        SheetProperties(sheet_id=11, title="Categories", row_count=200, column_count=6),
     ]
     harness.api.tasks.queue = [
         make_task(task_id=1, target="OPERATIONS", period_id=6),
@@ -365,5 +358,5 @@ async def test_closed_period_without_tasks_gets_no_sheets(harness: Harness) -> N
     await harness.engine.run_once()
 
     titles = [sheet.title for sheet in harness.sheets.layout]
-    # Только справочники и листы единственного открытого периода.
-    assert len(titles) == 5
+    # Только справочник и листы единственного открытого периода.
+    assert len(titles) == 4

@@ -21,7 +21,6 @@ from telegram_bot.api_client.notifications import NotificationsClient
 from telegram_bot.api_client.periods import PeriodsClient
 from telegram_bot.api_client.records import RecordsClient
 from telegram_bot.api_client.spreadsheets import SpreadsheetsClient
-from telegram_bot.api_client.transfers import TransfersClient
 
 
 class ApiGateway:
@@ -32,7 +31,6 @@ class ApiGateway:
         self.spreadsheets = SpreadsheetsClient(self._http)
         self.catalog = CatalogClient(self._http)
         self.records = RecordsClient(self._http)
-        self.transfers = TransfersClient(self._http)
         self.checks = ChecksClient(self._http)
         self.notifications = NotificationsClient(self._http)
         self.llm_usages = LlmUsagesClient(self._http)
@@ -59,5 +57,4 @@ __all__ = [
     "PeriodsClient",
     "RecordsClient",
     "SpreadsheetsClient",
-    "TransfersClient",
 ]

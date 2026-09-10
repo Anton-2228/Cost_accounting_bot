@@ -47,32 +47,15 @@ async def test_broken_sheet_returns_200_with_russian_error(
     await session.commit()
 
     response = await client.post(
-        f"/api/v1/spreadsheets/{spreadsheet.id}/import/bills",
-        json={"rows": [["", "1", "Карта", "", "RUB", "много", ""]]},
+        f"/api/v1/spreadsheets/{spreadsheet.id}/import/categories",
+        json={"rows": [["", "да", "0", "1", "Еда", "", ""]]},
     )
 
     assert response.status_code == 200
-    assert response.json()["data"]["error"] == "В источниках в 1 строке Balance не число"
+    assert response.json()["data"]["error"] == "В категориях в 1 строке Active странный"
 
-    sources = await client.get(f"/api/v1/spreadsheets/{spreadsheet.id}/sources")
-    assert sources.json()["items"] == []
+    categories = await client.get(f"/api/v1/spreadsheets/{spreadsheet.id}/categories")
+    assert categories.json()["items"] == []
 
     notifications = await client.get(f"/api/v1/spreadsheets/{spreadsheet.id}/notifications")
     assert [item["kind"] for item in notifications.json()["items"]] == ["IMPORT_ERROR"]
-
-
-async def test_bills_import_ignores_current_balance_column(
-    client: AsyncClient,
-    session: AsyncSession,
-) -> None:
-    """Колонка `Current balance` с листа не читается."""
-    spreadsheet = await factories.create_spreadsheet(session, ready=True)
-    await session.commit()
-
-    await client.post(
-        f"/api/v1/spreadsheets/{spreadsheet.id}/import/bills",
-        json={"rows": [["", "1", "Карта", "сбер", "RUB", "100", "99999"]]},
-    )
-
-    balances = await client.get(f"/api/v1/spreadsheets/{spreadsheet.id}/balances")
-    assert balances.json()["items"][0]["balance"] == "100.00"

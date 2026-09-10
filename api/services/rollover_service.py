@@ -116,7 +116,6 @@ class RolloverService:
                     (spreadsheet.id, SyncTaskKind.REDRAW, SheetTarget.OPERATIONS, period_id),
                     (spreadsheet.id, SyncTaskKind.REDRAW, SheetTarget.STATISTICS, period_id),
                 ]
-        keys.append((spreadsheet.id, SyncTaskKind.REDRAW, SheetTarget.BILLS, None))
 
         await self._tasks.enqueue_many(keys)
         await commit(self._session)

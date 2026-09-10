@@ -11,9 +11,7 @@ from telegram_bot.api_client.models import (
     Category,
     Currency,
     Record,
-    Source,
     Spreadsheet,
-    Transfer,
 )
 from telegram_bot.checks.draft import CheckDraft, DraftItem
 from telegram_bot.formatting import (
@@ -21,9 +19,8 @@ from telegram_bot.formatting import (
     MoneyFormatter,
     RecordFormatter,
     TableFormatter,
-    TransferFormatter,
 )
-from telegram_bot.parsers.results import ParsedRecord, ParsedTransfer
+from telegram_bot.parsers.results import ParsedRecord
 
 
 class TestMoneyFormatter:
@@ -78,7 +75,6 @@ def _record(amount: str = "-500.00", currency: Currency = Currency.RUB) -> Recor
         id=42,
         period_id=1,
         category_id=1,
-        source_id=1,
         amount=Decimal(amount),
         currency=currency,
         added_at=date(2026, 8, 14),
@@ -91,15 +87,13 @@ class TestRecordFormatter:
     """Сообщения об операциях."""
 
     def test_saved_expense(self) -> None:
-        """В подтверждении есть вид, сумма, категория, счёт, дата и id."""
+        """В подтверждении есть вид, сумма, категория, дата и id."""
         parsed = ParsedRecord(
             amount=Decimal("500"),
             currency=Currency.RUB,
             category_id=1,
             category_title="Продукты",
             category_is_income=False,
-            source_id=1,
-            source_title="Карта",
             notes="обед",
         )
         text = RecordFormatter.saved(parsed, _record())
@@ -107,7 +101,6 @@ class TestRecordFormatter:
         assert "расход" in text
         assert "500,00 ₽" in text
         assert "Продукты" in text
-        assert "Карта" in text
         assert "обед" in text
         assert "id: 42" in text
 
@@ -119,8 +112,6 @@ class TestRecordFormatter:
             category_id=2,
             category_title="Зарплата",
             category_is_income=True,
-            source_id=1,
-            source_title="Карта",
             notes="",
         )
         text = RecordFormatter.saved(parsed, _record(amount="1000.00"))
@@ -128,16 +119,11 @@ class TestRecordFormatter:
         assert "доход" in text
         assert "Пометка" not in text
 
-    def test_deleted_resolves_titles(
-        self,
-        categories: list[Category],
-        sources: list[Source],
-    ) -> None:
-        """Названия берутся из уже загруженных справочников, а не запросом."""
-        text = RecordFormatter.deleted(_record(), categories=categories, sources=sources)
+    def test_deleted_resolves_titles(self, categories: list[Category]) -> None:
+        """Название берётся из уже загруженного справочника, а не запросом."""
+        text = RecordFormatter.deleted(_record(), categories=categories)
 
         assert "Продукты" in text
-        assert "Карта" in text
         assert "id: 42" in text
 
     def test_deleted_survives_missing_titles(self) -> None:
@@ -146,44 +132,8 @@ class TestRecordFormatter:
         Операция ссылается на категорию, которую могли выключить и убрать из
         активных: сообщение об удалении обязано выйти в любом случае.
         """
-        text = RecordFormatter.deleted(_record(), categories=[], sources=[])
+        text = RecordFormatter.deleted(_record(), categories=[])
         assert "id: 42" in text
-
-
-class TestTransferFormatter:
-    """Сообщения о переводах."""
-
-    def _transfer(self) -> Transfer:
-        return Transfer(
-            id=7,
-            period_id=1,
-            from_source_id=2,
-            to_source_id=1,
-            amount=Decimal("1000.00"),
-            added_at=date(2026, 8, 14),
-            notes="отложил",
-        )
-
-    def test_saved(self) -> None:
-        """Направление печатается стрелкой, как и в реестре таблицы."""
-        parsed = ParsedTransfer(
-            amount=Decimal("1000"),
-            from_source_id=2,
-            from_source_title="Наличные",
-            to_source_id=1,
-            to_source_title="Карта",
-            notes="отложил",
-        )
-        text = TransferFormatter.saved(parsed, self._transfer(), currency=Currency.RUB)
-
-        assert "Наличные → Карта" in text
-        assert "1 000,00 ₽" in text
-        assert "id: 7" in text
-
-    def test_deleted(self, sources: list[Source]) -> None:
-        """Удаление называет оба счёта."""
-        text = TransferFormatter.deleted(self._transfer(), sources=sources)
-        assert "Наличные → Карта" in text
 
 
 class TestTableFormatter:

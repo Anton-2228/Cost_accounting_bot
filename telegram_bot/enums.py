@@ -58,8 +58,6 @@ class CommandName(StrEnum):
 
     ADD = "add"
     DEL = "del"
-    ADD_TRANS = "add_trans"
-    DEL_TRANS = "del_trans"
 
     TABLE = "table"
     TABLE_SYNC = "table_sync"

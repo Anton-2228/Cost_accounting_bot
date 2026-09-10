@@ -23,11 +23,8 @@ from google_sheets_service.main_api.dto import (
     Period,
     Record,
     SheetMapping,
-    Source,
-    SourceBalance,
     Spreadsheet,
     SyncTask,
-    Transfer,
 )
 from tests.google_sheets_service.factories import SPREADSHEET_CREATED_AT
 
@@ -193,8 +190,6 @@ class FakeSpreadsheetsClient:
         )
     )
     categories: list[Category] = field(default_factory=list)
-    sources: list[Source] = field(default_factory=list)
-    balances: list[SourceBalance] = field(default_factory=list)
     pending_accesses: list[Access] = field(default_factory=list)
     granted_ids: list[int] = field(default_factory=list)
     failed_ids: list[int] = field(default_factory=list)
@@ -245,23 +240,6 @@ class FakeSpreadsheetsClient:
         if only_active:
             return [item for item in self.categories if item.status == "ACTIVE"]
         return list(self.categories)
-
-    async def list_sources(
-        self,
-        spreadsheet_id: int,
-        *,
-        only_active: bool = False,
-        include_deleted: bool = False,
-    ) -> list[Source]:
-        """Счета."""
-        self.calls.append("list_sources")
-        return list(self.sources)
-
-    async def list_balances(self, spreadsheet_id: int) -> list[SourceBalance]:
-        """Балансы."""
-        self.calls.append("list_balances")
-        return list(self.balances)
-
 
 @dataclass
 class FakeSheetMappingsClient:
@@ -321,10 +299,9 @@ class FakePeriodsClient:
 
 @dataclass
 class FakeOperationsClient:
-    """Фейк операций и переводов."""
+    """Фейк операций периода."""
 
     records: list[Record] = field(default_factory=list)
-    transfers: list[Transfer] = field(default_factory=list)
     calls: list[str] = field(default_factory=list)
 
     async def list_records(self, spreadsheet_id: int, period_id: int) -> list[Record]:
@@ -332,10 +309,6 @@ class FakeOperationsClient:
         self.calls.append(f"list_records:{period_id}")
         return list(self.records)
 
-    async def list_transfers(self, spreadsheet_id: int, period_id: int) -> list[Transfer]:
-        """Переводы периода."""
-        self.calls.append(f"list_transfers:{period_id}")
-        return list(self.transfers)
 
 
 @dataclass
@@ -369,12 +342,6 @@ class FakeImportsClient:
         """Применяет лист категорий."""
         self.calls.append("import_categories")
         self.received.append(("CATEGORIES", [list(row) for row in rows]))
-        return self.result
-
-    async def import_bills(self, spreadsheet_id: int, rows: list[list[str]]) -> ImportResult:
-        """Применяет лист счетов."""
-        self.calls.append("import_bills")
-        self.received.append(("BILLS", [list(row) for row in rows]))
         return self.result
 
 

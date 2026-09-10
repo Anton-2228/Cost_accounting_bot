@@ -82,18 +82,11 @@ async def test_catalogues_come_in_items_envelope(
     """Списки приезжают в конверте `items`, без метаданных пагинации."""
     spreadsheet = await factories.create_spreadsheet(session, ready=True)
     await factories.create_category(session, spreadsheet, title="Еда")
-    await factories.create_source(session, spreadsheet, title="Кошелёк")
     await session.commit()
 
     categories = await client.get(f"{_PREFIX}/{spreadsheet.id}/categories")
     assert categories.status_code == 200
     assert [item["title"] for item in categories.json()["items"]] == ["Еда"]
-
-    sources = await client.get(f"{_PREFIX}/{spreadsheet.id}/sources")
-    assert [item["title"] for item in sources.json()["items"]] == ["Кошелёк"]
-
-    balances = await client.get(f"{_PREFIX}/{spreadsheet.id}/balances")
-    assert balances.json()["items"][0]["balance"] == "0.00"
 
 
 async def test_work_with_document_without_google_table_is_409(
@@ -189,7 +182,6 @@ async def test_include_deleted_returns_catalogues_for_archive_sheets(
     """
     spreadsheet = await factories.create_spreadsheet(session, ready=True)
     category = await factories.create_category(session, spreadsheet, title="Былое")
-    source = await factories.create_source(session, spreadsheet, title="Закрытый")
     await session.commit()
 
     base = f"{_PREFIX}/{spreadsheet.id}"
@@ -200,30 +192,11 @@ async def test_include_deleted_returns_catalogues_for_archive_sheets(
     )
     assert imported.json()["data"]["deleted"] == 1
 
-    removed = await client.post(
-        f"{base}/import/bills",
-        json={"rows": [[str(source.id), "", "", "", "", ""],
-                       ["", "1", "Новый", "", "RUB", "0", ""]]},
-    )
-    assert removed.json()["data"]["deleted"] == 1
-
     alive_categories = await client.get(f"{base}/categories")
     assert [item["title"] for item in alive_categories.json()["items"]] == ["Новая"]
 
     with_deleted = await client.get(f"{base}/categories", params={"include_deleted": "true"})
     assert [item["title"] for item in with_deleted.json()["items"]] == ["Былое", "Новая"]
-
-    sources_with_deleted = await client.get(
-        f"{base}/sources", params={"include_deleted": "true"}
-    )
-    assert [item["title"] for item in sources_with_deleted.json()["items"]] == [
-        "Закрытый",
-        "Новый",
-    ]
-
-    # Баланс закрытого счёта не показывается: это текущее состояние, не история.
-    balances = await client.get(f"{base}/balances")
-    assert [item["title"] for item in balances.json()["items"]] == ["Новый"]
 
 
 async def test_rejected_access_is_removed_and_reported(

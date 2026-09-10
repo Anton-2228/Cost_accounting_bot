@@ -155,53 +155,6 @@ class Category:
 
 
 @dataclass(frozen=True)
-class Source:
-    """Счёт. Текущего баланса здесь нет — он не хранится, а считается."""
-
-    id: int
-    status: str
-    title: str
-    associations: list[str]
-    #: Валюта счёта. Строкой, а не перечислением: сервис её только печатает в
-    #: ячейку и никак не интерпретирует, а заводить копию `api.enums.Currency`
-    #: значило бы держать два списка валют, расходящихся при каждой правке.
-    currency: str
-    start_balance: Decimal
-
-    @classmethod
-    def from_json(cls, body: dict[str, Any]) -> Source:
-        """Собирает счёт из ответа api."""
-        return cls(
-            id=int(body["id"]),
-            status=str(body["status"]),
-            title=str(body["title"]),
-            associations=[str(item) for item in body["associations"]],
-            currency=str(body["currency"]),
-            start_balance=_decimal(body["start_balance"]),
-        )
-
-
-@dataclass(frozen=True)
-class SourceBalance:
-    """Счёт вместе с посчитанным балансом."""
-
-    source_id: int
-    title: str
-    start_balance: Decimal
-    balance: Decimal
-
-    @classmethod
-    def from_json(cls, body: dict[str, Any]) -> SourceBalance:
-        """Собирает баланс из ответа api."""
-        return cls(
-            source_id=int(body["source_id"]),
-            title=str(body["title"]),
-            start_balance=_decimal(body["start_balance"]),
-            balance=_decimal(body["balance"]),
-        )
-
-
-@dataclass(frozen=True)
 class Period:
     """Учётный период. Границы полуинтервальные: день `end_date` не входит."""
 
@@ -233,9 +186,8 @@ class Record:
     id: int
     period_id: int
     category_id: int
-    source_id: int
     amount: Decimal
-    #: Валюта суммы — операции, не счёта. Совпадают они не всегда.
+    #: Валюта суммы.
     currency: str
     added_at: date
     notes: str
@@ -255,7 +207,6 @@ class Record:
             id=int(body["id"]),
             period_id=int(body["period_id"]),
             category_id=int(body["category_id"]),
-            source_id=int(body["source_id"]),
             amount=_decimal(body["amount"]),
             currency=str(body["currency"]),
             added_at=date.fromisoformat(body["added_at"]),
@@ -263,32 +214,6 @@ class Record:
             product_name=None if product_name is None else str(product_name),
             product_type=None if product_type is None else str(product_type),
             check_id=None if check_id is None else int(check_id),
-        )
-
-
-@dataclass(frozen=True)
-class Transfer:
-    """Перевод между счетами. Сумма строго положительна: направление задают счета."""
-
-    id: int
-    period_id: int
-    from_source_id: int
-    to_source_id: int
-    amount: Decimal
-    added_at: date
-    notes: str
-
-    @classmethod
-    def from_json(cls, body: dict[str, Any]) -> Transfer:
-        """Собирает перевод из ответа api."""
-        return cls(
-            id=int(body["id"]),
-            period_id=int(body["period_id"]),
-            from_source_id=int(body["from_source_id"]),
-            to_source_id=int(body["to_source_id"]),
-            amount=_decimal(body["amount"]),
-            added_at=date.fromisoformat(body["added_at"]),
-            notes=str(body["notes"]),
         )
 
 

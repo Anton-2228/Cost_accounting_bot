@@ -62,27 +62,17 @@ class SheetRedrawer:
             return renderers.render_categories(categories), layouts.CATEGORIES_LAYOUT, \
                 mapping.google_sheet_id
 
-        if target == "BILLS":
-            sources = await self._api.spreadsheets.list_sources(spreadsheet_id)
-            balances = await self._api.spreadsheets.list_balances(spreadsheet_id)
-            return renderers.render_bills(sources, balances), layouts.BILLS_LAYOUT, \
-                mapping.google_sheet_id
-
         if period_id is None:
             raise SyncError(f"Адресату {target} нужен период")
 
         if target == "OPERATIONS":
             records = await self._api.operations.list_records(spreadsheet_id, period_id)
-            transfers = await self._api.operations.list_transfers(spreadsheet_id, period_id)
-            # Справочники с удалёнными: операция удалённой категории остаётся в
+            # Справочник с удалёнными: операция удалённой категории остаётся в
             # реестре навсегда, и её названию неоткуда взяться иначе.
             categories = await self._api.spreadsheets.list_categories(
                 spreadsheet_id, include_deleted=True
             )
-            sources = await self._api.spreadsheets.list_sources(
-                spreadsheet_id, include_deleted=True
-            )
-            payload = renderers.render_operations(records, transfers, categories, sources)
+            payload = renderers.render_operations(records, categories)
             return payload, layouts.OPERATIONS_LAYOUT, mapping.google_sheet_id
 
         if target == "CHECKS":
