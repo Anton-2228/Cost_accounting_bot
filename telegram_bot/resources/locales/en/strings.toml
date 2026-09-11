@@ -105,6 +105,8 @@ phrase = "I CONFIRM UNLINKING"
 
 [record_delete]
 bad_id = "“{raw}” doesn't look like an id. Like this: /del 42"
+empty = "There are no transactions in the current period — nothing to delete"
+not_in_period = "There is no transaction {id} in the current period. Only transactions of the current period can be deleted."
 
 [settings_llm]
 user_not_found = "User {telegram_id} not found. Send another id."
@@ -171,6 +173,8 @@ money = "{amount} {sign}"
 [format.record]
 saved_expense = "Recorded an expense: {amount}"
 saved_income = "Recorded an income: {amount}"
+expense = "Expense: {amount}"
+income = "Income: {amount}"
 category = "Category: {title}"
 notes = "Note: {notes}"
 date = "Date: {date}"

@@ -30,6 +30,9 @@ class States(StatesGroup):
     # Ожидание слова подтверждения перед отвязкой таблицы (`/table_unlink`).
     CONFIRM_UNLINK_TABLE = State()
 
+    # Ожидание id операции перед её удалением (`/del`).
+    CONFIRM_DELETE_RECORD = State()
+
     # Ожидание telegram id, чьи траты на модель показать (`/settings`).
     SETTINGS_ASK_TELEGRAM_ID = State()
 

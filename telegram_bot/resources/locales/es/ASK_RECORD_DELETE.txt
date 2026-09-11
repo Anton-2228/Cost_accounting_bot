@@ -1,0 +1,5 @@
+¿Eliminar esta operación?
+
+{card}
+
+Escribe {id} para confirmar. Cualquier otra respuesta cancela la eliminación.

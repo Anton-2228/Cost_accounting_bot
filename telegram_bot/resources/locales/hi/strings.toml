@@ -108,6 +108,8 @@ phrase = "हाँ, स्प्रेडशीट अलग करें"
 
 [record_delete]
 bad_id = "“{raw}” id जैसा नहीं दिखता। ऐसे लिखें: /del 42"
+empty = "मौजूदा अवधि में कोई लेन-देन नहीं है — हटाने को कुछ नहीं"
+not_in_period = "मौजूदा अवधि में लेन-देन {id} नहीं है। सिर्फ़ मौजूदा अवधि के लेन-देन हटाए जा सकते हैं।"
 
 [settings_llm]
 user_not_found = "उपयोगकर्ता {telegram_id} नहीं मिला। कोई दूसरा id भेजें।"
@@ -174,6 +176,8 @@ money = "{amount} {sign}"
 [format.record]
 saved_expense = "खर्च दर्ज किया गया: {amount}"
 saved_income = "आय दर्ज की गई: {amount}"
+expense = "खर्च: {amount}"
+income = "आय: {amount}"
 category = "श्रेणी: {title}"
 notes = "टिप्पणी: {notes}"
 date = "तारीख: {date}"

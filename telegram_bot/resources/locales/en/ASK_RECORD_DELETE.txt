@@ -1,0 +1,5 @@
+Delete this transaction?
+
+{card}
+
+Type {id} to confirm. Any other reply cancels the deletion.

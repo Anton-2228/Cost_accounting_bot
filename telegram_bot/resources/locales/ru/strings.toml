@@ -111,6 +111,8 @@ phrase = "ПОДТВЕРЖДАЮ ОТВЯЗЫВАНИЕ"
 
 [record_delete]
 bad_id = "«{raw}» не похоже на id. Нужно так: /del 42"
+empty = "В текущем периоде операций нет — удалять нечего"
+not_in_period = "Операции {id} нет в текущем периоде. Удалить можно только операцию текущего периода."
 
 [settings_llm]
 user_not_found = "Пользователь {telegram_id} не найден. Пришлите другой id."
@@ -177,6 +179,8 @@ money = "{amount} {sign}"
 [format.record]
 saved_expense = "Записал расход: {amount}"
 saved_income = "Записал доход: {amount}"
+expense = "Расход: {amount}"
+income = "Доход: {amount}"
 category = "Категория: {title}"
 notes = "Пометка: {notes}"
 date = "Дата: {date}"

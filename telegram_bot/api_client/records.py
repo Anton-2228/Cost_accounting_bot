@@ -10,10 +10,18 @@ from telegram_bot.api_client.models import Currency, Record
 
 
 class RecordsClient:
-    """Добавление и удаление операций."""
+    """Операции текущего периода, добавление и удаление."""
 
     def __init__(self, http: ApiHttpClient) -> None:
         self._http = http
+
+    async def current(self, spreadsheet_id: int) -> list[Record]:
+        """Живые операции текущего периода.
+
+        Нужны `/del`: показать операцию до удаления, а не после.
+        """
+        items = await self._http.get_items(f"/spreadsheets/{spreadsheet_id}/records")
+        return [Record.model_validate(item) for item in items]
 
     async def create(
         self,
@@ -37,14 +45,6 @@ class RecordsClient:
                 "currency": currency.value,
                 "notes": notes,
             },
-            timeout=constants.WRITE_TIMEOUT_SECONDS,
-        )
-        return Record.model_validate(data)
-
-    async def delete_last(self, spreadsheet_id: int) -> Record:
-        """Удаляет последнюю операцию текущего периода и возвращает её."""
-        data = await self._http.delete_data(
-            f"/spreadsheets/{spreadsheet_id}/records/last",
             timeout=constants.WRITE_TIMEOUT_SECONDS,
         )
         return Record.model_validate(data)

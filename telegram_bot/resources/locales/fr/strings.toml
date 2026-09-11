@@ -105,6 +105,8 @@ phrase = "JE CONFIRME LA DISSOCIATION"
 
 [record_delete]
 bad_id = "« {raw} » ne ressemble pas à un id. Comme ceci : /del 42"
+empty = "Aucune opération dans la période en cours : rien à supprimer"
+not_in_period = "Aucune opération {id} dans la période en cours. Seules les opérations de la période en cours peuvent être supprimées."
 
 [settings_llm]
 user_not_found = "Utilisateur {telegram_id} introuvable. Envoyez un autre id."
@@ -171,6 +173,8 @@ money = "{amount} {sign}"
 [format.record]
 saved_expense = "Dépense enregistrée : {amount}"
 saved_income = "Revenu enregistré : {amount}"
+expense = "Dépense : {amount}"
+income = "Revenu : {amount}"
 category = "Catégorie : {title}"
 notes = "Note : {notes}"
 date = "Date : {date}"

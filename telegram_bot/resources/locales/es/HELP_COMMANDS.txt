@@ -8,6 +8,7 @@ Comandos
     Ejemplo: /add euros 20 comida café para llevar
 /del id
     Sin id, eliminaré la última operación del periodo.
+    Antes de eliminarla, te mostraré la operación y te pediré que escribas su id.
 
 /check — procesar un recibo escaneado en la app
     Muestro los artículos y propongo tipos y categorías.

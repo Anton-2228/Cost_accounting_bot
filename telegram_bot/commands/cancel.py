@@ -26,6 +26,7 @@ BRANCH_EMAIL = "email"
 BRANCH_UNLINK = "unlink"
 BRANCH_LLM = "llm"
 BRANCH_CHECK = "check"
+BRANCH_DELETE = "del"
 
 #: Метка ветки → состояния, в которых её кнопка законна.
 #:
@@ -36,6 +37,7 @@ _BRANCH_STATES: dict[str, tuple[State, ...]] = {
     BRANCH_UNLINK: (States.CONFIRM_UNLINK_TABLE,),
     BRANCH_LLM: (States.SETTINGS_ASK_TELEGRAM_ID,),
     BRANCH_CHECK: (States.CHECK_TYPES, States.CHECK_CATEGORIES),
+    BRANCH_DELETE: (States.CONFIRM_DELETE_RECORD,),
 }
 
 #: Обратное отображение, чтобы по текущему состоянию узнать ветку. Считается

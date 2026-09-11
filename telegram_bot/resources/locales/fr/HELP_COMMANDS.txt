@@ -8,6 +8,7 @@ Commandes
     Exemple : /add euros 20 repas café à emporter
 /del id
     Sans id, je supprime la dernière opération de la période.
+    Avant de supprimer, j'affiche l'opération et vous demande d'écrire son id.
 
 /check — traiter un ticket scanné dans l'appli
     J'affiche les articles et je propose des types et des catégories.

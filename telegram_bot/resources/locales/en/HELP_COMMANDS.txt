@@ -8,6 +8,7 @@ Commands
     Example: /add euros 20 food coffee to go
 /del id
     Without an id, I'll delete the last transaction of the period.
+    Before deleting, I'll show the transaction and ask you to type its id.
 
 /check — process a receipt scanned in the app
     I show the items and suggest types and categories.

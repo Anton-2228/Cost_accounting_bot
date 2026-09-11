@@ -105,6 +105,8 @@ phrase = "CONFIRMO LA DESVINCULACIÓN"
 
 [record_delete]
 bad_id = "«{raw}» no parece un id. Así: /del 42"
+empty = "No hay operaciones en el periodo actual: no hay nada que eliminar"
+not_in_period = "No hay ninguna operación {id} en el periodo actual. Solo se pueden eliminar operaciones del periodo actual."
 
 [settings_llm]
 user_not_found = "No se encontró al usuario {telegram_id}. Envía otro id."
@@ -171,6 +173,8 @@ money = "{amount} {sign}"
 [format.record]
 saved_expense = "Gasto registrado: {amount}"
 saved_income = "Ingreso registrado: {amount}"
+expense = "Gasto: {amount}"
+income = "Ingreso: {amount}"
 category = "Categoría: {title}"
 notes = "Nota: {notes}"
 date = "Fecha: {date}"

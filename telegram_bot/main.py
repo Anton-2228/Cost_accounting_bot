@@ -55,6 +55,7 @@ _DIALOG_STATES = (
     *_CHECK_STATES,
     States.ADD_EMAIL,
     States.CONFIRM_UNLINK_TABLE,
+    States.CONFIRM_DELETE_RECORD,
     States.SETTINGS_ASK_TELEGRAM_ID,
 )
 
@@ -163,6 +164,7 @@ def _register_handlers() -> None:
     router.message.register(_on_create_table_step, StateFilter(*_CREATE_TABLE_STATES))
     router.message.register(_on_add_email_step, StateFilter(States.ADD_EMAIL))
     router.message.register(_on_unlink_table_step, StateFilter(States.CONFIRM_UNLINK_TABLE))
+    router.message.register(_on_delete_record_step, StateFilter(States.CONFIRM_DELETE_RECORD))
     router.message.register(_on_check_step, StateFilter(*_CHECK_STATES))
     router.message.register(
         _on_settings_llm_step, StateFilter(States.SETTINGS_ASK_TELEGRAM_ID)
@@ -254,6 +256,11 @@ async def _on_add_email_step(message: Message, state: FSMContext) -> None:
 async def _on_unlink_table_step(message: Message, state: FSMContext) -> None:
     """Подтверждение отвязки таблицы."""
     await MANAGER.launch(CommandName.TABLE_UNLINK, message, state)
+
+
+async def _on_delete_record_step(message: Message, state: FSMContext) -> None:
+    """Подтверждение удаления операции: набранный id."""
+    await MANAGER.launch(CommandName.DEL, message, state)
 
 
 async def _on_check_step(message: Message, state: FSMContext) -> None:

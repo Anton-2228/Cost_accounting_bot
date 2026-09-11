@@ -32,6 +32,26 @@ class RecordFormatter:
         return "\n".join(lines)
 
     @staticmethod
+    def card(record: Record, *, categories: list[Category]) -> str:
+        """Операция целиком — её показывают перед удалением.
+
+        Расход это или доход, видно по знаку суммы: его ставит вид категории,
+        и так заголовок не пропадает, даже если категорию уже удалили из листа.
+        """
+        amount = MoneyFormatter.format(record.amount, record.currency)
+        category = next((item.title for item in categories if item.id == record.category_id), "")
+        lines = [
+            t("format.record.income", amount=amount)
+            if record.amount > 0
+            else t("format.record.expense", amount=amount),
+            t("format.record.category", title=category) if category else "",
+            t("format.record.notes", notes=record.notes) if record.notes else "",
+            t("format.record.date", date=LocaleFormat.day(record.added_at)),
+            t("format.record.id", id=record.id),
+        ]
+        return "\n".join(line for line in lines if line)
+
+    @staticmethod
     def deleted(record: Record, *, categories: list[Category]) -> str:
         """Подтверждение удаления.
 
