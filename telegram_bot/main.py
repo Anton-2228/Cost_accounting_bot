@@ -71,8 +71,11 @@ _SIMPLE_COMMANDS = (
 #:
 #: Кнопка «Готово» разбора чека сюда не входит: она законна внутри состояний
 #: разбора и только там, поэтому регистрируется отдельно.
+#:
+#: `menu` — это «Назад» с экрана настроек: у меню и команда, и кнопка.
 _BUTTON_COMMANDS = (
     CommandName.START,
+    CommandName.MENU,
     CommandName.TABLE,
     CommandName.TABLE_SYNC,
     CommandName.TABLE_EMAIL,

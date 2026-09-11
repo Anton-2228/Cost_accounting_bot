@@ -10,7 +10,7 @@ from collections.abc import Sequence
 from dataclasses import dataclass
 
 from telegram_bot.enums import CommandName
-from telegram_bot.i18n import NATIVE_LABELS, SUPPORTED_LANGUAGES, Language
+from telegram_bot.i18n import NATIVE_LABELS, SUPPORTED_LANGUAGES, Language, t
 
 #: Языков на одной странице.
 PAGE_SIZE = 4
@@ -28,6 +28,11 @@ ACTION_OPEN = "open"
 ACTION_PAGE = "page"
 ACTION_SET = "set"
 ACTION_NOOP = "noop"
+
+#: `callback_data` кнопки «Назад» у выбора из настроек: экран настроек рисуется
+#: на месте выбора. Та же кнопка, что «Настройки» в меню, — обе открывают экран
+#: в нажатом сообщении.
+BACK_DATA = f"{CommandName.SETTINGS}:open"
 
 _PREFIX = CommandName.LANGUAGE
 _PREVIOUS = "◀"
@@ -83,6 +88,9 @@ def rows(
     Ряд навигации — `[◀][n/N][▶]`, на краях вместо стрелки инертная заглушка:
     ряд не меняет ширину от страницы к странице, и кнопки не прыгают под
     пальцем. Одна страница — навигации нет вовсе.
+
+    У выбора из настроек последний ряд — «Назад» к ним; здесь, а не у команды,
+    чтобы он не пропадал при листании. На `/start` возвращаться некуда.
     """
     total = page_count(languages)
     page = min(max(page, 1), total)
@@ -110,6 +118,8 @@ def rows(
             else (_PLACEHOLDER, noop)
         )
         result.append((previous, (f"{page}/{total}", noop), following))
+    if origin == ORIGIN_SETTINGS:
+        result.append(((t("buttons.back"), BACK_DATA),))
     return result
 
 

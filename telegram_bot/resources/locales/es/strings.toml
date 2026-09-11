@@ -67,6 +67,7 @@ duplicate_product_type = "Categorías: el mismo product type aparece más de una
 
 [buttons]
 cancel = "Cancelar"
+back = "Atrás"
 
 [buttons.menu]
 table = "Ver la hoja de cálculo"

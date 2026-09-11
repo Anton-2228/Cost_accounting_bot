@@ -7,7 +7,7 @@ from collections.abc import Sequence
 from typing import TYPE_CHECKING, Any, ClassVar, cast
 
 from aiogram.fsm.context import FSMContext
-from aiogram.types import CallbackQuery, Message
+from aiogram.types import CallbackQuery, InlineKeyboardMarkup, Message
 
 from telegram_bot.aiogram_wrapper import AiogramWrapper
 from telegram_bot.api_client import ApiGateway
@@ -77,6 +77,27 @@ class BaseCommand(ABC):
         if callback.message is None:
             return None
         return callback.message.chat.id, callback.from_user.id
+
+    async def show_screen(
+        self,
+        *,
+        chat_id: int,
+        text: str,
+        keyboard: InlineKeyboardMarkup | None,
+        message_id: int | None = None,
+    ) -> None:
+        """Рисует экран на месте сообщения `message_id` либо новым сообщением.
+
+        На месте сменяют друг друга экраны навигации — меню, настройки, выбор
+        языка: иначе «Назад» оставлял бы в переписке копию родителя прямо под
+        ним самим. Правка не удалась (сообщение удалено, устарело) — экран
+        приходит новым, как и без `message_id`.
+        """
+        if message_id is not None and await self.aiogram.edit_text(
+            chat_id, message_id, text, keyboard=keyboard
+        ):
+            return
+        await self.aiogram.send_message(chat_id, text, keyboard=keyboard)
 
     async def ask(
         self,
@@ -181,13 +202,25 @@ class BaseCommand(ABC):
         записи. Одна точка на все команды: новая получает проверку даром.
         """
         spreadsheet = await self.find_spreadsheet(user_id=user_id, chat_id=chat_id)
-        if spreadsheet is None:
-            await self.aiogram.send_message(chat_id, t("errors.not_found.spreadsheet"))
-            return None
-        if not spreadsheet.is_ready:
-            await self.aiogram.send_message(chat_id, t("errors.table_creating"))
+        refusal = self.refusal(spreadsheet)
+        if refusal is not None:
+            await self.aiogram.send_message(chat_id, refusal)
             return None
         return spreadsheet
+
+    @staticmethod
+    def refusal(spreadsheet: Spreadsheet | None) -> str | None:
+        """Почему с таблицей работать нельзя, или `None`, если можно.
+
+        Отдельно от `spreadsheet_for`, потому что отказ показывают по-разному:
+        команда присылает его новым сообщением, а «Назад» к меню пишет его на
+        месте экрана, с которого ушли.
+        """
+        if spreadsheet is None:
+            return t("errors.not_found.spreadsheet")
+        if not spreadsheet.is_ready:
+            return t("errors.table_creating")
+        return None
 
     async def find_spreadsheet(
         self,

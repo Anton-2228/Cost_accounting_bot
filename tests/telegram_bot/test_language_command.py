@@ -22,11 +22,12 @@ from telegram_bot.commands import language_picker
 from telegram_bot.commands.language import LanguageCommand
 from telegram_bot.commands.language_picker import ORIGINS, PickerAction
 from telegram_bot.commands.manager import Manager
+from telegram_bot.commands.menu import OPEN_DATA as MENU_OPEN_DATA
 from telegram_bot.commands.menu import MenuCommand
 from telegram_bot.commands.settings import LLM_COSTS_DATA, SettingsCommand
 from telegram_bot.commands.start import StartCommand
 from telegram_bot.enums import CommandName
-from telegram_bot.i18n import NATIVE_LABELS, PICKER_ORDER, Language, t_in
+from telegram_bot.i18n import NATIVE_LABELS, PICKER_ORDER, Language, t, t_in
 from telegram_bot.i18n import language as i18n_language
 from telegram_bot.languages import LanguageStore, UserLanguages
 from telegram_bot.notifications import NotificationCatchUp
@@ -55,7 +56,7 @@ class TestPicker:
     """Раскладка клавиатуры: чистая логика, без бота."""
 
     def test_first_page(self) -> None:
-        """Четыре языка по одному в ряд, ✓ у текущего, навигация отдельно."""
+        """Четыре языка по одному в ряд, ✓ у текущего, навигация и «Назад» отдельно."""
         rows = language_picker.rows(origin="settings", page=1, current=_EN, languages=PICKER_ORDER)
 
         assert _labels(rows) == [
@@ -64,9 +65,25 @@ class TestPicker:
             [NATIVE_LABELS[_HI]],
             [NATIVE_LABELS[_ES]],
             ["·", "1/2", "▶"],
+            [t("buttons.back")],
         ]
-        assert rows[-1][2][1] == "language:page:settings:2"
+        assert rows[-2][2][1] == "language:page:settings:2"
         assert rows[1][0][1] == "language:set:settings:ru"
+
+    @pytest.mark.parametrize("page", [1, 2])
+    def test_back_only_from_settings(self, page: int) -> None:
+        """«Назад» ведёт в настройки на любой странице; на `/start` его нет.
+
+        С `/start` возвращаться некуда: до выбора языка у человека нет ни
+        настроек, ни меню.
+        """
+        settings = language_picker.rows(
+            origin="settings", page=page, current=_EN, languages=PICKER_ORDER
+        )
+        start = language_picker.rows(origin="start", page=page, current=_EN, languages=PICKER_ORDER)
+
+        assert settings[-1] == ((t("buttons.back"), "settings:open"),)
+        assert all(data != language_picker.BACK_DATA for row in start for _, data in row)
 
     def test_last_page(self) -> None:
         """На последней странице стрелка назад, а вместо «вперёд» — заглушка."""
@@ -220,26 +237,33 @@ class TestSettings:
         await harness.press("settings:open")
 
         assert harness.aiogram.buttons() == [
-            (t_in(_EN, "buttons.settings.language"), language_picker.open_data())
+            (t_in(_EN, "buttons.settings.language"), language_picker.open_data()),
+            (t_in(_EN, "buttons.back"), MENU_OPEN_DATA),
         ]
 
     async def test_admin_gets_both_buttons(self) -> None:
-        """У админа под языком — траты на модель."""
+        """У админа под языком — траты на модель, под ними «Назад»."""
         harness = Harness()
         await harness.press("settings:open", user_id=_ADMIN_ID)
 
         assert [data for _, data in harness.aiogram.buttons()] == [
             language_picker.open_data(),
             LLM_COSTS_DATA,
+            MENU_OPEN_DATA,
         ]
 
-    async def test_button_sends_a_new_message(self) -> None:
-        """Выбор приходит новым сообщением на языке пользователя."""
+    async def test_picker_replaces_settings(self) -> None:
+        """Выбор открывается на месте настроек, на языке пользователя, с «Назад»."""
         harness = Harness(language=_RU)
         await harness.press("language:open")
 
-        assert harness.aiogram.sent == [t_in(_RU, "language.choose")]
-        assert harness.aiogram.edits == []
+        assert [(message_id, text) for message_id, text, _ in harness.aiogram.edits] == [
+            (1, t_in(_RU, "language.choose"))
+        ]
+        assert harness.aiogram.buttons()[-1] == (
+            t_in(_RU, "buttons.back"),
+            language_picker.BACK_DATA,
+        )
 
     async def test_page_edits_the_same_message(self) -> None:
         """Листание меняет клавиатуру того же сообщения, не присылая нового."""
@@ -253,6 +277,17 @@ class TestSettings:
         message_id, text, keyboard = harness.aiogram.edits[-1]
         assert (message_id, text) == (1, None)
         assert keyboard is not None
+        assert harness.aiogram.buttons()[-1][1] == language_picker.BACK_DATA
+
+    async def test_back_returns_settings_in_place(self) -> None:
+        """«Назад» с выбора переписывает его обратно в настройки."""
+        harness = Harness()
+        await harness.press("language:open")
+        await harness.press(language_picker.BACK_DATA)
+
+        assert harness.aiogram.edits[-1][:2] == (1, t_in(_EN, "text.settings_user"))
+        # Всё, что сказано, сказано правками: нового сообщения не пришло.
+        assert len(harness.aiogram.edits) == len(harness.aiogram.sent) == 2
 
     async def test_choice_returns_to_settings_in_the_new_language(self) -> None:
         """После выбора — экран настроек, уже на новом языке."""

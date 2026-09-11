@@ -70,6 +70,7 @@ duplicate_product_type = "Categories: एक ही product type कई बा�
 
 [buttons]
 cancel = "रद्द करें"
+back = "वापस"
 
 [buttons.menu]
 table = "स्प्रेडशीट खोलें"

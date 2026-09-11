@@ -71,6 +71,7 @@ duplicate_product_type = "В категориях один product type испо
 
 [buttons]
 cancel = "Отмена"
+back = "Назад"
 
 [buttons.menu]
 table = "Получить таблицу"

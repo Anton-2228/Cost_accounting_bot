@@ -37,7 +37,7 @@ from telegram_bot.commands.cancel import (
 )
 from telegram_bot.commands.language import LanguageCommand
 from telegram_bot.commands.manager import Manager
-from telegram_bot.commands.menu import MenuCommand, menu_buttons
+from telegram_bot.commands.menu import OPEN_DATA, MenuCommand, menu_buttons
 from telegram_bot.commands.settings import SettingsCommand
 from telegram_bot.commands.start import StartCommand, create_table_button
 from telegram_bot.commands.table import TableCommand
@@ -119,6 +119,8 @@ class FakeAiogram(AiogramWrapper):
         #: Правки отправленных сообщений: номер, новый текст (или `None`) и
         #: новая клавиатура.
         self.edits: list[tuple[int, str | None, InlineKeyboardMarkup | None]] = []
+        #: `False` — Telegram отказывает в правке (сообщение удалено, устарело).
+        self.editable = True
 
     async def answer_message(self, message: Message, text: str) -> Message:
         self.sent.append(text)
@@ -134,6 +136,8 @@ class FakeAiogram(AiogramWrapper):
         keyboard: InlineKeyboardMarkup | None = None,
     ) -> bool:
         """Переписывает сообщение: текст считается сказанным."""
+        if not self.editable:
+            return False
         self.edits.append((message_id, text, keyboard))
         self.sent.append(text)
         self.keyboards.append(keyboard)
@@ -511,6 +515,65 @@ class TestMenuButtons:
         assert harness.aiogram.answered_callbacks == 1
 
 
+class TestBack:
+    """Меню и настройки сменяют друг друга в одном сообщении."""
+
+    async def test_settings_replace_the_menu(self) -> None:
+        """«Настройки» переписывают меню, а внизу у них — «Назад» в меню."""
+        harness = Harness(spreadsheet=_spreadsheet())
+        await harness.press(MENU_BUTTONS[4][1])
+
+        assert harness.aiogram.edits[-1][:2] == (1, t("text.settings_user"))
+        assert harness.aiogram.buttons()[-1] == (t("buttons.back"), OPEN_DATA)
+
+    async def test_back_draws_the_menu_in_place(self) -> None:
+        """«Назад» переписывает нажатое сообщение, а не присылает второе меню."""
+        harness = Harness(spreadsheet=_spreadsheet())
+        await harness.press(OPEN_DATA)
+
+        assert [(message_id, text) for message_id, text, _ in harness.aiogram.edits] == [
+            (1, t("text.menu"))
+        ]
+        assert harness.aiogram.buttons() == list(MENU_BUTTONS)
+        assert harness.aiogram.answered_callbacks == 1
+
+    @pytest.mark.parametrize(
+        ("spreadsheet", "refusal"),
+        [
+            (None, NO_TABLE_MESSAGE),
+            (_spreadsheet(google_id=""), TABLE_CREATING_MESSAGE),
+        ],
+    )
+    async def test_back_without_ready_table_is_refused_in_place(
+        self, spreadsheet: Spreadsheet | None, refusal: str
+    ) -> None:
+        """Настройки, открытые до отвязки, не возвращают меню, где ничего не работает."""
+        harness = Harness(spreadsheet=spreadsheet)
+        await harness.press(OPEN_DATA)
+
+        assert harness.aiogram.edits == [(1, refusal, None)]
+        assert harness.aiogram.buttons() == []
+
+    async def test_back_draws_the_menu_once(self) -> None:
+        """Дочитка `TABLE_READY` не дорисовывает второе меню под переписанным."""
+        harness = Harness(spreadsheet=_spreadsheet())
+        harness.catch_up.delivered = (NotificationKind.TABLE_READY,)
+
+        await harness.press(OPEN_DATA)
+
+        assert harness.aiogram.sent.count(t("text.menu")) == 1
+
+    async def test_failed_edit_sends_a_new_menu(self) -> None:
+        """Сообщение не переписать — меню приходит новым, а не пропадает."""
+        harness = Harness(spreadsheet=_spreadsheet())
+        harness.aiogram.editable = False
+
+        await harness.press(OPEN_DATA)
+
+        assert harness.aiogram.edits == []
+        assert harness.aiogram.sent == [t("text.menu")]
+
+
 class TestRouting:
     """Связь кнопок с регистрацией обработчиков."""
 
@@ -525,6 +588,7 @@ class TestRouting:
 
         for _, data in (*MENU_BUTTONS, CREATE_TABLE_BUTTON):
             assert data.startswith(_BUTTON_PREFIXES)
+        assert OPEN_DATA.startswith(_BUTTON_PREFIXES)
 
     def test_cancel_is_not_blocked_as_a_menu_button(self) -> None:
         """Префикса «Отмены» нет среди блокируемых кнопок меню.

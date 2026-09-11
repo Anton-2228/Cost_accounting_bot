@@ -67,6 +67,7 @@ duplicate_product_type = "Catégories : le même product type est utilisé plusi
 
 [buttons]
 cancel = "Annuler"
+back = "Retour"
 
 [buttons.menu]
 table = "Obtenir le tableur"

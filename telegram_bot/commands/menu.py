@@ -5,11 +5,15 @@ from __future__ import annotations
 from typing import Any
 
 from aiogram.fsm.context import FSMContext
-from aiogram.types import Message
+from aiogram.types import CallbackQuery, Message
 
 from telegram_bot.commands.base_command import BaseCommand
 from telegram_bot.enums import CommandName
 from telegram_bot.i18n import t
+
+#: `callback_data` кнопки «Назад» с экрана настроек: меню рисуется на месте того
+#: же сообщения.
+OPEN_DATA = f"{CommandName.MENU}:open"
 
 
 #: Кнопки экрана: надпись и `callback_data`. Префикс `callback_data` совпадает с
@@ -56,15 +60,49 @@ class MenuCommand(BaseCommand):
             return
         await self.show(chat_id=message.chat.id)
 
-    async def show(self, *, chat_id: int) -> None:
+    async def handle_callback(
+        self,
+        callback: CallbackQuery,
+        state: FSMContext,
+        **kwargs: Any,
+    ) -> None:
+        """«Назад» с экрана настроек: меню на месте того же сообщения.
+
+        Проверка та же, что у `/menu`, только отказ пишется на месте экрана:
+        кнопка живёт в переписке дольше таблицы, и настройки, открытые до
+        отвязки, не должны вернуть меню, где не работает ни одна кнопка.
+        Дорисовка меню по `TABLE_READY` выключена — меню и так рисуется здесь,
+        и без флага пришло бы дважды.
+        """
+        target = await self.callback_target(callback)
+        if target is None or callback.message is None:
+            return
+        chat_id, telegram_id = target
+        message_id = callback.message.message_id
+
+        spreadsheet = await self.find_spreadsheet(
+            user_id=telegram_id, chat_id=chat_id, menu_on_ready=False
+        )
+        refusal = self.refusal(spreadsheet)
+        if refusal is not None:
+            await self.show_screen(
+                chat_id=chat_id, text=refusal, keyboard=None, message_id=message_id
+            )
+            return
+        await self.show(chat_id=chat_id, message_id=message_id)
+
+    async def show(self, *, chat_id: int, message_id: int | None = None) -> None:
         """Рисует экран в произвольном чате.
 
-        Отдельный метод, а не только `execute`: меню показывается ещё из двух
-        мест, где сообщения пользователя нет вовсе, — конца мастера создания
-        таблицы и нажатия кнопки «Создать таблицу».
+        Отдельный метод, а не только `execute`: меню показывается ещё из
+        нескольких мест, где сообщения пользователя нет вовсе, — конца мастера
+        создания таблицы, нажатия кнопки «Создать таблицу», «Отмены». Туда меню
+        приходит новым сообщением; `message_id` передаёт только «Назад» с
+        экрана настроек.
         """
-        await self.aiogram.send_message(
-            chat_id,
-            t("text.menu"),
+        await self.show_screen(
+            chat_id=chat_id,
+            text=t("text.menu"),
             keyboard=self.aiogram.inline_keyboard(menu_buttons()),
+            message_id=message_id,
         )

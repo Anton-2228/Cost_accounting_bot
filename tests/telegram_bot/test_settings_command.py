@@ -36,6 +36,7 @@ from telegram_bot.api_client.models import (
 )
 from telegram_bot.commands import language_picker
 from telegram_bot.commands.manager import Manager
+from telegram_bot.commands.menu import OPEN_DATA as MENU_OPEN_DATA
 from telegram_bot.commands.settings import LLM_COSTS_DATA, SettingsCommand
 from telegram_bot.commands.settings_llm import SettingsLlmCostsCommand
 from telegram_bot.enums import CommandName
@@ -169,15 +170,15 @@ class FakeAiogram(AiogramWrapper):
         """Было ли сказано что-то, содержащее фрагмент."""
         return any(fragment in text for text in self.sent)
 
-    def last_callback_data(self) -> str:
-        """`callback_data` нижней кнопки последней клавиатуры.
-
-        Нижней, а не первой: над админской кнопкой теперь стоит «Язык», общий
-        для всех.
-        """
+    def callback_data(self) -> list[str]:
+        """`callback_data` кнопок последней клавиатуры, сверху вниз."""
         if not self.keyboards:
-            return ""
-        return self.keyboards[-1].inline_keyboard[-1][0].callback_data or ""
+            return []
+        return [
+            button.callback_data or ""
+            for row in self.keyboards[-1].inline_keyboard
+            for button in row
+        ]
 
 
 class FakeSpreadsheets:
@@ -305,14 +306,18 @@ class TestScreen:
     """Экран настроек у разных ролей."""
 
     async def test_admin_gets_button(self) -> None:
-        """У админа на экране кнопка трат."""
+        """У админа на экране кнопка трат — между языком и «Назад»."""
         harness = Harness()
         await harness.open_settings()
 
-        assert harness.aiogram.last_callback_data() == LLM_COSTS_DATA
+        assert harness.aiogram.callback_data() == [
+            language_picker.open_data(),
+            LLM_COSTS_DATA,
+            MENU_OPEN_DATA,
+        ]
 
     async def test_ordinary_user_gets_only_language(self) -> None:
-        """Обычный пользователь видит только выбор языка.
+        """Обычный пользователь видит только выбор языка и «Назад».
 
         Отказом отвечать нечему: `/settings` доступна всем, разное у ролей —
         набор кнопок: язык меняет каждый, траты на модель видит только админ.
@@ -321,7 +326,7 @@ class TestScreen:
         await harness.open_settings(_USER_ID)
 
         assert harness.aiogram.said(t("text.settings_user"))
-        assert harness.aiogram.last_callback_data() == language_picker.open_data()
+        assert harness.aiogram.callback_data() == [language_picker.open_data(), MENU_OPEN_DATA]
 
 
 class TestRoleGuard:
@@ -410,7 +415,7 @@ class TestDialog:
 
         assert harness.aiogram.said("0,0100 $")
         assert await harness.state().get_state() is None
-        assert harness.aiogram.last_callback_data() == LLM_COSTS_DATA
+        assert LLM_COSTS_DATA in harness.aiogram.callback_data()
 
 
 class TestReport:

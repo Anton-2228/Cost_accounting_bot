@@ -69,17 +69,21 @@ class LanguageCommand(BaseCommand):
         """
         raise NotImplementedError("Выбор языка — только кнопки")
 
-    async def show(self, *, chat_id: int, origin: str) -> None:
-        """Присылает выбор языка новым сообщением на странице текущего языка."""
+    async def show(self, *, chat_id: int, origin: str, message_id: int | None = None) -> None:
+        """Рисует выбор языка на странице текущего языка.
+
+        На `/start` выбор приходит новым сообщением, из настроек — на месте их
+        экрана (`message_id`).
+        """
         current = current_language()
         text = (
             t_in(Language.EN, "language.choose_start")
             if origin == ORIGIN_START
             else t("language.choose")
         )
-        await self.aiogram.send_message(
-            chat_id,
-            text,
+        await self.show_screen(
+            chat_id=chat_id,
+            text=text,
             keyboard=self.aiogram.inline_keyboard_rows(
                 language_picker.rows(
                     origin=origin,
@@ -87,6 +91,7 @@ class LanguageCommand(BaseCommand):
                     current=current,
                 )
             ),
+            message_id=message_id,
         )
 
     async def handle_callback(
@@ -104,11 +109,11 @@ class LanguageCommand(BaseCommand):
         action = language_picker.parse(callback.data)
         if action is None:
             return
+        message_id = callback.message.message_id
         if action.action == ACTION_OPEN:
-            await self.show(chat_id=chat_id, origin=ORIGIN_SETTINGS)
+            await self.show(chat_id=chat_id, origin=ORIGIN_SETTINGS, message_id=message_id)
             return
 
-        message_id = callback.message.message_id
         if action.action == ACTION_PAGE and action.origin is not None:
             value = action.value or ""
             current = current_language()
