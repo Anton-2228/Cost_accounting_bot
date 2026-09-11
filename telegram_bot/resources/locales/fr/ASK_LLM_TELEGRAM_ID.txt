@@ -1,0 +1,3 @@
+De quel utilisateur afficher les coûts du modèle ?
+
+Envoyez son telegram id sous forme d'un seul nombre.

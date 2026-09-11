@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
-from sqlalchemy import BigInteger, ForeignKey, Index, String, UniqueConstraint, text
+from sqlalchemy import BigInteger, Boolean, ForeignKey, Index, String, UniqueConstraint, text
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from api.core import constants
@@ -39,6 +39,12 @@ class CategoryORM(PkMixin, TimestampMixin, SoftDeleteMixin, Base):
     блокировала создание одноимённой заново; по `lower(...)` — потому что подбор
     работает в нижнем регистре, и «Еда» с «еда» иначе стали бы разными строками
     с одинаковым псевдонимом.
+
+    `is_default` — категория по умолчанию: одна на вид в документе, заводится
+    вместе с ним. В расходную складывается всё, что не удалось разложить, и
+    типы товаров ей не назначаются никогда. Отмечена флагом, а не узнаётся по
+    названию: название теперь на языке пользователя, и его можно поменять в
+    листе, а роль категории от этого меняться не должна.
     """
 
     __tablename__ = "categories"
@@ -60,6 +66,16 @@ class CategoryORM(PkMixin, TimestampMixin, SoftDeleteMixin, Base):
             "id",
             postgresql_where="deleted_at IS NULL",
         ),
+        # Категория по умолчанию — одна на вид среди живых. Две корзины
+        # расходов значили бы, что неразложенное уходит в одну из них в
+        # зависимости от порядка строк.
+        Index(
+            "ix_categories_default_alive",
+            "spreadsheet_id",
+            "kind",
+            unique=True,
+            postgresql_where="is_default AND deleted_at IS NULL",
+        ),
     )
 
     spreadsheet_id: Mapped[int] = mapped_column(
@@ -74,6 +90,11 @@ class CategoryORM(PkMixin, TimestampMixin, SoftDeleteMixin, Base):
         server_default=EntityStatus.ACTIVE.value,
     )
     title: Mapped[str] = mapped_column(String(constants.TITLE_MAX_LENGTH), nullable=False)
+    is_default: Mapped[bool] = mapped_column(
+        Boolean,
+        nullable=False,
+        server_default=text("false"),
+    )
 
     # lazy="selectin" — единственный безопасный вариант в async. Обычная ленивая
     # загрузка сработала бы при обращении к атрибуту, то есть там, где негде

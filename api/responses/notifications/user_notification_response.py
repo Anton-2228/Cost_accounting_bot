@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from datetime import datetime
+from typing import Any
 
 from pydantic import BaseModel, ConfigDict
 
@@ -10,15 +11,17 @@ from api.enums import NotificationKind
 
 
 class UserNotificationResponse(BaseModel):
-    """Готовый русский текст, который бот печатает как есть.
+    """Сообщение о фоновой работе: код и данные, а не готовый текст.
 
-    Текст здесь, а не в боте, потому что рождается в фоновой работе: у неё нет
-    HTTP-ответа, куда положить код ошибки, и собирается он из данных документа.
+    Фразу на языке пользователя бот собирает по `code` из своего каталога,
+    подставляя `params`. Сообщение рождается в фоновой работе, у которой нет
+    HTTP-ответа, поэтому едет строкой очереди, а не кодом ошибки в ответе.
     """
 
     model_config = ConfigDict(from_attributes=True)
 
     id: int
     kind: NotificationKind
-    text: str
+    code: str
+    params: dict[str, Any]
     created_at: datetime

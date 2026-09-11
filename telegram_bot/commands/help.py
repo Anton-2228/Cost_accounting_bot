@@ -8,7 +8,7 @@ from aiogram.fsm.context import FSMContext
 from aiogram.types import Message
 
 from telegram_bot.commands.base_command import BaseCommand
-from telegram_bot.resources.messages import HELP_COMMANDS_MESSAGE, HELP_MESSAGE
+from telegram_bot.i18n import t
 
 
 class HelpCommand(BaseCommand):
@@ -20,5 +20,5 @@ class HelpCommand(BaseCommand):
 
     async def execute(self, message: Message, state: FSMContext, **kwargs: Any) -> None:
         """Отправляет справку."""
-        await self.aiogram.answer_message(message, HELP_MESSAGE)
-        await self.aiogram.answer_message(message, HELP_COMMANDS_MESSAGE)
+        await self.aiogram.answer_message(message, t("text.help"))
+        await self.aiogram.answer_message(message, t("text.help_commands"))

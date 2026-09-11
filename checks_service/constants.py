@@ -24,6 +24,11 @@ INIT_DATA_AUTH_DATE_FIELD = "auth_date"
 #: Поле с JSON-описанием пользователя.
 INIT_DATA_USER_FIELD = "user"
 
+# ---- Язык Mini App ----
+#: Язык того, кого api не знает. Повторяет умолчание колонки `users.language`:
+#: страница обязана заговорить с новичком на том же языке, что и бот.
+DEFAULT_LANGUAGE = "en"
+
 # ---- Формат ФНС (Россия) ----
 #: Ответ proverkacheka.com с этим кодом означает успех.
 PROVERKACHEKA_SUCCESS_CODE = 1

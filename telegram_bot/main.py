@@ -26,7 +26,6 @@ from telegram_bot.init import (
 )
 from telegram_bot.logging import get_logger, setup_logging
 from telegram_bot.notify_server import NotifyServer
-from telegram_bot.resources.messages import UNKNOWN_MESSAGE
 from telegram_bot.states import States
 
 logger = get_logger(__name__)
@@ -80,6 +79,7 @@ _BUTTON_COMMANDS = (
     CommandName.TABLE_UNLINK,
     CommandName.SETTINGS,
     CommandName.SETTINGS_LLM,
+    CommandName.LANGUAGE,
 )
 
 #: Их же префиксы. Отдельным кортежем, потому что `str.startswith` принимает
@@ -115,12 +115,16 @@ _ARGUMENT_COMMANDS = (
 #: клиенту роль, которую бот и так проверяет на каждом обращении, — и то же
 #: касается готовности таблицы: до неё команды не исчезают, а отвечают, что
 #: работать пока не с чем.
+#:
+#: Описания по-английски и тоже одни на всех: меню команд Telegram показывает
+#: раньше, чем бот узнает, на каком языке с человеком говорить, а раздавать его
+#: каждому по выбору значило бы держать ещё одну копию каталога вне каталога.
 _MENU = [
-    BotCommand(command=CommandName.MENU, description="Меню"),
-    BotCommand(command=CommandName.ADD, description="Добавить операцию"),
-    BotCommand(command=CommandName.DEL, description="Удалить операцию"),
-    BotCommand(command=CommandName.CHECK, description="Разобрать чек"),
-    BotCommand(command=CommandName.HELP, description="Справка"),
+    BotCommand(command=CommandName.MENU, description="Menu"),
+    BotCommand(command=CommandName.ADD, description="Add a transaction"),
+    BotCommand(command=CommandName.DEL, description="Delete a transaction"),
+    BotCommand(command=CommandName.CHECK, description="Process a receipt"),
+    BotCommand(command=CommandName.HELP, description="Help"),
 ]
 
 
@@ -326,8 +330,11 @@ def _make_argument_handler(name: str):  # type: ignore[no-untyped-def]
 
 
 async def _on_unknown(message: Message, state: FSMContext) -> None:
-    """Ответ на всё, что не подошло ни одному обработчику."""
-    await AIOGRAM_WRAPPER.answer_message(message, UNKNOWN_MESSAGE)
+    """Ответ на всё, что не подошло ни одному обработчику.
+
+    Через `Manager`: там выбирается язык ответа и отсекаются посторонние.
+    """
+    await MANAGER.reply_unknown(message)
 
 
 async def main() -> None:

@@ -49,7 +49,10 @@ class SheetMappingService(BaseSpreadsheetService):
         """Запоминает созданный лист. Повторный вызов обновляет запись."""
         await self._get(spreadsheet_id)
         if target.requires_period != (period_id is not None):
-            raise BusinessRuleError("Период указан не для того листа")
+            raise BusinessRuleError(
+                "Период указан не для того листа",
+                details={"reason": "period_target_mismatch"},
+            )
         if (
             period_id is not None
             and await self._periods.get_for_spreadsheet(period_id, spreadsheet_id) is None

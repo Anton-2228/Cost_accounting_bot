@@ -12,19 +12,29 @@ from datetime import UTC, datetime
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from api.enums import NotificationKind
+from api.domain.user_message import UserMessage
+from api.enums import Language, NotificationKind
 from api.repositories.user_notification_repository import UserNotificationRepository
 from tests.factories import create_spreadsheet, create_user
 
 
+def _message(label: str) -> UserMessage:
+    """Сообщение, отличимое от соседних по параметру."""
+    return UserMessage(code="import_ok", params={"sheet": label})
+
+
 async def test_pending_carries_the_recipient(session: AsyncSession) -> None:
-    """Недоставленное сообщение приезжает вместе с telegram_id владельца."""
-    user = await create_user(session, telegram_id=555_001)
+    """Недоставленное приезжает вместе с telegram_id и языком владельца."""
+    user = await create_user(
+        session, telegram_id=555_001, language=Language.RU
+    )
     spreadsheet = await create_spreadsheet(session, user=user, ready=True)
     assert spreadsheet.id is not None
 
     repository = UserNotificationRepository(session)
-    await repository.notify(spreadsheet.id, NotificationKind.TABLE_READY, "Таблица готова")
+    await repository.notify(
+        spreadsheet.id, NotificationKind.TABLE_READY, _message("Таблица готова")
+    )
 
     pending = await repository.list_undelivered_all(limit=10)
 
@@ -32,7 +42,8 @@ async def test_pending_carries_the_recipient(session: AsyncSession) -> None:
     assert pending[0].telegram_id == 555_001
     assert pending[0].spreadsheet_id == spreadsheet.id
     assert pending[0].kind is NotificationKind.TABLE_READY
-    assert pending[0].text == "Таблица готова"
+    assert pending[0].params == {"sheet": "Таблица готова"}
+    assert pending[0].language is Language.RU
 
 
 async def test_pending_covers_all_spreadsheets(session: AsyncSession) -> None:
@@ -47,8 +58,8 @@ async def test_pending_covers_all_spreadsheets(session: AsyncSession) -> None:
     assert second.id is not None
 
     repository = UserNotificationRepository(session)
-    await repository.notify(first.id, NotificationKind.ROLLOVER, "первое")
-    await repository.notify(second.id, NotificationKind.SYNC_FAILED, "второе")
+    await repository.notify(first.id, NotificationKind.ROLLOVER, _message("первое"))
+    await repository.notify(second.id, NotificationKind.SYNC_FAILED, _message("второе"))
 
     pending = await repository.list_undelivered_all(limit=10)
 
@@ -62,7 +73,7 @@ async def test_delivered_are_not_returned(session: AsyncSession) -> None:
 
     repository = UserNotificationRepository(session)
     notification = await repository.notify(
-        spreadsheet.id, NotificationKind.IMPORT_ERROR, "ошибка разбора"
+        spreadsheet.id, NotificationKind.IMPORT_ERROR, _message("ошибка разбора")
     )
     assert notification.id is not None
 
@@ -79,13 +90,13 @@ async def test_pending_are_ordered_by_appearance(session: AsyncSession) -> None:
     assert spreadsheet.id is not None
 
     repository = UserNotificationRepository(session)
-    await repository.notify(spreadsheet.id, NotificationKind.TABLE_READY, "первое")
-    await repository.notify(spreadsheet.id, NotificationKind.ROLLOVER, "второе")
-    await repository.notify(spreadsheet.id, NotificationKind.ROLLOVER, "третье")
+    await repository.notify(spreadsheet.id, NotificationKind.TABLE_READY, _message("первое"))
+    await repository.notify(spreadsheet.id, NotificationKind.ROLLOVER, _message("второе"))
+    await repository.notify(spreadsheet.id, NotificationKind.ROLLOVER, _message("третье"))
 
     pending = await repository.list_undelivered_all(limit=10)
 
-    assert [item.text for item in pending] == ["первое", "второе", "третье"]
+    assert [item.params["sheet"] for item in pending] == ["первое", "второе", "третье"]
 
 
 async def test_limit_leaves_the_tail_in_the_queue(session: AsyncSession) -> None:
@@ -95,7 +106,7 @@ async def test_limit_leaves_the_tail_in_the_queue(session: AsyncSession) -> None
 
     repository = UserNotificationRepository(session)
     for number in range(5):
-        await repository.notify(spreadsheet.id, NotificationKind.ROLLOVER, str(number))
+        await repository.notify(spreadsheet.id, NotificationKind.ROLLOVER, _message(str(number)))
 
     assert len(await repository.list_undelivered_all(limit=2)) == 2
     assert len(await repository.list_undelivered_all(limit=10)) == 5

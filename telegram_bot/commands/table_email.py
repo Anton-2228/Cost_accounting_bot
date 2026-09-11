@@ -9,8 +9,8 @@ from aiogram.types import CallbackQuery, Message
 
 from telegram_bot.commands.base_command import BaseCommand
 from telegram_bot.commands.cancel import BRANCH_EMAIL, cancel_row
+from telegram_bot.i18n import t
 from telegram_bot.parsers import OnboardingParser, ParseError
-from telegram_bot.resources.messages import ASK_ACCESS_EMAIL_MESSAGE, EMAIL_ADDED_MESSAGE
 from telegram_bot.states import States
 
 
@@ -63,7 +63,7 @@ class TableEmailCommand(BaseCommand):
             # Пропуск на этом шаге равнозначен отказу от команды: выдавать
             # доступ некому.
             await self.finish(chat_id=chat_id, state=state)
-            await self.aiogram.answer_message(message, "Хорошо, доступ не выдаю")
+            await self.aiogram.answer_message(message, t("table_email.skipped"))
             return
 
         spreadsheet = await self.spreadsheet(message)
@@ -73,13 +73,13 @@ class TableEmailCommand(BaseCommand):
 
         await self.api.spreadsheets.add_email(spreadsheet.id, email)
         await self.finish(chat_id=chat_id, state=state)
-        await self.aiogram.answer_message(message, EMAIL_ADDED_MESSAGE.format(email=email))
+        await self.aiogram.answer_message(message, t("text.email_added", email=email))
 
     async def _ask(self, chat_id: int, state: FSMContext) -> None:
         """Вопрос про почту с кнопкой выхода из ветки."""
         await self.ask(
             chat_id=chat_id,
             state=state,
-            text=ASK_ACCESS_EMAIL_MESSAGE,
+            text=t("text.ask_access_email"),
             rows=[cancel_row(BRANCH_EMAIL)],
         )

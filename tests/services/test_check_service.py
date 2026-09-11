@@ -9,7 +9,6 @@ import pytest
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from api.core import constants
 from api.domain.check import Check
 from api.domain.check_item import CheckItem, ProductTypeAssignment
 from api.enums import CategoryKind, CheckKind, EntityStatus, SheetTarget
@@ -198,17 +197,19 @@ async def test_default_expense_category_never_learns_product_types(
     session: AsyncSession,
     check_service: CheckService,
 ) -> None:
-    """Корзина «НеопределенныеТраты» типов не получает никогда.
+    """Корзина — категория по умолчанию — типов не получает никогда.
 
     В неё складывается всё, что не удалось разложить. Обучись она на своём
-    содержимом — начала бы притягивать к себе следующие чеки.
+    содержимом — начала бы притягивать к себе следующие чеки. Узнаётся она по
+    флагу, а не по названию: здесь корзину уже переименовали.
     """
     spreadsheet = await factories.create_spreadsheet(session, ready=True)
     basket = await factories.create_category(
         session,
         spreadsheet,
-        title=constants.DEFAULT_EXPENSE_CATEGORY,
+        title="Разное",
         kind=CategoryKind.EXPENSE,
+        is_default=True,
     )
     await session.commit()
     assert spreadsheet.id is not None and basket.id is not None

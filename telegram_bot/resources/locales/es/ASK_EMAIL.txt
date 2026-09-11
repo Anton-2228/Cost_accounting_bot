@@ -1,0 +1,3 @@
+¿A qué correo le doy acceso a la hoja de cálculo?
+
+Envía «-» para omitir este paso: podrás dar acceso más tarde en /menu.

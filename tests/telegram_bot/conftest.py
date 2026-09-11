@@ -29,6 +29,37 @@ from telegram_bot.api_client.models import (  # noqa: E402
     CategoryKind,
     EntityStatus,
 )
+from telegram_bot.i18n import language as i18n_language  # noqa: E402
+from telegram_bot.i18n.language import Language  # noqa: E402
+
+#: Тесты бота сверяют тексты с русским каталогом: он исходный, с него
+#: переводятся остальные. Язык подменяется здесь, на импорте, а не фикстурой:
+#: часть надписей тесты берут из каталога в константах модуля и в
+#: `parametrize`, то есть ещё при сборе тестов, до всякой фикстуры.
+i18n_language.DEFAULT_LANGUAGE = Language.RU
+
+
+class FakeLanguages:
+    """Языки пользователей без api: у всех один язык, пока его не сменили.
+
+    Помнит, у кого спрашивали и кому меняли: `Manager` обязан не спрашивать
+    язык постороннего, а выбор языка — записать выбранное.
+    """
+
+    def __init__(self, language: Language = Language.RU) -> None:
+        self.default = language
+        self.changed: dict[int, Language] = {}
+        self.resolved: list[int] = []
+
+    async def resolve(self, telegram_id: int) -> Language:
+        """Язык пользователя."""
+        self.resolved.append(telegram_id)
+        return self.changed.get(telegram_id, self.default)
+
+    async def change(self, telegram_id: int, language: Language) -> Language:
+        """Записывает язык."""
+        self.changed[telegram_id] = language
+        return language
 
 
 def make_category(
@@ -37,6 +68,7 @@ def make_category(
     title: str = "Продукты",
     kind: CategoryKind = CategoryKind.EXPENSE,
     associations: list[str] | None = None,
+    is_default: bool = False,
 ) -> Category:
     """Категория для тестов.
 
@@ -48,6 +80,7 @@ def make_category(
         kind=kind,
         status=EntityStatus.ACTIVE,
         title=title,
+        is_default=is_default,
         associations=associations if associations is not None else [title.lower()],
         product_types=[],
     )

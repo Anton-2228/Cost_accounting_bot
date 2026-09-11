@@ -5,9 +5,10 @@ from __future__ import annotations
 import pytest
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from api.core import constants
+from api import validation
+from api.core import constants, messages
 from api.core.period import now_in_timezone
-from api.enums import NotificationKind, SheetTarget, SyncTaskKind
+from api.enums import CategoryKind, Language, NotificationKind, SheetTarget, SyncTaskKind
 from api.exceptions.base import ConflictError, NotFoundError
 from api.repositories.category_repository import CategoryRepository
 from api.repositories.period_repository import PeriodRepository
@@ -43,7 +44,9 @@ async def test_create_builds_whole_document_in_one_transaction(
 
     categories = await CategoryRepository(session).list_by_spreadsheet(spreadsheet.id)
     titles = {category.title for category in categories}
-    assert titles == {constants.DEFAULT_INCOME_CATEGORY, constants.DEFAULT_EXPENSE_CATEGORY}
+    assert titles == set(constants.DEFAULT_CATEGORY_TITLES[Language.EN].values())
+    # Роль категорий держит флаг, а не название: название на языке пользователя.
+    assert all(category.is_default for category in categories)
     # Псевдоним по умолчанию — само название в нижнем регистре: иначе категорию
     # нельзя было бы указать её собственным именем.
     for category in categories:
@@ -54,6 +57,42 @@ async def test_create_builds_whole_document_in_one_transaction(
         (SyncTaskKind.REDRAW, SheetTarget.STRUCTURE)
     ]
 
+
+
+async def test_default_categories_follow_user_language(
+    session: AsyncSession,
+    spreadsheet_service: SpreadsheetService,
+) -> None:
+    """Категории по умолчанию называются на языке пользователя.
+
+    Язык выбирается на `/start` раньше, чем появится таблица, поэтому к
+    созданию документа пользователь уже есть — и его язык известен.
+    """
+    await factories.create_user(session, telegram_id=556, language=Language.RU)
+    await session.commit()
+
+    spreadsheet = await spreadsheet_service.create(telegram_id=556, title="Учёт", reset_day=10)
+
+    assert spreadsheet.id is not None
+    categories = await CategoryRepository(session).list_by_spreadsheet(spreadsheet.id)
+    assert {category.kind: category.title for category in categories} == (
+        constants.DEFAULT_CATEGORY_TITLES[Language.RU]
+    )
+
+
+def test_default_titles_survive_sheet_validation() -> None:
+    """Каждое название по умолчанию проходит проверку листа `Categories`.
+
+    Название из двух слов лист не принимает, и корзина, которую нельзя
+    сохранить обратно, сломала бы первый же импорт — на любом из языков.
+    """
+    assert set(constants.DEFAULT_CATEGORY_TITLES) == set(Language)
+    for language, titles in constants.DEFAULT_CATEGORY_TITLES.items():
+        rows = [
+            ["", "1", "1", "0", titles[CategoryKind.INCOME], "", ""],
+            ["", "1", "0", "1", titles[CategoryKind.EXPENSE], "", ""],
+        ]
+        assert validation.validate_category_rows(rows, set()) is None, language
 
 async def test_create_with_email_leaves_access_pending(
     session: AsyncSession,
@@ -101,7 +140,10 @@ async def test_set_google_id_notifies_and_redraws(
 
     notifications = await UserNotificationRepository(session).list_undelivered(spreadsheet.id)
     assert [item.kind for item in notifications] == [NotificationKind.TABLE_READY]
-    assert "google-abc" in notifications[0].text
+    assert (notifications[0].code, notifications[0].params) == (
+        "table_ready",
+        {"google_spreadsheet_id": "google-abc"},
+    )
 
     targets = {
         task.target
@@ -288,7 +330,7 @@ async def test_unlink_clears_queue_and_undelivered_notifications(
     spreadsheet = await spreadsheet_service.create(telegram_id=562, title="Т", reset_day=5)
     assert spreadsheet.id is not None
     await UserNotificationRepository(session).notify(
-        spreadsheet.id, NotificationKind.TABLE_READY, "готово"
+        spreadsheet.id, NotificationKind.TABLE_READY, messages.table_ready("google-x")
     )
     await session.commit()
     assert await SheetSyncTaskRepository(session).list_by_spreadsheet(spreadsheet.id) != []

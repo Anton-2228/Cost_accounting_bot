@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from typing import Any
+
 from aiogram.exceptions import (
     TelegramBadRequest,
     TelegramForbiddenError,
@@ -14,6 +16,8 @@ from pydantic import BaseModel, ConfigDict, Field
 from telegram_bot.aiogram_wrapper import AiogramWrapper
 from telegram_bot.api_client.models import NotificationKind
 from telegram_bot.commands.menu import MenuCommand
+from telegram_bot.formatting.notification_formatter import NotificationFormatter
+from telegram_bot.i18n import Language, current_language, language_scope
 from telegram_bot.logging import get_logger
 
 logger = get_logger(__name__)
@@ -38,8 +42,13 @@ class NotifyPayload(BaseModel):
 
     notification_id: int
     telegram_id: int
+    #: Язык получателя — тот, что лежит в `users.language`. Строкой, а не
+    #: перечислением: незнакомый язык не должен ронять доставку, бот тогда
+    #: просто говорит на языке по умолчанию.
+    language: str
     kind: str
-    text: str = Field(min_length=1, max_length=_MAX_TEXT_LENGTH)
+    code: str
+    params: dict[str, Any] = Field(default_factory=dict)
 
 
 class NotifyServer:
@@ -78,9 +87,25 @@ class NotifyServer:
         return app
 
     async def _notify(self, payload: NotifyPayload) -> Response:
-        """Отправляет сообщение пользователю."""
+        """Отправляет сообщение пользователю на его языке.
+
+        Язык едет в самом пакете: api знает его тем же запросом, которым нашёл
+        получателя, и спрашивать его отсюда ещё раз было бы лишним кругом. Меню
+        по `TABLE_READY` рисуется в той же области — на том же языке.
+        """
+        language = Language.from_code(payload.language) or current_language()
+        with language_scope(language):
+            return await self._deliver(payload)
+
+    async def _deliver(self, payload: NotifyPayload) -> Response:
+        """Собирает текст и отправляет его; код ответа — по договору выше.
+
+        Сборка текста не бросает (см. `NotificationFormatter`): исключение здесь
+        стало бы ответом 503, и api повторял бы то же уведомление вечно.
+        """
+        text = NotificationFormatter.render(payload.code, payload.params)[:_MAX_TEXT_LENGTH]
         try:
-            await self._aiogram.send_message(payload.telegram_id, payload.text)
+            await self._aiogram.send_message(payload.telegram_id, text)
         except _PERMANENT_ERRORS as error:
             # Стектрейс здесь не нужен: причина видна из сообщения Telegram, а
             # случай штатный. Уведомление снимается с очереди — иначе оно будет

@@ -7,7 +7,7 @@ from typing import Any
 
 from aiogram import Bot, Dispatcher, Router
 from aiogram.dispatcher.event.handler import CallbackType
-from aiogram.exceptions import TelegramAPIError
+from aiogram.exceptions import TelegramAPIError, TelegramBadRequest
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State
 from aiogram.types import CallbackQuery, InlineKeyboardButton, InlineKeyboardMarkup, Message
@@ -156,6 +156,65 @@ class AiogramWrapper:
             )
         except TelegramAPIError as error:
             logger.debug("Клавиатура сообщения %s не снята: %s", message_id, error)
+
+    async def edit_text(
+        self,
+        chat_id: int,
+        message_id: int,
+        text: str,
+        *,
+        keyboard: InlineKeyboardMarkup | None = None,
+    ) -> bool:
+        """Переписывает текст ранее отправленного сообщения. `False` — не вышло.
+
+        Отказ не бросается по той же причине, что у `clear_keyboard`: правка
+        сопровождает шаг, а не составляет его, и вызывающий сам решает, чем её
+        заменить (обычно — новым сообщением). «Message is not modified» —
+        успех: сообщение уже такое, как просили.
+        """
+        try:
+            await self.bot.edit_message_text(
+                chat_id=chat_id,
+                message_id=message_id,
+                text=text,
+                reply_markup=keyboard,
+            )
+        except TelegramBadRequest as error:
+            if "message is not modified" in str(error):
+                return True
+            logger.debug("Сообщение %s не переписано: %s", message_id, error)
+            return False
+        except TelegramAPIError as error:
+            logger.debug("Сообщение %s не переписано: %s", message_id, error)
+            return False
+        return True
+
+    async def edit_keyboard(
+        self,
+        chat_id: int,
+        message_id: int,
+        keyboard: InlineKeyboardMarkup,
+    ) -> bool:
+        """Заменяет клавиатуру ранее отправленного сообщения. `False` — не вышло.
+
+        Нужен листанию страниц: новая страница — это та же клавиатура того же
+        сообщения, а не новое сообщение под каждым нажатием.
+        """
+        try:
+            await self.bot.edit_message_reply_markup(
+                chat_id=chat_id,
+                message_id=message_id,
+                reply_markup=keyboard,
+            )
+        except TelegramBadRequest as error:
+            if "message is not modified" in str(error):
+                return True
+            logger.debug("Клавиатура сообщения %s не заменена: %s", message_id, error)
+            return False
+        except TelegramAPIError as error:
+            logger.debug("Клавиатура сообщения %s не заменена: %s", message_id, error)
+            return False
+        return True
 
     async def answer_callback(self, callback: CallbackQuery, text: str | None = None) -> None:
         """Гасит «часики» на кнопке, при необходимости показав всплывающий текст.

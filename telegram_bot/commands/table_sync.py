@@ -8,7 +8,7 @@ from aiogram.fsm.context import FSMContext
 from aiogram.types import CallbackQuery, Message
 
 from telegram_bot.commands.base_command import BaseCommand
-from telegram_bot.resources.messages import SYNC_REQUESTED_MESSAGE
+from telegram_bot.i18n import t
 
 
 class TableSyncCommand(BaseCommand):
@@ -48,4 +48,4 @@ class TableSyncCommand(BaseCommand):
             return
 
         await self.api.spreadsheets.request_sync(spreadsheet.id)
-        await self.aiogram.send_message(chat_id, SYNC_REQUESTED_MESSAGE)
+        await self.aiogram.send_message(chat_id, t("text.sync_requested"))

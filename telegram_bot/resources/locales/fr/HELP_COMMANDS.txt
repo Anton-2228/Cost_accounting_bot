@@ -1,0 +1,27 @@
+Commandes
+
+/menu — menu : lien vers le tableur, synchronisation, partage par e-mail, dissociation, paramètres
+/help — cette aide
+/start — entrée ; interrompt aussi un dialogue en cours
+
+/add devise montant catégorie note
+    Exemple : /add euros 20 repas café à emporter
+/del id
+    Sans id, je supprime la dernière opération de la période.
+
+/check — traiter un ticket scanné dans l'appli
+    J'affiche les articles et je propose des types et des catégories.
+    Pour corriger : des lignes comme « 1,3 - laitages ».
+    Reporter le ticket, le supprimer ou quitter le traitement — avec les boutons sous le message.
+
+Tout ce qui concerne le tableur lui-même se trouve dans /menu.
+
+Pendant que je crée le tableur, rien ne fonctionne à part /start et /help : il n'y a encore rien à voir. Je vous écrirai dès qu'il sera prêt.
+
+Écrivez le montant sans signe : je distingue revenu et dépense grâce à la catégorie.
+La partie décimale peut s'écrire avec un point ou une virgule.
+
+La devise est obligatoire et vient en premier :
+/add euros 20 repas café
+Écrivez-la comme vous voulez : roubles, dollars, euros, dinars — ou en abrégé : rub, usd, eur, rsd.
+La devise d'un ticket n'est pas demandée : je la connais d'après le ticket lui-même.

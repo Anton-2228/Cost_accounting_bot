@@ -11,17 +11,18 @@ from datetime import UTC, date, datetime
 from decimal import Decimal
 
 import pytest
-from sqlalchemy import text
+from sqlalchemy import select, text
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from api.enums import CategoryKind, CheckKind, Currency
+from api.enums import CategoryKind, CheckKind, Currency, Language
 from api.orm.category import CategoryORM
 from api.orm.category_association import CategoryAssociationORM
 from api.orm.record import RecordORM
 from api.orm.sheet_sync_task import SheetSyncTaskORM
 from api.orm.spreadsheet import SpreadsheetORM
 from api.orm.user import UserORM
+from api.repositories.category_repository import CategoryRepository
 from tests import factories
 
 pytestmark = pytest.mark.usefixtures("clean_db")
@@ -407,3 +408,41 @@ async def test_same_check_cannot_be_saved_twice(session: AsyncSession) -> None:
         )
     with pytest.raises(IntegrityError):
         await session.commit()
+
+
+async def test_second_alive_default_of_a_kind_is_rejected(session: AsyncSession) -> None:
+    """Корзина одна на вид: две расходные делили бы неразложенное наугад."""
+    spreadsheet = await factories.create_spreadsheet(session)
+    await factories.create_category(session, spreadsheet, is_default=True)
+    await factories.create_category(
+        session, spreadsheet, kind=CategoryKind.INCOME, is_default=True
+    )
+    await session.commit()
+
+    with pytest.raises(IntegrityError):
+        await factories.create_category(session, spreadsheet, is_default=True)
+
+
+async def test_deleted_default_frees_the_slot(session: AsyncSession) -> None:
+    """Удалённая корзина не мешает завести новую: индекс частичный."""
+    spreadsheet = await factories.create_spreadsheet(session)
+    old = await factories.create_category(session, spreadsheet, is_default=True)
+    await session.commit()
+    assert old.id is not None
+
+    await CategoryRepository(session).soft_delete(old.id, at=datetime.now(UTC))
+    await factories.create_category(session, spreadsheet, is_default=True)
+    await session.commit()
+
+
+async def test_user_language_defaults_to_english(session: AsyncSession) -> None:
+    """Пользователь, заведённый без языка, говорит по-английски.
+
+    Умолчание стоит в самой колонке, а не только в домене: строку может
+    вставить и не репозиторий — миграция, ручной SQL.
+    """
+    session.add(UserORM(telegram_id=424242))
+    await session.commit()
+
+    stored = await session.scalar(select(UserORM.language).where(UserORM.telegram_id == 424242))
+    assert stored is Language.EN

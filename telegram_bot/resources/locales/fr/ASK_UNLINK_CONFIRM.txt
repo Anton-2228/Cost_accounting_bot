@@ -1,0 +1,5 @@
+Le bot va oublier ce tableur : ses opérations et catégories ne seront plus accessibles, et il sera impossible de les récupérer.
+
+Le document Google lui-même reste à vous, mais vous ne pourrez plus le lier au bot.
+
+Écrivez « {word} » pour confirmer. Toute autre réponse annule la dissociation.

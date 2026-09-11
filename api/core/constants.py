@@ -7,7 +7,7 @@
 
 from __future__ import annotations
 
-from api.enums import Currency
+from api.enums import CategoryKind, Currency, Language
 
 # ---- Денежные значения (часть контракта схемы БД: Numeric(14, 2)) ----
 MONEY_MAX_DIGITS = 14
@@ -101,14 +101,43 @@ NOTIFICATION_PUSH_LIMIT = 50
 # Таймаут запроса к боту. Бот только кладёт сообщение в Telegram и отвечает,
 # поэтому долго это длиться не может, а зависший запрос задержал бы всю очередь.
 NOTIFICATION_PUSH_TIMEOUT_SECONDS = 10.0
+# Длина кода уведомления (`import_error.duplicate_product_type` и подобных) —
+# колонка `user_notifications.code`.
+NOTIFICATION_CODE_MAX_LENGTH = 64
 
 # ---- Категории по умолчанию ----
-# Создаются вместе с документом. Названия и поведение унаследованы: в
-# `НеопределенныеТраты` складывается всё, что не удалось разложить, и типы
-# товаров ей не назначаются никогда — иначе корзина «обучилась» бы на случайных
-# позициях чека и начала притягивать их к себе.
-DEFAULT_INCOME_CATEGORY = "НеопределенныйДоход"
-DEFAULT_EXPENSE_CATEGORY = "НеопределенныеТраты"
+# Создаются вместе с документом, по одной на вид, и отмечаются `is_default`. В
+# расходную складывается всё, что не удалось разложить, и типы товаров ей не
+# назначаются никогда — иначе корзина «обучилась» бы на случайных позициях чека
+# и начала притягивать их к себе.
+#
+# Названия — на языке пользователя в момент создания таблицы. Каждое — одно
+# слово: лист `Categories` не принимает название из нескольких слов, и корзина,
+# которую нельзя сохранить обратно из листа, сломала бы первый же импорт.
+# Русские названия унаследованы от старой версии; по ним миграция e7c2a94f1b38
+# и нашла корзины уже существующих таблиц.
+DEFAULT_CATEGORY_TITLES: dict[Language, dict[CategoryKind, str]] = {
+    Language.RU: {
+        CategoryKind.INCOME: "НеопределенныйДоход",
+        CategoryKind.EXPENSE: "НеопределенныеТраты",
+    },
+    Language.EN: {
+        CategoryKind.INCOME: "UncategorizedIncome",
+        CategoryKind.EXPENSE: "UncategorizedExpenses",
+    },
+    Language.HI: {
+        CategoryKind.INCOME: "अवर्गीकृतआय",
+        CategoryKind.EXPENSE: "अवर्गीकृतख़र्च",
+    },
+    Language.ES: {
+        CategoryKind.INCOME: "IngresosSinCategoría",
+        CategoryKind.EXPENSE: "GastosSinCategoría",
+    },
+    Language.FR: {
+        CategoryKind.INCOME: "RevenusNonClassés",
+        CategoryKind.EXPENSE: "DépensesNonClassées",
+    },
+}
 
 # ---- Ограничения длины строковых полей ----
 TITLE_MAX_LENGTH = 64

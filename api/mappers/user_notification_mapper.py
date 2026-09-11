@@ -16,7 +16,8 @@ class UserNotificationMapper(BaseMapper[UserNotificationORM, UserNotification]):
             id=orm.id,
             spreadsheet_id=orm.spreadsheet_id,
             kind=orm.kind,
-            text=orm.text,
+            code=orm.code,
+            params=dict(orm.params),
             delivered_at=orm.delivered_at,
             created_at=orm.created_at,
             updated_at=orm.updated_at,
@@ -27,6 +28,7 @@ class UserNotificationMapper(BaseMapper[UserNotificationORM, UserNotification]):
         return UserNotificationORM(
             spreadsheet_id=domain.spreadsheet_id,
             kind=domain.kind,
-            text=domain.text,
+            code=domain.code,
+            params=dict(domain.params),
             delivered_at=domain.delivered_at,
         )

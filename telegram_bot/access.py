@@ -4,7 +4,10 @@ from __future__ import annotations
 
 from collections.abc import Iterable
 
-ACCESS_DENIED_MESSAGE = "Доступ запрещён"
+#: Отказ постороннему. Всегда по-английски и не из каталога: язык знает только
+#: api, а постороннего бот к api не пускает вовсе — ради этого проверка доступа
+#: и стоит первой.
+ACCESS_DENIED_MESSAGE = "Access denied"
 
 
 class AccessGuard:

@@ -1,0 +1,210 @@
+# Cadenas cortas del bot en español. El catálogo ruso es el de origen: las claves
+# y los marcadores de aquí deben coincidir con él (lo comprueba `test_i18n_catalog.py`).
+
+[access]
+admin_only = "Acceso denegado"
+
+[errors]
+table_creating = "Tu hoja de cálculo todavía se está creando: te enviaré el enlace en cuanto esté lista"
+unavailable = "El servicio de datos no está disponible, inténtalo más tarde"
+unexpected = "Algo salió mal. Inténtalo de nuevo"
+
+[errors.not_found]
+spreadsheet = "Primero crea una hoja de cálculo: /start"
+user = "Primero crea una hoja de cálculo: /start"
+category = "Esa categoría no existe o está desactivada"
+record = "No hay ninguna operación con ese id"
+period = "Todavía no hay nada registrado en este periodo"
+access = "Ese acceso no se había concedido"
+check = "Este recibo ya no está en la cola"
+notification = "Este mensaje ya no existe"
+default = "No encontré lo que buscas"
+
+[errors.conflict]
+spreadsheet_exists = "Ya tienes una hoja de cálculo. Puedes verla aquí: /menu"
+access_exists = "Este correo ya tiene acceso"
+google_id_already_set = "Esta hoja de cálculo ya tiene un documento vinculado"
+check_already_saved = "Este recibo ya se añadió"
+check_already_processed = "Este recibo ya se procesó: sus operaciones están en el registro"
+default = "Ahora mismo no se puede hacer eso"
+
+[errors.type_taken]
+named_with_category = "El tipo «{product_type}» ya pertenece a la categoría «{category}».\nElige esa categoría u otro tipo"
+named = "El tipo «{product_type}» ya pertenece a otra categoría. Elige otro tipo"
+unnamed_with_category = "Este tipo ya pertenece a la categoría «{category}».\nElige esa categoría u otro tipo"
+unnamed = "Este tipo ya pertenece a otra categoría. Elige otro tipo"
+
+[errors.validation]
+generic = "No se puede hacer eso"
+period_closed = "El periodo que empieza el {start_date} está cerrado"
+amount_not_positive = "El importe debe ser mayor que cero"
+filters_incompatible = "No se puede hacer eso: las condiciones de la solicitud se contradicen"
+period_target_mismatch = "El periodo no corresponde a esta hoja"
+
+[notification]
+table_ready = "Tu hoja de cálculo está lista: {url}"
+import_ok = "He leído la hoja «{sheet}», tus cambios están guardados"
+rollover_done = "El {start_date} empezó un nuevo periodo contable"
+sync_failed = "No consigo actualizar la hoja de cálculo; intentos fallidos seguidos: {attempts}. Comprueba que no se haya revocado el acceso al documento."
+sync_terminal = "No se pudo actualizar la hoja de cálculo: {error}. Comprueba que el documento no se haya eliminado y que no se haya revocado el acceso; después la hoja se actualizará sola."
+access_failed = "No pude dar acceso a la hoja de cálculo a {email}. Revisa la dirección y vuelve a añadirla."
+fallback = "Llegó un aviso sobre tu hoja de cálculo, pero no pude mostrarlo. Echa un vistazo a la hoja: allí está todo."
+
+[notification.import_error]
+empty = "Añade al menos una categoría"
+unknown_id = "Categorías, fila {row}: ID desconocido"
+flag_invalid = "Categorías, fila {row}: el valor de {column} no es válido"
+income_equals_cost = "Categorías, fila {row}: Income y Cost tienen el mismo valor"
+name_empty = "Categorías, fila {row}: Name está vacío"
+name_not_one_word = "Categorías, fila {row}: Name debe ser una sola palabra"
+default_removed = "Categorías, fila {row}: es una categoría predeterminada y no se puede eliminar"
+default_deactivated = "Categorías, fila {row}: es una categoría predeterminada y no se puede desactivar"
+default_kind_changed = "Categorías, fila {row}: es una categoría predeterminada y no se pueden cambiar su Income y su Cost"
+duplicate_id = "Categorías: el mismo ID aparece más de una vez"
+duplicate_name = "Categorías: el mismo name aparece más de una vez"
+duplicate_association = "Categorías: la misma association aparece más de una vez"
+duplicate_product_type = "Categorías: el mismo product type aparece más de una vez"
+
+[buttons]
+cancel = "Cancelar"
+
+[buttons.menu]
+table = "Ver la hoja de cálculo"
+sync = "Sincronizar la hoja"
+email = "Compartir la hoja"
+unlink = "Desvincular la hoja"
+settings = "Ajustes"
+
+[buttons.start]
+create_table = "Crear una hoja de cálculo"
+
+[buttons.settings]
+language = "Idioma"
+llm_costs = "Gastos en LLM"
+
+[buttons.check]
+done = "Listo"
+skip = "Aplazar"
+delete = "Eliminar"
+
+[buttons.check_delete]
+confirm = "Sí, eliminar"
+decline = "No"
+
+[language]
+choose = "Elige tu idioma:"
+choose_start = "Elige tu idioma:"
+changed = "Idioma: español"
+
+[table_email]
+skipped = "De acuerdo, no daré acceso"
+
+[table_unlink]
+phrase = "CONFIRMO LA DESVINCULACIÓN"
+
+[record_delete]
+bad_id = "«{raw}» no parece un id. Así: /del 42"
+
+[settings_llm]
+user_not_found = "No se encontró al usuario {telegram_id}. Envía otro id."
+
+[parse]
+category_not_found = "No existe la categoría «{value}» o está desactivada.\nDisponibles: {hint}"
+hint_more = "{shown} y otras"
+
+[parse.amount]
+invalid = "«{raw}» no parece un importe"
+not_positive = "El importe debe ser mayor que cero"
+too_big = "El importe es demasiado grande"
+too_precise = "El importe tiene más de dos decimales"
+
+[parse.record]
+usage = "Así: /add moneda importe categoría nota"
+bad_currency = "«{word}» no parece una moneda.\nPuedes escribirla así: {hint}\n{usage}"
+notes_too_long = "La nota supera los {limit} caracteres"
+
+[parse.currency]
+hint = "rublos, dólares, euros, dinares"
+
+[parse.check]
+usage = "No entendí la corrección. Así: «1,3 - lácteos», una corrección por línea.\nSi todo está bien, pulsa «Listo»"
+repeated = "El artículo {numbers} aparece dos veces: deja una sola corrección"
+value_too_long = "El valor supera los {limit} caracteres"
+no_position = "No hay ningún artículo n.º {number} en el recibo. Total de artículos: {count}"
+
+[parse.onboarding]
+title_empty = "El nombre no puede estar vacío"
+title_too_long = "El nombre supera los {limit} caracteres"
+not_a_number = "«{raw}» no parece un número"
+reset_day_range = "El día debe estar entre {min} y {max}: ese día existe en todos los meses"
+timezone_too_long = "El nombre de la zona horaria es demasiado largo"
+timezone_unknown = "No existe la zona horaria «{name}». Ejemplo: Europe/Madrid"
+email_too_long = "La dirección es demasiado larga"
+email_invalid = "Eso no parece una dirección de correo"
+
+[receipt]
+unnamed_product = "Sin nombre"
+manual_tail = "Añade las compras a mano con /add y quita el recibo con el botón «Eliminar»"
+remove_tail = "Puedes quitar el recibo de la cola con el botón «Eliminar»"
+unexpected_shape = "Los datos de este recibo tienen una forma inesperada: no puedo procesarlos."
+refund = "Los recibos de devolución aún no se admiten; añade la operación a mano."
+no_items = "Los datos del recibo no tienen artículos: no hay nada que procesar."
+items_shape = "Los artículos del recibo no están registrados como se esperaba: no puedo procesarlos."
+not_kopecks = "Los importes de los datos del recibo no están en kopeks: no puedo procesarlo."
+not_numbers = "Los importes de los datos del recibo no son números: no puedo procesarlo."
+negative_item = "El recibo tiene un artículo con importe negativo: añádelo a mano."
+no_total = "El recibo no tiene importe total, no hay con qué comparar los artículos."
+mismatch = "La suma de los artículos no coincide con el total del recibo: {items} frente a {total}.\nNo registraré este recibo: añade las compras a mano con /add"
+not_sale = "No es una venta normal, sino «{invoice_type}»: todavía no proceso este tipo de recibos, añade la operación a mano."
+unknown_format = "Todavía no proceso recibos de este formato."
+
+[currency.sign]
+RUB = "₽"
+USD = "$"
+EUR = "€"
+RSD = "din."
+
+[format]
+money = "{amount} {sign}"
+
+[format.record]
+saved_expense = "Gasto registrado: {amount}"
+saved_income = "Ingreso registrado: {amount}"
+category = "Categoría: {title}"
+notes = "Nota: {notes}"
+date = "Fecha: {date}"
+id = "id: {id}"
+deleted = "Operación eliminada: {amount}"
+
+[format.table]
+creating = "La hoja de cálculo «{title}» todavía se está creando: te enviaré el enlace en cuanto esté lista"
+link = "Hoja de cálculo «{title}»: {url}"
+
+[format.check]
+title = "Recibo"
+title_place = "Recibo: {place}"
+purchased = "Comprado: {when}"
+total = "Total: {amount}"
+items = "Artículos: {count}"
+queue_left = "Quedan en la cola: {count}"
+saved = "Operaciones registradas: {count}"
+learned = "Aprendido: {name} → {product_type}"
+finished = "No hay más recibos."
+finished_saved = "Registrados: {count}."
+finished_skipped = "Aplazados: {count}; siguen en la lista y /check los volverá a mostrar."
+new_suffix = " (nuevo)"
+
+[format.llm]
+title = "Gastos en LLM, usuario {telegram_id}"
+no_spreadsheets = "El usuario no tiene hojas de cálculo."
+no_usages = "No hubo llamadas al modelo."
+outside_periods = "fuera de periodos"
+total = "Total: {totals}"
+tables = "Hojas de cálculo: {count}"
+tables_unlinked = "Hojas de cálculo: {count}, desvinculadas: {unlinked}"
+spreadsheet = "«{title}»"
+spreadsheet_unlinked = "«{title}» (desvinculada)"
+tokens = "{count} tokens"
+calls = "{count} llamadas"
+less_than = "menos de {amount}"
+unknown_cost = "Sin precio conocido: {count}"

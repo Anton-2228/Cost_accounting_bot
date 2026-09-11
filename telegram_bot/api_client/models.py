@@ -129,6 +129,10 @@ class Category(BaseModel):
     kind: CategoryKind
     status: EntityStatus
     title: str
+    #: Категория по умолчанию своего вида. По ней, а не по названию, бот узнаёт
+    #: корзину расходов: название на языке пользователя и может быть
+    #: переименовано в листе.
+    is_default: bool = False
     associations: list[str]
     product_types: list[str]
 
@@ -191,13 +195,18 @@ class CashedRecord(BaseModel):
 
 
 class UserNotification(BaseModel):
-    """Сообщение о фоновой работе, готовое к печати как есть."""
+    """Сообщение о фоновой работе: код и данные для подстановки.
+
+    Текста api не присылает — фразу на языке пользователя собирает
+    :class:`telegram_bot.formatting.notification_formatter.NotificationFormatter`.
+    """
 
     model_config = ConfigDict(extra="ignore")
 
     id: int
     kind: NotificationKind
-    text: str
+    code: str
+    params: dict[str, Any] = {}
 
 
 class PeriodStatus(StrEnum):

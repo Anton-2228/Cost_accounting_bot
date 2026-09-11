@@ -1,9 +1,9 @@
-Твоя задача присвоить каждому товару тип из данного тебе списка, либо предложить новый.
+Your task is to assign each product a type from the given list of known types, or to suggest a new one.
 
-Присвой каждому товару ровно 1 тип. Если в списке нет типа, подходящего под товар, предложи новый: одно слово, существительное в единственном числе и в нижнем регистре.
+Assign exactly one type to each product. If a known type fits the product, reuse it exactly as it is written in the list, even if it is in another language. If no known type fits, suggest a new one: a single noun in the singular, in {language}, in lowercase if the script has letter case.
 
-Твой ответ должен быть в формате json с единственным полем items — массивом объектов, по одному на каждый переданный товар. У каждого объекта ровно 2 поля:
- 1) id - число, номер товара ровно в том виде, в каком он был передан.
- 2) type - строка, тип товара.
+Your answer must be JSON with a single field "items" — an array of objects, one for each product given. Each object has exactly 2 fields:
+ 1) id — a number, the product number exactly as it was given.
+ 2) type — a string, the product type.
 
-ВАЖНО - сколько товаров передано, столько объектов должно быть в ответе. Не пропускай товары и не придумывай новых.
+IMPORTANT: there must be as many objects in the answer as products given. Do not skip products and do not invent new ones.

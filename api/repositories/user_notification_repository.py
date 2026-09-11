@@ -8,6 +8,7 @@ from sqlalchemy import delete, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from api.domain.pending_notification import PendingNotification
+from api.domain.user_message import UserMessage
 from api.domain.user_notification import UserNotification
 from api.enums import NotificationKind
 from api.mappers.user_notification_mapper import UserNotificationMapper
@@ -29,7 +30,7 @@ class UserNotificationRepository(BaseRepository[UserNotificationORM, UserNotific
         self,
         spreadsheet_id: int,
         kind: NotificationKind,
-        text: str,
+        message: UserMessage,
     ) -> UserNotification:
         """Кладёт сообщение в очередь на отправку.
 
@@ -37,7 +38,12 @@ class UserNotificationRepository(BaseRepository[UserNotificationORM, UserNotific
         импорт откатился, уведомление о его провале не должно остаться висеть.
         """
         return await self.add(
-            UserNotification(spreadsheet_id=spreadsheet_id, kind=kind, text=text)
+            UserNotification(
+                spreadsheet_id=spreadsheet_id,
+                kind=kind,
+                code=message.code,
+                params=dict(message.params),
+            )
         )
 
     async def list_undelivered(self, spreadsheet_id: int) -> list[UserNotification]:
@@ -71,8 +77,10 @@ class UserNotificationRepository(BaseRepository[UserNotificationORM, UserNotific
                     UserNotificationORM.id,
                     UserNotificationORM.spreadsheet_id,
                     UserORM.telegram_id,
+                    UserORM.language,
                     UserNotificationORM.kind,
-                    UserNotificationORM.text,
+                    UserNotificationORM.code,
+                    UserNotificationORM.params,
                 )
                 .join(SpreadsheetORM, SpreadsheetORM.id == UserNotificationORM.spreadsheet_id)
                 .join(UserORM, UserORM.id == SpreadsheetORM.user_id)
@@ -86,8 +94,10 @@ class UserNotificationRepository(BaseRepository[UserNotificationORM, UserNotific
                 id=row.id,
                 spreadsheet_id=row.spreadsheet_id,
                 telegram_id=row.telegram_id,
+                language=row.language,
                 kind=row.kind,
-                text=row.text,
+                code=row.code,
+                params=dict(row.params),
             )
             for row in rows
         ]

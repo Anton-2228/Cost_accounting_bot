@@ -16,17 +16,8 @@ from aiogram.types import CallbackQuery, Message
 
 from telegram_bot.commands.base_command import BaseCommand
 from telegram_bot.enums import CommandName
-from telegram_bot.resources.messages import (
-    CANCEL_STALE_MESSAGE,
-    CANCELLED_MESSAGE,
-    DIALOG_IN_PROGRESS_MESSAGE,
-    DIALOG_IN_PROGRESS_NO_EXIT_MESSAGE,
-)
+from telegram_bot.i18n import t
 from telegram_bot.states import States
-
-#: Надпись кнопки. Одна на все ветки: «Отмена» значит одно и то же везде, и
-#: разные слова для одного действия пришлось бы заучивать.
-CANCEL_BUTTON_TEXT = "Отмена"
 
 #: Метки веток в `callback_data`. Короткие и свои, а не строка состояния:
 #: `States.ADD_EMAIL.state` — это «States:ADD_EMAIL», и двоеточие внутри
@@ -64,8 +55,11 @@ def cancel_row(branch: str) -> tuple[tuple[str, str], ...]:
     Ветка едет в `callback_data`, потому что кнопка живёт в переписке дольше
     своего диалога: без метки нажатая через неделю кнопка от почты снесла бы
     недоразобранный чек. Тот же приём, что у кнопки «Готово» с `check_id`.
+
+    Надпись одна на все ветки: «Отмена» значит одно и то же везде, и разные
+    слова для одного действия пришлось бы заучивать.
     """
-    return ((CANCEL_BUTTON_TEXT, f"{CommandName.CANCEL}:{branch}"),)
+    return ((t("buttons.cancel"), f"{CommandName.CANCEL}:{branch}"),)
 
 
 class CancelCommand(BaseCommand):
@@ -115,11 +109,11 @@ class CancelCommand(BaseCommand):
         if await self._current_branch(state) != branch:
             # Состояние цело: кнопка либо от другой ветки, либо от диалога,
             # который давно закончился.
-            await self.aiogram.send_message(chat_id, CANCEL_STALE_MESSAGE)
+            await self.aiogram.send_message(chat_id, t("text.cancel_stale"))
             return
 
         await self.finish(chat_id=chat_id, state=state)
-        await self.aiogram.send_message(chat_id, CANCELLED_MESSAGE)
+        await self.aiogram.send_message(chat_id, t("text.cancelled"))
         await self.menu().show(chat_id=chat_id)
 
     async def hint(self, *, chat_id: int, state: FSMContext) -> None:
@@ -135,12 +129,12 @@ class CancelCommand(BaseCommand):
         if branch is None:
             # Мастер создания таблицы: кнопки у него нет, и звать нажать
             # несуществующее хуже, чем назвать настоящий выход.
-            await self.aiogram.send_message(chat_id, DIALOG_IN_PROGRESS_NO_EXIT_MESSAGE)
+            await self.aiogram.send_message(chat_id, t("text.dialog_in_progress_no_exit"))
             return
 
         await self.aiogram.send_message(
             chat_id,
-            DIALOG_IN_PROGRESS_MESSAGE,
+            t("text.dialog_in_progress"),
             keyboard=self.aiogram.inline_keyboard_rows([cancel_row(branch)]),
         )
 

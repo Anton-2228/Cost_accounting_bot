@@ -1,12 +1,15 @@
-"""Эндпоинты Mini App: распознать чек и добавить его."""
+"""Эндпоинты Mini App: язык пользователя, распознать чек и добавить его."""
 
 from __future__ import annotations
 
 from fastapi import APIRouter, Depends, Request, status
 
+from checks_service import constants
 from checks_service.auth.dependencies import current_telegram_id
+from checks_service.main_api import ApiGateway
 from checks_service.requests.scan_request import ScanRequest
 from checks_service.responses.check_preview_response import CheckPreviewResponse
+from checks_service.responses.me_response import MeResponse
 from checks_service.responses.saved_check_response import SavedCheckResponse
 from checks_service.services.check_intake import CheckIntakeService
 
@@ -19,6 +22,30 @@ def get_intake(request: Request) -> CheckIntakeService:
     if intake is None:  # pragma: no cover — возможно только при сбое сборки
         raise RuntimeError("Сервис приёма чеков не инициализирован в app.state")
     return intake
+
+
+def get_api(request: Request) -> ApiGateway:
+    """Достаёт шлюз к основному api из состояния приложения."""
+    api = getattr(request.app.state, "api", None)
+    if api is None:  # pragma: no cover — возможно только при сбое сборки
+        raise RuntimeError("Шлюз к api не инициализирован в app.state")
+    return api
+
+
+@router.get("/me", response_model=MeResponse)
+async def me(
+    telegram_id: int = Depends(current_telegram_id),
+    api: ApiGateway = Depends(get_api),
+) -> MeResponse:
+    """Кто открыл Mini App и на каком языке с ним говорить.
+
+    Страница спрашивает об этом до того, как открыть сканер: язык выбирается в
+    боте и хранится в api, а своего способа его узнать у страницы нет — язык
+    клиента Telegram может не совпадать с выбранным. Незнакомый api
+    пользователь говорит по-английски: так с ним говорит и бот.
+    """
+    language = await api.users.language(telegram_id)
+    return MeResponse(telegram_id=telegram_id, language=language or constants.DEFAULT_LANGUAGE)
 
 
 @router.post("/checks/preview", response_model=CheckPreviewResponse)

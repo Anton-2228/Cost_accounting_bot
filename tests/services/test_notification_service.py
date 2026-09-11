@@ -5,11 +5,17 @@ from __future__ import annotations
 import pytest
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from api.domain.user_message import UserMessage
 from api.enums import NotificationKind
 from api.exceptions.base import NotFoundError
 from api.repositories.user_notification_repository import UserNotificationRepository
 from api.services.notification_service import NotificationService
 from tests import factories
+
+
+def _message(label: str) -> UserMessage:
+    """Сообщение, отличимое от соседних по параметру."""
+    return UserMessage(code="import_ok", params={"sheet": label})
 
 
 async def test_undelivered_notifications_are_listed_without_ready_table(
@@ -25,12 +31,12 @@ async def test_undelivered_notifications_are_listed_without_ready_table(
     assert spreadsheet.id is not None
 
     await UserNotificationRepository(session).notify(
-        spreadsheet.id, NotificationKind.TABLE_READY, "Таблица готова"
+        spreadsheet.id, NotificationKind.TABLE_READY, _message("Таблица готова")
     )
     await session.commit()
 
     notifications = await notification_service.list_undelivered(spreadsheet.id)
-    assert [item.text for item in notifications] == ["Таблица готова"]
+    assert [item.params["sheet"] for item in notifications] == ["Таблица готова"]
 
 
 async def test_delivered_notification_disappears_from_the_queue(
@@ -47,7 +53,7 @@ async def test_delivered_notification_disappears_from_the_queue(
 
     notifications = UserNotificationRepository(session)
     created = await notifications.notify(
-        spreadsheet.id, NotificationKind.ROLLOVER, "Начался новый период"
+        spreadsheet.id, NotificationKind.ROLLOVER, _message("Начался новый период")
     )
     await session.commit()
     assert created.id is not None
@@ -70,7 +76,7 @@ async def test_repeated_confirmation_is_not_an_error(
     assert spreadsheet.id is not None
 
     created = await UserNotificationRepository(session).notify(
-        spreadsheet.id, NotificationKind.ROLLOVER, "Начался новый период"
+        spreadsheet.id, NotificationKind.ROLLOVER, _message("Начался новый период")
     )
     await session.commit()
     assert created.id is not None
@@ -90,7 +96,7 @@ async def test_confirmation_of_alien_notification_is_not_found(
     assert spreadsheet.id is not None and stranger.id is not None
 
     alien = await UserNotificationRepository(session).notify(
-        stranger.id, NotificationKind.ROLLOVER, "Чужое"
+        stranger.id, NotificationKind.ROLLOVER, _message("Чужое")
     )
     await session.commit()
     assert alien.id is not None

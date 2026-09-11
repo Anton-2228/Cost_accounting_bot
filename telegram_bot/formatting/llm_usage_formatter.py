@@ -9,6 +9,7 @@ from decimal import Decimal
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from telegram_bot.api_client.models import LlmUsage, Period, Spreadsheet
+from telegram_bot.i18n import LocaleFormat, t
 from telegram_bot.logging import get_logger
 
 logger = get_logger(__name__)
@@ -24,12 +25,8 @@ CURRENCY_SIGN = "$"
 #: бы в ноль.
 _COST_STEP = Decimal("0.0001")
 
-#: Разделитель разрядов — тот же обычный пробел, что в `MoneyFormatter`.
-_GROUP_SEPARATOR = " "
-
-_NO_SPREADSHEETS = "У пользователя нет ни одной таблицы."
-_NO_USAGES = "Обращений к модели не было."
-_OUTSIDE_PERIODS = "вне периодов"
+#: Знаков после запятой в сумме — столько же, сколько у шага показа.
+_COST_PLACES = 4
 
 
 @dataclass(frozen=True)
@@ -90,7 +87,8 @@ class LlmUsageFormatter:
     def report(cls, telegram_id: int, items: Sequence[SpreadsheetUsage]) -> list[str]:
         """Отчёт целиком: первое сообщение — итог, дальше по таблице."""
         if not items:
-            return [f"Траты на модель, пользователь {telegram_id}\n\n{_NO_SPREADSHEETS}"]
+            title = t("format.llm.title", telegram_id=telegram_id)
+            return [f"{title}\n\n{t('format.llm.no_spreadsheets')}"]
 
         blocks: list[str] = []
         overall = _Totals()
@@ -111,9 +109,11 @@ class LlmUsageFormatter:
     def _header(cls, telegram_id: int, totals: _Totals, tables: int, unlinked: int) -> str:
         """Шапка: сколько всего и по скольким таблицам."""
         lines = [
-            f"Траты на модель, пользователь {telegram_id}",
-            f"Итого: {cls._totals(totals)}",
-            f"Таблиц: {tables}" + (f", из них отвязанных: {unlinked}" if unlinked else ""),
+            t("format.llm.title", telegram_id=telegram_id),
+            t("format.llm.total", totals=cls._totals(totals)),
+            t("format.llm.tables_unlinked", count=tables, unlinked=unlinked)
+            if unlinked
+            else t("format.llm.tables", count=tables),
         ]
         if totals.unknown_cost_calls:
             lines.append(cls._unknown_note(totals.unknown_cost_calls))
@@ -122,15 +122,17 @@ class LlmUsageFormatter:
     @classmethod
     def _spreadsheet_block(cls, item: SpreadsheetUsage) -> tuple[str, _Totals]:
         """Сообщение по одной таблице и её итоги."""
-        title = f"«{item.spreadsheet.title}»"
-        if item.spreadsheet.is_unlinked:
-            title += " (отвязана)"
+        title = (
+            t("format.llm.spreadsheet_unlinked", title=item.spreadsheet.title)
+            if item.spreadsheet.is_unlinked
+            else t("format.llm.spreadsheet", title=item.spreadsheet.title)
+        )
 
         by_period, outside, totals = cls._split_by_period(item)
 
         lines = [f"{title}: {cls._totals(totals)}"]
         if not totals.calls:
-            return "\n".join([f"{title}", _NO_USAGES]), totals
+            return "\n".join([f"{title}", t("format.llm.no_usages")]), totals
 
         # Свежие периоды сверху: вопрос «сколько ушло за последний месяц»
         # задают чаще, чем «сколько было год назад», а листать сообщение до
@@ -142,7 +144,7 @@ class LlmUsageFormatter:
             lines.append(f"  {cls._period_label(period)}: {cls._totals(period_totals)}")
 
         if outside.calls:
-            lines.append(f"  {_OUTSIDE_PERIODS}: {cls._totals(outside)}")
+            lines.append(f"  {t('format.llm.outside_periods')}: {cls._totals(outside)}")
 
         if totals.unknown_cost_calls:
             lines.append(cls._unknown_note(totals.unknown_cost_calls))
@@ -228,7 +230,7 @@ class LlmUsageFormatter:
         выглядит в самой таблице.
         """
         last_day = period.end_date - timedelta(days=1)
-        return f"{period.start_date:%d.%m.%Y} — {last_day:%d.%m.%Y}"
+        return f"{LocaleFormat.day(period.start_date)} — {LocaleFormat.day(last_day)}"
 
     # --- числа ---
 
@@ -238,8 +240,8 @@ class LlmUsageFormatter:
         return " · ".join(
             (
                 cls._cost(totals.cost),
-                f"{cls._grouped(totals.tokens)} токенов",
-                f"{cls._grouped(totals.calls)} вызовов",
+                t("format.llm.tokens", count=LocaleFormat.integer(totals.tokens)),
+                t("format.llm.calls", count=LocaleFormat.integer(totals.calls)),
             )
         )
 
@@ -253,21 +255,19 @@ class LlmUsageFormatter:
         """
         quantized = cost.quantize(_COST_STEP)
         if quantized == 0 and cost > 0:
-            return f"менее {cls._decimal(_COST_STEP)} {CURRENCY_SIGN}"
-        return f"{cls._decimal(quantized)} {CURRENCY_SIGN}"
-
-    @classmethod
-    def _decimal(cls, value: Decimal) -> str:
-        """Десятичная дробь с запятой и разделением разрядов."""
-        whole, _, fraction = f"{value:f}".partition(".")
-        return f"{cls._grouped(int(whole))},{fraction}"
+            return t("format.llm.less_than", amount=cls._money(_COST_STEP))
+        return cls._money(quantized)
 
     @staticmethod
-    def _grouped(value: int) -> str:
-        """Целое с разделением разрядов."""
-        return f"{value:,}".replace(",", _GROUP_SEPARATOR)
+    def _money(value: Decimal) -> str:
+        """Сумма в валюте провайдера с разделением разрядов."""
+        return t(
+            "format.money",
+            amount=LocaleFormat.decimal(value, _COST_PLACES),
+            sign=CURRENCY_SIGN,
+        )
 
     @staticmethod
     def _unknown_note(calls: int) -> str:
         """Отметка о вызовах, цену которых провайдер не прислал."""
-        return f"  Без известной цены: {calls}"
+        return f"  {t('format.llm.unknown_cost', count=calls)}"

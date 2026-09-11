@@ -15,10 +15,11 @@ class UserMapper(BaseMapper[UserORM, User]):
         return User(
             id=orm.id,
             telegram_id=orm.telegram_id,
+            language=orm.language,
             created_at=orm.created_at,
             updated_at=orm.updated_at,
         )
 
     def to_orm(self, domain: User) -> UserORM:
         """Создаёт ORM-объект из доменной модели."""
-        return UserORM(telegram_id=domain.telegram_id)
+        return UserORM(telegram_id=domain.telegram_id, language=domain.language)

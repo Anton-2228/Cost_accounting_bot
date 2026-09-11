@@ -1,0 +1,2 @@
+Corrigez les types avec des lignes comme « 1,3 - laitages », une correction par ligne.
+Si tout est correct, appuyez sur « Terminé ».

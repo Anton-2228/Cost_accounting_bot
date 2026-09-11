@@ -20,6 +20,7 @@ from telegram_bot.aiogram_wrapper import AiogramWrapper
 from telegram_bot.api_client import ApiGateway
 from telegram_bot.commands import Manager, get_commands
 from telegram_bot.config import settings
+from telegram_bot.languages import UserLanguages
 from telegram_bot.notifications import NotificationCatchUp
 
 # Прокси — свойство одной только сессии Telegram. `None` означает «своя сессия
@@ -57,6 +58,10 @@ AI = AiClient(
     temperature=settings.ai_temperature,
 )
 
+# Языки пользователей: api — источник, здесь — кэш процесса. Бот один, и язык
+# меняет только он сам, поэтому кэшу не с чем расходиться.
+LANGUAGES = UserLanguages(API)
+
 ACCESS = AccessGuard(settings.allowed_telegram_ids, settings.admin_telegram_ids)
-MANAGER = Manager(ACCESS, AIOGRAM_WRAPPER)
-MANAGER.register(get_commands(MANAGER, API, AIOGRAM_WRAPPER, CATCH_UP, AI, ACCESS))
+MANAGER = Manager(ACCESS, AIOGRAM_WRAPPER, LANGUAGES)
+MANAGER.register(get_commands(MANAGER, API, AIOGRAM_WRAPPER, CATCH_UP, AI, ACCESS, LANGUAGES))

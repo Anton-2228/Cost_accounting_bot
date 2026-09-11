@@ -6,6 +6,7 @@ from telegram_bot.aiogram_wrapper import AiogramWrapper
 from telegram_bot.api_client import ApiGateway
 from telegram_bot.api_client.errors import ApiError
 from telegram_bot.api_client.models import NotificationKind
+from telegram_bot.formatting.notification_formatter import NotificationFormatter
 from telegram_bot.logging import get_logger
 
 logger = get_logger(__name__)
@@ -17,7 +18,10 @@ class NotificationCatchUp:
     Страховка, а не основной путь: обычно уведомление приходит push-ом от api
     в `POST /notify`. Но если бот лежал в момент события, а цикл рассылки в api
     почему-то не догнал очередь, пользователь иначе никогда не узнает, что
-    правки в листе не применились, — текст разбора существует только здесь.
+    правки в листе не применились, — сообщение о разборе существует только здесь.
+
+    Язык здесь не выбирается: дочитка сопровождает команду пользователя и
+    печатает на языке её обращения — его уже выставил `Manager`.
 
     Подтверждение идёт тем же эндпоинтом, что и у push: одно и то же сообщение
     не должно уйти дважды.
@@ -47,7 +51,10 @@ class NotificationCatchUp:
         delivered: list[NotificationKind] = []
         for notification in pending:
             try:
-                await self._aiogram.send_message(chat_id, notification.text)
+                await self._aiogram.send_message(
+                    chat_id,
+                    NotificationFormatter.render(notification.code, notification.params),
+                )
                 await self._api.notifications.mark_delivered(spreadsheet_id, notification.id)
             except ApiError as error:
                 logger.warning("Не удалось подтвердить уведомление: %s", error)

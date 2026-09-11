@@ -30,6 +30,9 @@ class Category(BaseModel):
     kind: CategoryKind
     status: EntityStatus = EntityStatus.ACTIVE
     title: str
+    #: Категория по умолчанию своего вида. Меняется только при создании
+    #: документа: импорт листа переносит флаг как есть.
+    is_default: bool = False
     associations: list[str] = []
     product_types: list[str] = []
     deleted_at: datetime | None = None

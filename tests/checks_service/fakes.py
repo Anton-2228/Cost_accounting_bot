@@ -95,11 +95,29 @@ class FakeChecksClient:
 
 
 @dataclass
+class FakeUsersClient:
+    """Фейк клиента пользователей: язык или отказ api."""
+
+    #: Код языка, который «вернёт api»; `None` — пользователя api не знает.
+    language_code: str | None = None
+    fail_with: ApiError | None = None
+    calls: list[int] = field(default_factory=list)
+
+    async def language(self, telegram_id: int) -> str | None:
+        """Язык пользователя или отказ."""
+        self.calls.append(telegram_id)
+        if self.fail_with is not None:
+            raise self.fail_with
+        return self.language_code
+
+
+@dataclass
 class FakeApiGateway:
     """Фейк шлюза к основному api."""
 
     spreadsheets: FakeSpreadsheetsClient = field(default_factory=FakeSpreadsheetsClient)
     checks: FakeChecksClient = field(default_factory=FakeChecksClient)
+    users: FakeUsersClient = field(default_factory=FakeUsersClient)
 
     async def aclose(self) -> None:
         """Закрывать нечего."""

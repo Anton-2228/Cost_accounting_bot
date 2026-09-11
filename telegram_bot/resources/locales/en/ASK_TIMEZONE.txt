@@ -1,0 +1,6 @@
+What time zone do you live in?
+
+It determines the date of a transaction and the moment the period changes.
+IANA format, for example: Europe/London, America/New_York.
+
+Send “-” to use {default}.

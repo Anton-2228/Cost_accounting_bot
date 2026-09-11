@@ -102,6 +102,17 @@ class ApiHttpClient:
         """POST без содержательного ответа (204 или 202)."""
         await self._request("POST", path, body=body, timeout=timeout)
 
+    async def put_data(
+        self,
+        path: str,
+        *,
+        body: dict[str, Any] | None = None,
+        timeout: float | None = None,
+    ) -> dict[str, Any]:
+        """PUT, возвращающий одиночный ресурс."""
+        response = await self._request("PUT", path, body=body, timeout=timeout)
+        return dict(response.json()["data"])
+
     async def delete(
         self,
         path: str,

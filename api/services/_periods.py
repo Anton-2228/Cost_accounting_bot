@@ -72,5 +72,9 @@ def assert_open(period: Period) -> None:
     if period.status is PeriodStatus.CLOSED:
         raise BusinessRuleError(
             f"Период с {period.start_date} закрыт",
-            details={"period_id": period.id},
+            details={
+                "reason": "period_closed",
+                "period_id": period.id,
+                "start_date": period.start_date.isoformat(),
+            },
         )

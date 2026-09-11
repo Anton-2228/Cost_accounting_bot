@@ -5,6 +5,7 @@ from __future__ import annotations
 from httpx import AsyncClient
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from api.enums import Language
 from tests import factories
 
 _PREFIX = "/api/v1/users"
@@ -87,3 +88,79 @@ async def test_unknown_user_is_404_with_resource(client: AsyncClient) -> None:
     body = response.json()
     assert body["code"] == "not_found"
     assert body["details"] == {"resource": "user"}
+
+
+async def test_user_language_is_read(client: AsyncClient, session: AsyncSession) -> None:
+    """Язык пользователя отдаётся вместе с ним самим."""
+    await factories.create_user(session, telegram_id=7104, language=Language.RU)
+    await session.commit()
+
+    response = await client.get(f"{_PREFIX}/7104")
+
+    assert response.status_code == 200
+    assert response.json()["data"] == {"telegram_id": 7104, "language": "RU"}
+
+
+async def test_unknown_user_is_404_not_a_default(client: AsyncClient) -> None:
+    """Незнакомому пользователю api языка не выдумывает.
+
+    Умолчание — забота спрашивающего: бот и Mini App говорят с таким
+    пользователем по-английски, но выдать это за запись в базе значило бы
+    соврать о том, что человек что-то выбирал.
+    """
+    response = await client.get(f"{_PREFIX}/999998")
+
+    assert response.status_code == 404
+    assert response.json()["details"] == {"resource": "user"}
+
+
+async def test_set_language_creates_unknown_user(client: AsyncClient) -> None:
+    """Выбор языка заводит пользователя: на `/start` таблицы у него ещё нет."""
+    response = await client.put(f"{_PREFIX}/7105/language", json={"language": "HI"})
+
+    assert response.status_code == 200
+    assert response.json()["data"] == {"telegram_id": 7105, "language": "HI"}
+    assert (await client.get(f"{_PREFIX}/7105")).json()["data"]["language"] == "HI"
+    # Заведённый так пользователь — настоящий: у него просто нет таблиц.
+    assert (await client.get(f"{_PREFIX}/7105/spreadsheets")).json()["items"] == []
+
+
+async def test_set_language_keeps_the_spreadsheet(
+    client: AsyncClient,
+    session: AsyncSession,
+) -> None:
+    """Смена языка не трогает ничего, кроме языка."""
+    user = await factories.create_user(session, telegram_id=7106, language=Language.RU)
+    await factories.create_spreadsheet(session, user=user, ready=True)
+    await session.commit()
+
+    response = await client.put(f"{_PREFIX}/7106/language", json={"language": "ES"})
+
+    assert response.status_code == 200
+    assert response.json()["data"]["language"] == "ES"
+    assert (await client.get("/api/v1/spreadsheets/by-telegram/7106")).status_code == 200
+
+
+async def test_set_language_is_idempotent(client: AsyncClient) -> None:
+    """Повтор того же запроса ничего не меняет и не падает на уникальном ключе."""
+    first = await client.put(f"{_PREFIX}/7107/language", json={"language": "FR"})
+    second = await client.put(f"{_PREFIX}/7107/language", json={"language": "FR"})
+
+    assert first.status_code == second.status_code == 200
+    assert second.json()["data"] == {"telegram_id": 7107, "language": "FR"}
+
+
+async def test_unknown_language_is_rejected(client: AsyncClient) -> None:
+    """Язык, которого нет в каталоге бота, не записывается."""
+    response = await client.put(f"{_PREFIX}/7108/language", json={"language": "DE"})
+
+    assert response.status_code == 422
+
+
+async def test_unknown_field_is_rejected(client: AsyncClient) -> None:
+    """Лишнее поле — ошибка клиента, а не молча проигнорированная опечатка."""
+    response = await client.put(
+        f"{_PREFIX}/7109/language", json={"language": "EN", "lang": "EN"}
+    )
+
+    assert response.status_code == 422

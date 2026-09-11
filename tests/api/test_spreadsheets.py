@@ -227,8 +227,8 @@ async def test_rejected_access_is_removed_and_reported(
     assert accesses.json()["items"] == []
 
     notifications = await client.get(f"{_PREFIX}/{spreadsheet.id}/notifications")
-    texts = [item["text"] for item in notifications.json()["items"]]
-    assert any("broken@example.com" in text for text in texts)
+    sent = [(item["code"], item["params"]) for item in notifications.json()["items"]]
+    assert ("access_failed", {"email": "broken@example.com"}) in sent
 
 
 async def test_failed_access_of_another_spreadsheet_is_404(

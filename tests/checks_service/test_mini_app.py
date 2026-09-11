@@ -33,6 +33,7 @@ from tests.checks_service.fakes import FakeApiGateway, FakeFetcher
 
 PREVIEW_URL = "/api/v1/mini-app/checks/preview"
 CHECKS_URL = "/api/v1/mini-app/checks"
+ME_URL = "/api/v1/mini-app/me"
 
 
 class Bench:
@@ -206,3 +207,46 @@ async def test_stranger_with_valid_signature_is_403(bench: Bench) -> None:
 async def test_empty_qr_is_422(bench: Bench) -> None:
     """Пустая строка отсекается схемой запроса."""
     assert (await bench.add("", headers=bench.auth())).status_code == 422
+
+
+async def test_me_names_the_language_chosen_in_the_bot(bench: Bench) -> None:
+    """Страница говорит на языке, выбранном в боте, а не на языке клиента."""
+    bench.api.users.language_code = "es"
+
+    response = await bench.client.get(ME_URL, headers=bench.auth())
+
+    assert response.status_code == 200
+    assert response.json() == {"telegram_id": ALLOWED_ID, "language": "es"}
+
+
+async def test_me_for_unknown_user_is_english(bench: Bench) -> None:
+    """Незнакомый api пользователь — английский, как и в боте."""
+    response = await bench.client.get(ME_URL, headers=bench.auth())
+
+    assert response.json()["language"] == "en"
+
+
+async def test_me_with_unavailable_api_is_502(bench: Bench) -> None:
+    """Недоступное api — 502 с кодом: страница уйдёт на запасной язык."""
+    bench.api.users.fail_with = ApiError(503, "api лежит")
+
+    response = await bench.client.get(ME_URL, headers=bench.auth())
+
+    assert response.status_code == 502
+    assert response.json()["code"] == "api_error"
+
+
+async def test_me_requires_a_signature(bench: Bench) -> None:
+    """Язык чужого пользователя без подписи не отдаётся."""
+    response = await bench.client.get(ME_URL)
+
+    assert response.status_code == 401
+    assert bench.api.users.calls == []
+
+
+async def test_me_refuses_a_stranger(bench: Bench) -> None:
+    """Подпись верна, но пользоваться сервисом нельзя — 403, api не спрашивали."""
+    response = await bench.client.get(ME_URL, headers=bench.auth(STRANGER_ID))
+
+    assert response.status_code == 403
+    assert bench.api.users.calls == []

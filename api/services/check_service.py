@@ -9,7 +9,6 @@ from typing import Any
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from api.core import constants
 from api.core.logging import get_logger
 from api.domain.cashed_record import CashedRecord
 from api.domain.category import Category
@@ -112,7 +111,10 @@ class CheckService(BaseSpreadsheetService):
         await self._get(spreadsheet_id)
         if period_id is not None:
             if unprocessed:
-                raise BusinessRuleError("Фильтры `unprocessed` и `period_id` несовместимы")
+                raise BusinessRuleError(
+                    "Фильтры `unprocessed` и `period_id` несовместимы",
+                    details={"reason": "filters_incompatible"},
+                )
             return await self._checks.list_processed_for_period(spreadsheet_id, period_id)
         return await self._checks.list_by_spreadsheet(spreadsheet_id, unprocessed=unprocessed)
 
@@ -316,9 +318,10 @@ class CheckService(BaseSpreadsheetService):
     ) -> None:
         """Закрепляет новые типы товаров за категориями.
 
-        Категория по умолчанию для расходов типов не получает никогда: это
-        корзина для всего, что не удалось разложить, и обучение на её
-        содержимом притянуло бы туда же следующие чеки.
+        Категория по умолчанию типов не получает никогда: это корзина для
+        всего, что не удалось разложить, и обучение на её содержимом притянуло
+        бы туда же следующие чеки. Узнаётся она по флагу, а не по названию —
+        название на языке пользователя и может быть переименовано в листе.
 
         Занятый тип ловится дважды. Предварительная проверка нужна, чтобы
         назвать чужую категорию: пользователь должен знать, куда уже отнесена
@@ -330,7 +333,7 @@ class CheckService(BaseSpreadsheetService):
             category = categories.get(assignment.category_id)
             if category is None:
                 raise NotFoundError("category")
-            if category.title == constants.DEFAULT_EXPENSE_CATEGORY:
+            if category.is_default:
                 continue
 
             owner = await self._categories.find_by_product_type(

@@ -1,0 +1,1 @@
+Not every item has a category — correct them with lines like “1,3 - groceries”.

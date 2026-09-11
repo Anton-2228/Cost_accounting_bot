@@ -33,8 +33,11 @@ from pydantic import ValidationError
 from telegram_bot import constants
 from telegram_bot.ai.errors import AiResponseError, AiUnavailableError
 from telegram_bot.ai.models import CategorySuggestions, LlmUsage, TypeSuggestions
+from telegram_bot.i18n import ENGLISH_NAMES, Language
 from telegram_bot.logging import get_logger
 from telegram_bot.resources.prompts import (
+    CATEGORIES_FALLBACK_RULE,
+    CATEGORIES_NO_FALLBACK_RULE,
     CATEGORIES_SYSTEM_PROMPT,
     CATEGORIES_USER_PROMPT,
     TYPES_SYSTEM_PROMPT,
@@ -78,6 +81,8 @@ class AiClient:
         self,
         products: Sequence[str],
         known_types: Sequence[str],
+        *,
+        language: Language,
     ) -> tuple[dict[int, str], LlmUsage | None]:
         """Тип для каждого товара: номер позиции → тип, и замер вызова.
 
@@ -86,9 +91,14 @@ class AiClient:
         их пустыми и даст поправить руками, а не откажется целиком.
 
         Замер пуст, если провайдер не прислал `usage`: учитывать нечего.
+
+        Новый тип модель предлагает на `language` — языке пользователя, но
+        знакомый тип переиспользует дословно, на каком бы языке он ни был
+        записан: сменивший язык уже накопил типы в таблице, и заводить рядом
+        с «молочкой» «dairy» значило бы разложить один товар по двум типам.
         """
         raw, usage = await self._invoke(
-            TYPES_SYSTEM_PROMPT,
+            TYPES_SYSTEM_PROMPT.format(language=ENGLISH_NAMES[language]),
             TYPES_USER_PROMPT.format(
                 products=_numbered(products),
                 types=_listed(known_types),
@@ -102,6 +112,8 @@ class AiClient:
         self,
         product_types: Sequence[str],
         categories: Sequence[str],
+        *,
+        default_category: str | None,
     ) -> tuple[dict[int, str], LlmUsage | None]:
         """Категория для каждого типа: номер типа → название, и замер вызова.
 
@@ -110,9 +122,7 @@ class AiClient:
         категориям из-за того, что модель ответила о них по отдельности.
         """
         raw, usage = await self._invoke(
-            CATEGORIES_SYSTEM_PROMPT.format(
-                default_category=constants.DEFAULT_EXPENSE_CATEGORY
-            ),
+            CATEGORIES_SYSTEM_PROMPT.format(fallback_rule=_fallback_rule(default_category)),
             CATEGORIES_USER_PROMPT.format(
                 product_types=_numbered(product_types),
                 categories=_listed(categories),
@@ -253,6 +263,20 @@ def _outermost_object(text: str) -> str:
     """
     start, end = text.find("{"), text.rfind("}")
     return text[start : end + 1] if start != -1 and end > start else ""
+
+
+def _fallback_rule(default_category: str | None) -> str:
+    """Что модели делать с типом, которому не нашлось категории.
+
+    Корзина называется по имени: её название — на языке пользователя и
+    может быть переименовано в листе. Корзины нет (её переименовали до того,
+    как роль стала флагом) — ближайшая категория из списка: ответ «не знаю»
+    бот всё равно применить не смог бы, а неточную категорию пользователь
+    видит в нижнем блоке и правит одной строкой.
+    """
+    if default_category is None:
+        return CATEGORIES_NO_FALLBACK_RULE
+    return CATEGORIES_FALLBACK_RULE.format(default_category=default_category)
 
 
 def _numbered(values: Sequence[str]) -> str:

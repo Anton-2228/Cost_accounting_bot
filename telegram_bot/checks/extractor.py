@@ -34,15 +34,32 @@ from telegram_bot.checks.errors import (
     ReceiptNotSupportedError,
 )
 from telegram_bot.checks.models import Receipt, ReceiptItem, currency_of
+from telegram_bot.i18n import LocaleFormat, t
 
 #: Поля расшифровки ФНС, в которых может лежать название магазина, в порядке
 #: убывания внятности: «Пятёрочка» лучше, чем «ООО ТД Перекрёсток», а адрес —
 #: лучше, чем ничего.
 _PLACE_FIELDS = ("retailPlace", "user", "retailPlaceAddress")
 
-#: Общий хвост отказов: что делать пользователю, когда чек не разобрать.
-_MANUAL = "Внесите покупки вручную через /add, а чек уберите: /check_del"
-_REMOVE = "Убрать чек из очереди: /check_del"
+
+def _manual(key: str, **params: object) -> str:
+    """Отказ с общим хвостом «внесите вручную, а чек уберите».
+
+    Хвост — отдельной строкой каталога, а не частью каждого отказа: что делать
+    пользователю, когда чек не разобрать, одно и то же, и формулировать это в
+    каждом из десятка отказов значило бы переводить одно и то же десять раз.
+    """
+    return f"{t(key, **params)}\n{t('receipt.manual_tail')}"
+
+
+def _remove(key: str, **params: object) -> str:
+    """Отказ с хвостом «уберите чек из очереди»."""
+    return f"{t(key, **params)}\n{t('receipt.remove_tail')}"
+
+
+def _money(value: Decimal) -> str:
+    """Сумма для текста отказа — с разделением разрядов по языку."""
+    return LocaleFormat.decimal(value, constants.MONEY_DECIMAL_PLACES)
 
 
 class _FormatExtractor(Protocol):
@@ -89,7 +106,7 @@ class RuFnsExtractor:
         body = data.get("json") if isinstance(data, dict) else None
         if not isinstance(body, dict):
             raise ReceiptFormatError(
-                "Расшифровка этого чека неожиданной формы — разобрать её не могу.\n" + _MANUAL
+                _manual("receipt.unexpected_shape")
             )
         return body
 
@@ -99,7 +116,7 @@ class RuFnsExtractor:
         operation = body.get("operationType")
         if operation is not None and operation != constants.RECEIPT_OPERATION_INCOME:
             raise ReceiptNotSupportedError(
-                "Чеки-возвраты пока не поддерживаются, внесите операцию вручную.\n" + _REMOVE
+                _remove("receipt.refund")
             )
 
     @classmethod
@@ -108,15 +125,14 @@ class RuFnsExtractor:
         raw_items = body.get("items")
         if not isinstance(raw_items, list) or not raw_items:
             raise ReceiptFormatError(
-                "В расшифровке чека нет ни одной позиции — разбирать нечего.\n" + _MANUAL
+                _manual("receipt.no_items")
             )
 
         items: list[tuple[str, int]] = []
         for raw_item in raw_items:
             if not isinstance(raw_item, dict):
                 raise ReceiptFormatError(
-                    "Позиции чека записаны не так, как ожидалось — разобрать не могу.\n"
-                    + _REMOVE
+                    _remove("receipt.items_shape")
                 )
             items.append((_name(raw_item.get("name")), cls._kopecks(raw_item.get("sum"))))
         return items
@@ -131,12 +147,11 @@ class RuFnsExtractor:
         """
         if isinstance(value, bool) or not isinstance(value, int):
             raise ReceiptFormatError(
-                "Суммы в расшифровке чека записаны не в копейках — разобрать не могу.\n"
-                + _REMOVE
+                _remove("receipt.not_kopecks")
             )
         if value < 0:
             raise ReceiptNotSupportedError(
-                "В чеке есть позиция с отрицательной суммой — внесите её вручную.\n" + _REMOVE
+                _remove("receipt.negative_item")
             )
         return value
 
@@ -155,7 +170,7 @@ class RuFnsExtractor:
                 pass
 
         raise ReceiptFormatError(
-            "В чеке не нашлось итоговой суммы, сверить позиции не с чем.\n" + _MANUAL
+            _manual("receipt.no_total")
         )
 
     @staticmethod
@@ -169,9 +184,11 @@ class RuFnsExtractor:
         items_total = sum(kopecks for _, kopecks in items)
         if items_total != total_kopecks:
             raise ReceiptMismatchError(
-                "Сумма позиций не сошлась с итогом чека: "
-                f"{_to_rubles(items_total)} против {_to_rubles(total_kopecks)}.\n"
-                "Записывать такой чек не буду — внесите покупки вручную через /add"
+                t(
+                    "receipt.mismatch",
+                    items=_money(_to_rubles(items_total)),
+                    total=_money(_to_rubles(total_kopecks)),
+                )
             )
 
     @staticmethod
@@ -246,7 +263,7 @@ class SrbSufExtractor:
         body = raw_payload.get(srb_labels.VERSION)
         if not isinstance(body, dict):
             raise ReceiptFormatError(
-                "Расшифровка этого чека неожиданной формы — разобрать её не могу.\n" + _MANUAL
+                _manual("receipt.unexpected_shape")
             )
         return body
 
@@ -260,8 +277,7 @@ class SrbSufExtractor:
         invoice_type = body.get(srb_labels.INVOICE_TYPE)
         if invoice_type is not None and invoice_type != srb_labels.INVOICE_TYPE_NORMAL:
             raise ReceiptNotSupportedError(
-                f"Это не обычная продажа, а «{invoice_type}» — такие чеки пока не "
-                "разбираю, внесите операцию вручную.\n" + _REMOVE
+                _remove("receipt.not_sale", invoice_type=invoice_type)
             )
 
     @classmethod
@@ -270,21 +286,19 @@ class SrbSufExtractor:
         raw_items = body.get(srb_labels.SPECIFICATION)
         if not isinstance(raw_items, list) or not raw_items:
             raise ReceiptFormatError(
-                "В расшифровке чека нет ни одной позиции — разбирать нечего.\n" + _MANUAL
+                _manual("receipt.no_items")
             )
 
         items: list[tuple[str, Decimal]] = []
         for raw_item in raw_items:
             if not isinstance(raw_item, dict):
                 raise ReceiptFormatError(
-                    "Позиции чека записаны не так, как ожидалось — разобрать не могу.\n"
-                    + _REMOVE
+                    _remove("receipt.items_shape")
                 )
             amount = cls._amount(raw_item.get(srb_labels.ITEM_TOTAL))
             if amount < 0:
                 raise ReceiptNotSupportedError(
-                    "В чеке есть позиция с отрицательной суммой — внесите её вручную.\n"
-                    + _REMOVE
+                    _remove("receipt.negative_item")
                 )
             items.append((_name(raw_item.get(srb_labels.ITEM_NAME)), amount))
         return items
@@ -301,7 +315,7 @@ class SrbSufExtractor:
             return Decimal(str(value))
         except InvalidOperation as error:
             raise ReceiptFormatError(
-                "Суммы в расшифровке чека записаны не числами — разобрать не могу.\n" + _REMOVE
+                _remove("receipt.not_numbers")
             ) from error
 
     @classmethod
@@ -310,7 +324,7 @@ class SrbSufExtractor:
         total = body.get(srb_labels.TOTAL_AMOUNT)
         if total is None:
             raise ReceiptFormatError(
-                "В чеке не нашлось итоговой суммы, сверить позиции не с чем.\n" + _MANUAL
+                _manual("receipt.no_total")
             )
         return cls._amount(total)
 
@@ -325,9 +339,7 @@ class SrbSufExtractor:
         items_total = sum((amount for _, amount in items), start=Decimal("0"))
         if items_total != total:
             raise ReceiptMismatchError(
-                "Сумма позиций не сошлась с итогом чека: "
-                f"{items_total} против {total}.\n"
-                "Записывать такой чек не буду — внесите покупки вручную через /add"
+                t("receipt.mismatch", items=_money(items_total), total=_money(total))
             )
 
     @staticmethod
@@ -376,15 +388,21 @@ class ReceiptExtractor:
         extractor = _EXTRACTORS.get(check.kind)
         if extractor is None:
             raise ReceiptFormatError(
-                "Чеки этого формата я пока не разбираю.\n" + _MANUAL
+                _manual("receipt.unknown_format")
             )
         return extractor.extract(check)
 
 
 def _name(raw_name: Any) -> str:
-    """Название позиции, обрезанное до серверного предела."""
+    """Название позиции, обрезанное до серверного предела.
+
+    Позиция без названия получает заглушку на языке обращения. Заглушка — уже
+    данные: она уходит в `records.product_name` и становится ключом кэша типов,
+    так что после смены языка у безымянных позиций заведётся своя запись на
+    каждом языке. Это принято: смесь языков в таблице после смены допустима.
+    """
     name = str(raw_name).strip() if raw_name is not None else ""
-    return (name or constants.UNNAMED_PRODUCT)[: constants.PRODUCT_NAME_MAX_LENGTH]
+    return (name or t("receipt.unnamed_product"))[: constants.PRODUCT_NAME_MAX_LENGTH]
 
 
 def _to_rubles(kopecks: int) -> Decimal:

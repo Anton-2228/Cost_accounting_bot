@@ -2,30 +2,30 @@
 
 from __future__ import annotations
 
-from typing import Any
+from typing import TYPE_CHECKING, Any, cast
 
 from aiogram.fsm.context import FSMContext
 from aiogram.types import CallbackQuery, Message
 
 from telegram_bot import constants
 from telegram_bot.commands.base_command import BaseCommand
+from telegram_bot.commands.language_picker import ORIGIN_START
 from telegram_bot.enums import CommandName, FsmDataKeys
-from telegram_bot.errors import TABLE_CREATING_MESSAGE
+from telegram_bot.i18n import t
 from telegram_bot.parsers import OnboardingParser, ParseError
-from telegram_bot.parsers.onboarding_parser import SKIP_MARKERS
-from telegram_bot.resources.messages import (
-    ASK_EMAIL_MESSAGE,
-    ASK_RESET_DAY_MESSAGE,
-    ASK_TIMEZONE_MESSAGE,
-    ASK_TITLE_MESSAGE,
-    CREATING_TABLE_MESSAGE,
-    WELCOME_MESSAGE,
-)
 from telegram_bot.states import States
 
-#: Кнопка под приветствием. Префикс тот же, что ключ команды, — по нему нажатие
-#: и находит обработчик.
-CREATE_TABLE_BUTTON = ("Создать таблицу", f"{CommandName.START}:create")
+if TYPE_CHECKING:
+    from telegram_bot.commands.language import LanguageCommand
+
+#: `callback_data` кнопки под приветствием. Префикс тот же, что ключ команды, —
+#: по нему нажатие и находит обработчик.
+CREATE_TABLE_DATA = f"{CommandName.START}:create"
+
+
+def create_table_button() -> tuple[str, str]:
+    """Кнопка «Создать таблицу» на языке обращения."""
+    return (t("buttons.start.create_table"), CREATE_TABLE_DATA)
 
 
 class StartCommand(BaseCommand):
@@ -55,16 +55,20 @@ class StartCommand(BaseCommand):
         из диалога, и нужен он затем, что первый — кнопка «Отмена» — живёт в
         сообщении: его можно пролистать, а у мастера создания таблицы кнопки
         нет вовсе, и без этой ветки он стал бы единственной ловушкой в боте.
+
+        Начинается `/start` с выбора языка — каждый раз, а не только первый:
+        это и есть дверь в бота, и язык за ней должен быть тем, который человек
+        видит. Приветствие приходит после выбора (см. :meth:`greet`).
         """
         if kwargs.get("restart"):
             await self.finish(chat_id=message.chat.id, state=state)
-            await self._greet(message)
+            await self._language().show(chat_id=message.chat.id, origin=ORIGIN_START)
             return
 
         current = await self.aiogram.get_state(state)
 
         if current is None:
-            await self._greet(message)
+            await self.greet(chat_id=message.chat.id, telegram_id=self.user_id(message))
         elif current == States.CREATE_TABLE_TITLE.state:
             await self._on_title(message, state)
         elif current == States.CREATE_TABLE_RESET_DAY.state:
@@ -96,19 +100,27 @@ class StartCommand(BaseCommand):
             return
 
         await self.aiogram.set_state(state, States.CREATE_TABLE_TITLE)
-        await self.aiogram.send_message(chat_id, ASK_TITLE_MESSAGE)
+        await self.aiogram.send_message(chat_id, t("text.ask_title"))
 
-    async def _greet(self, message: Message) -> None:
-        """Вход в бота: приветствие, ожидание таблицы либо меню."""
-        chat_id = message.chat.id
-        if await self._show_entrance(chat_id=chat_id, telegram_id=self.user_id(message)):
+    async def greet(self, *, chat_id: int, telegram_id: int) -> None:
+        """Вход в бота: приветствие, ожидание таблицы либо меню.
+
+        По явным идентификаторам: приветствие приходит после нажатия кнопки
+        выбора языка, где сообщения пользователя нет — у `callback.message`
+        автор бот.
+        """
+        if await self._show_entrance(chat_id=chat_id, telegram_id=telegram_id):
             return
 
         await self.aiogram.send_message(
             chat_id,
-            WELCOME_MESSAGE,
-            keyboard=self.aiogram.inline_keyboard([CREATE_TABLE_BUTTON]),
+            t("text.welcome"),
+            keyboard=self.aiogram.inline_keyboard([create_table_button()]),
         )
+
+    def _language(self) -> LanguageCommand:
+        """Выбор языка из реестра — тем же способом, что и меню."""
+        return cast("LanguageCommand", self.manager.get(CommandName.LANGUAGE))
 
     async def _show_entrance(self, *, chat_id: int, telegram_id: int) -> bool:
         """Показывает экран владельцу таблицы. `False` — таблицы нет вовсе.
@@ -133,7 +145,7 @@ class StartCommand(BaseCommand):
         if spreadsheet is None:
             return False
         if not spreadsheet.is_ready:
-            await self.aiogram.send_message(chat_id, TABLE_CREATING_MESSAGE)
+            await self.aiogram.send_message(chat_id, t("errors.table_creating"))
             return True
         await self.menu().show(chat_id=chat_id)
         return True
@@ -142,7 +154,7 @@ class StartCommand(BaseCommand):
         """Название таблицы."""
         text = self.text_of(message)
         if text is None:
-            await self.aiogram.answer_message(message, ASK_TITLE_MESSAGE)
+            await self.aiogram.answer_message(message, t("text.ask_title"))
             return
         try:
             title = OnboardingParser.title(text)
@@ -152,13 +164,13 @@ class StartCommand(BaseCommand):
 
         await self.aiogram.set_state_data(state, FsmDataKeys.TITLE, title)
         await self.aiogram.set_state(state, States.CREATE_TABLE_RESET_DAY)
-        await self.aiogram.answer_message(message, ASK_RESET_DAY_MESSAGE)
+        await self.aiogram.answer_message(message, t("text.ask_reset_day"))
 
     async def _on_reset_day(self, message: Message, state: FSMContext) -> None:
         """День перехода на новый учётный месяц."""
         text = self.text_of(message)
         if text is None:
-            await self.aiogram.answer_message(message, ASK_RESET_DAY_MESSAGE)
+            await self.aiogram.answer_message(message, t("text.ask_reset_day"))
             return
         try:
             reset_day = OnboardingParser.reset_day(text)
@@ -169,7 +181,7 @@ class StartCommand(BaseCommand):
         await self.aiogram.set_state_data(state, FsmDataKeys.RESET_DAY, reset_day)
         await self.aiogram.set_state(state, States.CREATE_TABLE_TIMEZONE)
         await self.aiogram.answer_message(
-            message, ASK_TIMEZONE_MESSAGE.format(default=constants.DEFAULT_TIMEZONE)
+            message, t("text.ask_timezone", default=constants.DEFAULT_TIMEZONE)
         )
 
     async def _on_timezone(self, message: Message, state: FSMContext) -> None:
@@ -177,12 +189,12 @@ class StartCommand(BaseCommand):
         text = self.text_of(message)
         if text is None:
             await self.aiogram.answer_message(
-                message, ASK_TIMEZONE_MESSAGE.format(default=constants.DEFAULT_TIMEZONE)
+                message, t("text.ask_timezone", default=constants.DEFAULT_TIMEZONE)
             )
             return
 
         raw = text.strip()
-        if raw.lower() in SKIP_MARKERS:
+        if OnboardingParser.is_skip(raw):
             timezone = constants.DEFAULT_TIMEZONE
         else:
             try:
@@ -193,13 +205,13 @@ class StartCommand(BaseCommand):
 
         await self.aiogram.set_state_data(state, FsmDataKeys.TIMEZONE, timezone)
         await self.aiogram.set_state(state, States.CREATE_TABLE_EMAIL)
-        await self.aiogram.answer_message(message, ASK_EMAIL_MESSAGE)
+        await self.aiogram.answer_message(message, t("text.ask_email"))
 
     async def _on_email(self, message: Message, state: FSMContext) -> None:
         """Последний шаг: почта (её можно пропустить) и создание таблицы."""
         text = self.text_of(message)
         if text is None:
-            await self.aiogram.answer_message(message, ASK_EMAIL_MESSAGE)
+            await self.aiogram.answer_message(message, t("text.ask_email"))
             return
         try:
             email = OnboardingParser.email(text)
@@ -212,7 +224,7 @@ class StartCommand(BaseCommand):
         reset_day = int(data.get(FsmDataKeys.RESET_DAY, constants.MIN_RESET_DAY))
         timezone = str(data.get(FsmDataKeys.TIMEZONE, constants.DEFAULT_TIMEZONE))
 
-        await self.aiogram.answer_message(message, CREATING_TABLE_MESSAGE)
+        await self.aiogram.answer_message(message, t("text.creating_table"))
 
         await self.api.spreadsheets.create(
             telegram_id=self.user_id(message),

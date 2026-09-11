@@ -90,7 +90,10 @@ class RecordService(BaseSpreadsheetService):
         упёрлась бы в отсутствующий период.
         """
         if amount <= 0:
-            raise BusinessRuleError("Сумма должна быть больше нуля")
+            raise BusinessRuleError(
+                "Сумма должна быть больше нуля",
+                details={"reason": "amount_not_positive"},
+            )
 
         spreadsheet = await self._get_ready(spreadsheet_id)
         category = await self._categories.get_for_spreadsheet(category_id, spreadsheet_id)

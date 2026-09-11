@@ -11,7 +11,7 @@ from api.domain.category import Category
 from api.domain.spreadsheet import Spreadsheet
 from api.domain.spreadsheet_access import SpreadsheetAccess
 from api.domain.user import User
-from api.enums import AccessRole, CategoryKind, NotificationKind, SheetTarget, SyncTaskKind
+from api.enums import AccessRole, NotificationKind, SheetTarget, SyncTaskKind
 from api.exceptions.base import ConflictError, NotFoundError
 from api.repositories.category_repository import CategoryRepository
 from api.repositories.period_repository import PeriodRepository
@@ -155,15 +155,16 @@ class SpreadsheetService(BaseSpreadsheetService):
         start_date, end_date = period_bounds(today_for(spreadsheet), reset_day)
         await self._periods.ensure(spreadsheet.id, start_date, end_date)
 
-        for kind, category_title in (
-            (CategoryKind.INCOME, constants.DEFAULT_INCOME_CATEGORY),
-            (CategoryKind.EXPENSE, constants.DEFAULT_EXPENSE_CATEGORY),
-        ):
+        # Названия — на языке пользователя: это данные его таблицы, и видеть
+        # их он будет в листе и в ответах бота. Язык берётся на момент
+        # создания и дальше названий не меняет — роль категорий держит флаг.
+        for kind, category_title in constants.DEFAULT_CATEGORY_TITLES[user.language].items():
             await self._categories.add(
                 Category(
                     spreadsheet_id=spreadsheet.id,
                     kind=kind,
                     title=category_title,
+                    is_default=True,
                     associations=[category_title],
                 )
             )

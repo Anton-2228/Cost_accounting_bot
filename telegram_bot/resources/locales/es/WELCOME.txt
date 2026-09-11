@@ -1,0 +1,5 @@
+¡Hola! Llevo la cuenta de tus ingresos y gastos personales.
+
+Me envías aquí tus operaciones y yo las guardo y las reparto por periodos contables. La hoja de cálculo de Google es tu informe y el lugar donde editas la lista de categorías.
+
+Para empezar necesitamos una hoja de cálculo. Te preguntaré su nombre, el día en que empieza el mes contable, tu zona horaria y el correo con el que compartirla.

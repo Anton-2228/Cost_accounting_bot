@@ -36,6 +36,9 @@ class NotificationLoop:
     либо отправить его невозможно в принципе (пользователь заблокировал бота).
     Всё остальное считается временной неудачей, и сообщение остаётся в очереди.
 
+    Текста в пакете нет: едут код, данные для подстановки и язык получателя, а
+    фразу собирает бот по своему каталогу.
+
     Сетевая ошибка прерывает проход целиком: она означает, что бот недоступен, и
     пробовать остальные сообщения незачем — проход растянулся бы на полсотни
     таймаутов подряд.
@@ -146,8 +149,10 @@ class NotificationLoop:
             json={
                 "notification_id": notification.id,
                 "telegram_id": notification.telegram_id,
+                "language": notification.language.value,
                 "kind": notification.kind.value,
-                "text": notification.text,
+                "code": notification.code,
+                "params": notification.params,
             },
         )
         if response.is_success:

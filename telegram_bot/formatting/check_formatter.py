@@ -11,7 +11,8 @@
   кэша, категория по закреплённому типу), снизу — то, что предложила модель и
   что стоит проверить;
 * **новый тип печатается КАПСОМ.** Единственный способ увидеть, что тип ещё не
-  существует ни у одной категории и будет заведён;
+  существует ни у одной категории и будет заведён. В письме без регистра
+  (хинди) капс ничего не меняет, и там вместо него пометка из каталога;
 * **значение жирным.** Список из полусотни позиций иначе сливается в стену.
 
 Жирный требует HTML, а названия товаров приезжают из чека — то есть из внешнего
@@ -23,10 +24,12 @@
 from __future__ import annotations
 
 from collections.abc import Callable, Collection, Sequence
+from datetime import datetime
 from html import escape
 
 from telegram_bot.checks.draft import CheckDraft, DraftItem
 from telegram_bot.formatting.money_formatter import MoneyFormatter
+from telegram_bot.i18n import LocaleFormat, t
 
 #: Заглушка на месте незаполненного типа или категории.
 _EMPTY = "—"
@@ -41,23 +44,27 @@ class CheckFormatter:
     @staticmethod
     def header(draft: CheckDraft, *, left: int) -> str:
         """Шапка: магазин, время покупки, итог и сколько чеков осталось."""
-        lines = ["Чек"]
-        if draft.retail_place:
-            lines[0] = f"Чек: {draft.retail_place}"
+        lines = [
+            t("format.check.title_place", place=draft.retail_place)
+            if draft.retail_place
+            else t("format.check.title")
+        ]
         if draft.purchased_at:
-            lines.append(f"Куплено: {draft.purchased_at}")
-        lines.append(f"Итого: {MoneyFormatter.format(draft.total, draft.currency)}")
-        lines.append(f"Позиций: {len(draft.items)}")
+            lines.append(t("format.check.purchased", when=_moment(draft.purchased_at)))
+        lines.append(
+            t("format.check.total", amount=MoneyFormatter.format(draft.total, draft.currency))
+        )
+        lines.append(t("format.check.items", count=len(draft.items)))
         if left > 0:
-            lines.append(f"Ещё в очереди: {left}")
+            lines.append(t("format.check.queue_left", count=left))
         return "\n".join(lines)
 
     @classmethod
     def types(cls, draft: CheckDraft, known_types: Collection[str]) -> str:
         """Список «товар → тип»: сверху взятое из кэша, снизу подсказанное.
 
-        Тип, которого нет ни у одной категории, печатается капсом — он будет
-        заведён при записи чека, и увидеть это надо до, а не после.
+        Тип, которого нет ни у одной категории, выделяется — он будет заведён
+        при записи чека, и увидеть это надо до, а не после.
         """
         return cls._two_blocks(
             draft,
@@ -107,14 +114,17 @@ class CheckFormatter:
         """
         shown = value or _EMPTY
         if shout and value:
-            shown = value.upper()
+            shown = _emphasize_new(value)
         return f"{number}) {escape(item.name)}\n{_INDENT}<b>{escape(shown)}</b>"
 
     @staticmethod
     def saved(draft: CheckDraft, *, count: int) -> str:
         """Итог записи чека и то, чему бот на нём научился."""
-        lines = [f"Записано операций: {count}"]
-        lines.extend(f"Запомнил: {name} → {product_type}" for name, product_type in draft.learned())
+        lines = [t("format.check.saved", count=count)]
+        lines.extend(
+            t("format.check.learned", name=name, product_type=product_type)
+            for name, product_type in draft.learned()
+        )
         return "\n".join(lines)
 
     @staticmethod
@@ -124,14 +134,36 @@ class CheckFormatter:
         Про пропущенные говорится отдельно и явно: они остались неразобранными,
         и без этой строки «чеки закончились» означало бы, что их больше нет.
         """
-        lines = ["Чеки закончились.", f"Записано: {saved}."]
+        lines = [t("format.check.finished"), t("format.check.finished_saved", count=saved)]
         if skipped:
-            lines.append(
-                f"Пропущено: {skipped} — они остались в списке, /check покажет их снова."
-            )
+            lines.append(t("format.check.finished_skipped", count=skipped))
         return "\n".join(lines)
 
     @staticmethod
     def hint(titles: Sequence[str]) -> str:
         """Строка «из чего выбирать» для правок категории."""
         return ", ".join(titles)
+
+
+def _emphasize_new(value: str) -> str:
+    """Новый тип: капсом, а в письме без регистра — с пометкой.
+
+    Проверка не по языку, а по самому значению: тип мог прийти на другом
+    языке, чем язык интерфейса, и выделить надо так, как его можно выделить.
+    """
+    upper = value.upper()
+    return upper if upper != value else f"{value}{t('format.check.new_suffix')}"
+
+
+def _moment(raw: str) -> str:
+    """Время покупки из черновика на языке обращения.
+
+    Черновик хранит время строкой ISO и форматируется при показе: язык может
+    смениться посреди разбора, а черновик живёт в FSM дольше одного
+    сообщения. Черновик, начатый до перехода на ISO, хранит уже готовую строку
+    — её показываем как есть.
+    """
+    try:
+        return LocaleFormat.moment(datetime.fromisoformat(raw))
+    except ValueError:
+        return raw

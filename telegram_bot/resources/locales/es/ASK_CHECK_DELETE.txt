@@ -1,0 +1,2 @@
+¿Eliminar este recibo? Desaparecerá de la cola.
+Podrás volver a escanear el mismo recibo en papel.

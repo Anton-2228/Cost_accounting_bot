@@ -10,8 +10,9 @@ from __future__ import annotations
 
 import pytest
 
-from telegram_bot.ai import AiResponseError, CategorySuggestions, TypeSuggestions
+from telegram_bot.ai import AiClient, AiResponseError, CategorySuggestions, TypeSuggestions
 from telegram_bot.ai.client import _validate
+from telegram_bot.i18n import Language
 
 _PLAIN = '{"items": [{"id": 1, "type": "молочка"}]}'
 
@@ -65,3 +66,38 @@ def test_wrong_shape_is_named_error() -> None:
     """
     with pytest.raises(AiResponseError):
         _validate('{"items": [{"id": "не число", "type": "молочка"}]}', TypeSuggestions)
+
+
+def _capturing_client() -> tuple[AiClient, list[str]]:
+    """Клиент, у которого вызов модели подменён записью системного промпта."""
+    client = AiClient(api_key="k", base_url=None, model="m", timeout=1, temperature=0)
+    prompts: list[str] = []
+
+    async def invoke(system_prompt: str, user_prompt: str) -> tuple[str, None]:
+        prompts.append(system_prompt)
+        return '{"items": []}', None
+
+    client._invoke = invoke  # type: ignore[method-assign]
+    return client, prompts
+
+
+async def test_new_types_are_asked_in_the_users_language() -> None:
+    """Язык ответа назван в промпте: модель одна на пять языков интерфейса."""
+    client, prompts = _capturing_client()
+    await client.suggest_types(["दूध"], ["डेयरी"], language=Language.HI)
+    assert "Hindi" in prompts[0]
+
+
+async def test_basket_is_named_to_the_model() -> None:
+    """Корзина называется по имени — на языке пользователя, как в листе."""
+    client, prompts = _capturing_client()
+    await client.suggest_categories(["dairy"], ["Food"], default_category="Uncategorized")
+    assert '"Uncategorized"' in prompts[0]
+
+
+async def test_without_basket_the_closest_category_is_asked() -> None:
+    """Нет корзины — нет и названия, которое модель могла бы вернуть."""
+    client, prompts = _capturing_client()
+    await client.suggest_categories(["dairy"], ["Food"], default_category=None)
+    assert "closest" in prompts[0]
+    assert '""' not in prompts[0]

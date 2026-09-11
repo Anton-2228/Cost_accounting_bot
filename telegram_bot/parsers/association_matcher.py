@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from telegram_bot.api_client.models import Category
+from telegram_bot.i18n import t
 
 _MAX_HINTS = 15
 
@@ -40,5 +41,6 @@ class AssociationMatcher:
         if not titles:
             return ""
         shown = ", ".join(titles[:_MAX_HINTS])
-        tail = " и другие" if len(titles) > _MAX_HINTS else ""
-        return f"{shown}{tail}"
+        if len(titles) > _MAX_HINTS:
+            return t("parse.hint_more", shown=shown)
+        return shown

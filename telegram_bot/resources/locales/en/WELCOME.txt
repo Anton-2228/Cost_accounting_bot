@@ -1,0 +1,5 @@
+Hello! I keep track of personal income and expenses.
+
+You send me your transactions here, and I store them and sort them into accounting periods. The Google spreadsheet is your report and the place where you edit the list of categories.
+
+To get started, we need a spreadsheet. I'll ask for its name, the day the accounting month starts, your time zone and the email to share it with.

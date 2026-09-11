@@ -5,6 +5,7 @@ from __future__ import annotations
 from decimal import Decimal, InvalidOperation
 
 from telegram_bot import constants
+from telegram_bot.i18n import t
 from telegram_bot.parsers.results import ParseError
 
 _MAX_AMOUNT = Decimal("999999999999")
@@ -25,7 +26,7 @@ class AmountParser:
 
     @classmethod
     def parse(cls, raw: str) -> Decimal:
-        """Разбирает сумму или бросает :class:`ParseError` с русским текстом."""
+        """Разбирает сумму или бросает :class:`ParseError` с готовым текстом."""
         normalized = raw.strip()
         for separator in constants.DECIMAL_SEPARATORS:
             normalized = normalized.replace(separator, ".")
@@ -33,17 +34,17 @@ class AmountParser:
         try:
             amount = Decimal(normalized)
         except InvalidOperation:
-            raise ParseError(f"«{raw}» не похоже на сумму") from None
+            raise ParseError(t("parse.amount.invalid", raw=raw)) from None
 
         if not amount.is_finite():
-            raise ParseError(f"«{raw}» не похоже на сумму")
+            raise ParseError(t("parse.amount.invalid", raw=raw))
         if amount <= 0:
-            raise ParseError("Сумма должна быть больше нуля")
+            raise ParseError(t("parse.amount.not_positive"))
         if amount > _MAX_AMOUNT:
-            raise ParseError("Сумма слишком большая")
+            raise ParseError(t("parse.amount.too_big"))
         # `exponent` объявлен как int | Literal["n", "N", "F"]: буквенные
         # значения бывают только у NaN и бесконечности, а они отсеяны выше.
         exponent = amount.as_tuple().exponent
         if isinstance(exponent, int) and -exponent > constants.MONEY_DECIMAL_PLACES:
-            raise ParseError("В сумме больше двух знаков после запятой")
+            raise ParseError(t("parse.amount.too_precise"))
         return amount

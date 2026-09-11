@@ -1,9 +1,9 @@
-Типы товаров:
+Product types:
 """
 {product_types}
 """
 
-Категории:
+Categories:
 """
 {categories}
 """

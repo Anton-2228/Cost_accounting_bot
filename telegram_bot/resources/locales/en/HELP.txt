@@ -1,0 +1,18 @@
+I keep track of personal income and expenses.
+
+How it works
+— All records are stored in a database, and the Google spreadsheet is your report and the place where you edit the lists.
+— Categories are edited only in the spreadsheet. After changing them, press “Sync the spreadsheet” in /menu and I'll read your changes.
+— A transaction always goes into the current accounting period. It starts on the day of the month you chose.
+— A closed period doesn't change: you can't add or delete a transaction retroactively.
+
+The “Categories” sheet
+ID — don't touch it, I fill it in.
+Active — TRUE or FALSE: a turned-off category isn't suggested when you type.
+Income / Cost — the kind of category. It determines the sign: income is added, expenses are subtracted.
+Name — the name.
+Associations — words you use for the category when typing, separated by spaces. The name itself always works, you don't need to add it — I'll do it. Don't use commas: only a space separates words, and a comma would stick to a word and become part of it.
+Product types — product types separated by commas: I use them to sort receipt items. Here the separator is a comma, because a type can be two words (“household chemicals”).
+
+Sheets with dates in their names are the transaction register and the statistics for a period. I fill them in.
+Don't rename the sheets: I find them by name.

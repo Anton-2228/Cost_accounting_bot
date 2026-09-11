@@ -10,6 +10,7 @@ from aiogram.types import Message
 
 from telegram_bot.commands.base_command import BaseCommand
 from telegram_bot.formatting import RecordFormatter
+from telegram_bot.i18n import t
 
 
 class RecordDeleteCommand(BaseCommand):
@@ -29,9 +30,7 @@ class RecordDeleteCommand(BaseCommand):
             try:
                 record_id = int(raw.split()[0])
             except ValueError:
-                await self.aiogram.answer_message(
-                    message, f"«{raw}» не похоже на id. Нужно так: /del 42"
-                )
+                await self.aiogram.answer_message(message, t("record_delete.bad_id", raw=raw))
                 return
 
         spreadsheet = await self.spreadsheet(message)

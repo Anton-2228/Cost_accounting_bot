@@ -1,0 +1,5 @@
+Bonjour ! Je tiens le compte de vos revenus et dépenses personnels.
+
+Vous m'envoyez ici vos opérations, je les enregistre et les répartis par périodes comptables. Le tableur Google est votre rapport et l'endroit où vous modifiez la liste des catégories.
+
+Pour commencer, il nous faut un tableur. Je vous demanderai son nom, le jour où commence le mois comptable, votre fuseau horaire et l'adresse e-mail avec laquelle le partager.

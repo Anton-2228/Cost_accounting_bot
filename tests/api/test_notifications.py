@@ -5,6 +5,7 @@ from __future__ import annotations
 from httpx import AsyncClient
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from api.domain.user_message import UserMessage
 from api.enums import NotificationKind
 from api.repositories.user_notification_repository import UserNotificationRepository
 from tests import factories
@@ -24,15 +25,17 @@ async def test_notifications_are_listed_and_confirmed(
     assert spreadsheet.id is not None
 
     created = await UserNotificationRepository(session).notify(
-        spreadsheet.id, NotificationKind.ROLLOVER, "Начался новый расчётный период"
+        spreadsheet.id,
+        NotificationKind.ROLLOVER,
+        UserMessage(code="rollover_done", params={"start_date": "2026-07-01"}),
     )
     await session.commit()
 
     base = f"/api/v1/spreadsheets/{spreadsheet.id}/notifications"
     listed = await client.get(base)
     assert listed.status_code == 200
-    assert [item["text"] for item in listed.json()["items"]] == [
-        "Начался новый расчётный период"
+    assert [(item["code"], item["params"]) for item in listed.json()["items"]] == [
+        ("rollover_done", {"start_date": "2026-07-01"})
     ]
 
     confirmed = await client.post(f"{base}/{created.id}/delivered")

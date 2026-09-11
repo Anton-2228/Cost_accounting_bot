@@ -1,0 +1,3 @@
+Un telegram id est un nombre entier positif.
+
+Envoyez-le sous forme d'un seul nombre.

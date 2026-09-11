@@ -1,0 +1,6 @@
+Dans quel fuseau horaire vivez-vous ?
+
+Il détermine la date des opérations et le moment où la période change.
+Format IANA, par exemple : Europe/Paris, America/Montreal.
+
+Envoyez « - » pour utiliser {default}.

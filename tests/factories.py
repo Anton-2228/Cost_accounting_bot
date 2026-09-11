@@ -22,7 +22,7 @@ from api.domain.period import Period
 from api.domain.record import Record
 from api.domain.spreadsheet import Spreadsheet
 from api.domain.user import User
-from api.enums import CategoryKind, CheckKind, Currency
+from api.enums import CategoryKind, CheckKind, Currency, Language
 from api.repositories.category_repository import CategoryRepository
 from api.repositories.check_repository import CheckRepository
 from api.repositories.exchange_rate_repository import ExchangeRateRepository
@@ -37,10 +37,18 @@ _google_ids = itertools.count(1)
 _checks = itertools.count(1)
 
 
-async def create_user(session: AsyncSession, *, telegram_id: int | None = None) -> User:
+async def create_user(
+    session: AsyncSession,
+    *,
+    telegram_id: int | None = None,
+    language: Language = Language.EN,
+) -> User:
     """Создаёт пользователя."""
     return await UserRepository(session).add(
-        User(telegram_id=telegram_id if telegram_id is not None else next(_telegram_ids))
+        User(
+            telegram_id=telegram_id if telegram_id is not None else next(_telegram_ids),
+            language=language,
+        )
     )
 
 
@@ -103,6 +111,7 @@ async def create_category(
     kind: CategoryKind = CategoryKind.EXPENSE,
     associations: list[str] | None = None,
     product_types: list[str] | None = None,
+    is_default: bool = False,
 ) -> Category:
     """Создаёт категорию вместе с псевдонимами и типами товаров."""
     assert spreadsheet.id is not None
@@ -112,6 +121,7 @@ async def create_category(
             spreadsheet_id=spreadsheet.id,
             kind=kind,
             title=name,
+            is_default=is_default,
             associations=associations if associations is not None else [name.lower()],
             product_types=product_types or [],
         )

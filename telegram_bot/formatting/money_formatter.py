@@ -5,24 +5,11 @@ from __future__ import annotations
 from decimal import Decimal
 
 from telegram_bot.api_client.models import Currency
-
-#: Разделитель разрядов. Обычный пробел, а не тонкий и не неразрывный: узкие
-#: пробелы разные клиенты Telegram рисуют по-разному, а в журнале их не найти
-#: поиском.
-_GROUP_SEPARATOR = " "
-
-#: Чем подписывается сумма. У динара своего общепринятого знака нет, поэтому
-#: сокращение: «дин.» узнаётся, а выдуманный символ — нет.
-_SIGNS: dict[Currency, str] = {
-    Currency.RUB: "₽",
-    Currency.USD: "$",
-    Currency.EUR: "€",
-    Currency.RSD: "дин.",
-}
+from telegram_bot.i18n import LocaleFormat, t
 
 
 class MoneyFormatter:
-    """Приводит `Decimal` к виду «1 234,56 ₽».
+    """Приводит `Decimal` к виду «1 234,56 ₽» по правилам языка обращения.
 
     Знак снимается: направление операции пользователь видит по названию
     категории, а «-500» рядом со словом «расход» читается как двойное отрицание.
@@ -32,12 +19,18 @@ class MoneyFormatter:
     Валюта обязательна и не имеет значения по умолчанию. Прежде рубль был зашит
     в саму функцию, и с появлением второй валюты умолчание печатало бы «₽»
     рядом с суммой в евро — то есть врало бы ровно там, где подпись и нужна.
+
+    Знак валюты берётся из каталога, а не из таблицы здесь: у динара
+    общепринятого символа нет, и его сокращение своё в каждом языке — «дин.»
+    узнаётся по-русски, «din.» — везде ещё.
     """
 
     @staticmethod
     def format(amount: Decimal, currency: Currency) -> str:
-        """Сумма с разделением разрядов, запятой и знаком валюты."""
+        """Сумма с разделением разрядов, двумя знаками дроби и знаком валюты."""
         quantized = abs(amount).quantize(Decimal("0.01"))
-        whole, _, fraction = f"{quantized:f}".partition(".")
-        grouped = f"{int(whole):,}".replace(",", _GROUP_SEPARATOR)
-        return f"{grouped},{fraction} {_SIGNS[currency]}"
+        return t(
+            "format.money",
+            amount=LocaleFormat.decimal(quantized, 2),
+            sign=t(f"currency.sign.{currency.value}"),
+        )

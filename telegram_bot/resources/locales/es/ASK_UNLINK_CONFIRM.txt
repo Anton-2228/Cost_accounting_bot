@@ -1,0 +1,5 @@
+El bot olvidará esta hoja de cálculo: sus operaciones y categorías dejarán de estar disponibles y no se podrán recuperar.
+
+El documento de Google seguirá siendo tuyo, pero no podrás volver a vincularlo al bot.
+
+Escribe «{word}» para confirmar. Cualquier otra respuesta cancela la desvinculación.

@@ -1,0 +1,18 @@
+Je tiens le compte de vos revenus et dépenses personnels.
+
+Comment ça marche
+— Toutes les données sont stockées dans une base, et le tableur Google est votre rapport et l'endroit où vous modifiez les listes.
+— Les catégories se modifient uniquement dans le tableur. Après une modification, appuyez sur « Synchroniser le tableur » dans /menu et je lirai vos changements.
+— Une opération va toujours dans la période comptable en cours. Elle commence le jour du mois que vous avez choisi.
+— Une période clôturée ne change plus : impossible d'ajouter ou de supprimer une opération après coup.
+
+La feuille « Categories »
+ID — n'y touchez pas, je le remplis moi-même.
+Active — TRUE ou FALSE : une catégorie désactivée n'est pas proposée lors de la saisie.
+Income / Cost — le type de catégorie. Il détermine le signe : les revenus s'ajoutent, les dépenses se soustraient.
+Name — le nom.
+Associations — les mots par lesquels vous désignez la catégorie lors de la saisie, séparés par des espaces. Le nom lui-même fonctionne toujours, inutile de l'ajouter — je le fais moi-même. N'utilisez pas de virgules : seul l'espace sépare les mots, et une virgule se collerait au mot et en ferait partie.
+Product types — les types de produits séparés par des virgules : ils me servent à répartir les articles des tickets. Ici le séparateur est la virgule, car un type peut compter deux mots (« produits ménagers »).
+
+Les feuilles avec des dates dans leur nom sont le registre des opérations et les statistiques d'une période. Je les remplis moi-même.
+Ne renommez pas les feuilles : je les retrouve par leur nom.

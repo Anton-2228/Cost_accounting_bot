@@ -1,0 +1,5 @@
+The bot will forget this spreadsheet: its transactions and categories will become unavailable, and they can't be restored.
+
+The Google document itself stays with you, but you won't be able to link it to the bot again.
+
+Type “{word}” to confirm. Any other reply cancels unlinking.

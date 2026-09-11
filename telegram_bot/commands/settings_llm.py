@@ -15,14 +15,9 @@ from telegram_bot.commands.cancel import BRANCH_LLM, cancel_row
 from telegram_bot.commands.manager import Manager
 from telegram_bot.commands.settings import SettingsCommand
 from telegram_bot.formatting import LlmUsageFormatter, SpreadsheetUsage
+from telegram_bot.i18n import t
 from telegram_bot.notifications import NotificationCatchUp
-from telegram_bot.resources.messages import (
-    ASK_LLM_TELEGRAM_ID_MESSAGE,
-    BAD_TELEGRAM_ID_MESSAGE,
-)
 from telegram_bot.states import States
-
-USER_NOT_FOUND_TEMPLATE = "Пользователь {telegram_id} не найден. Пришлите другой id."
 
 
 class SettingsLlmCostsCommand(BaseCommand):
@@ -67,7 +62,7 @@ class SettingsLlmCostsCommand(BaseCommand):
         chat_id, _ = target
 
         await self.aiogram.set_state(state, States.SETTINGS_ASK_TELEGRAM_ID)
-        await self._ask(chat_id, state, ASK_LLM_TELEGRAM_ID_MESSAGE)
+        await self._ask(chat_id, state, t("text.ask_llm_telegram_id"))
 
     async def execute(self, message: Message, state: FSMContext, **kwargs: Any) -> None:
         """Шаг ввода id: показывает отчёт и возвращает экран настроек.
@@ -80,7 +75,7 @@ class SettingsLlmCostsCommand(BaseCommand):
         text = self.text_of(message)
         telegram_id = None if text is None else self._parse_telegram_id(text)
         if telegram_id is None:
-            await self._ask(chat_id, state, BAD_TELEGRAM_ID_MESSAGE)
+            await self._ask(chat_id, state, t("text.bad_telegram_id"))
             return
 
         try:
@@ -91,7 +86,7 @@ class SettingsLlmCostsCommand(BaseCommand):
             await self._ask(
                 chat_id,
                 state,
-                USER_NOT_FOUND_TEMPLATE.format(telegram_id=telegram_id),
+                t("settings_llm.user_not_found", telegram_id=telegram_id),
             )
             return
 

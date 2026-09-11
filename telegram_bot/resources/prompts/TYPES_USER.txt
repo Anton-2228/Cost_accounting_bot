@@ -1,9 +1,9 @@
-Товары:
+Products:
 """
 {products}
 """
 
-Типы:
+Known types:
 """
 {types}
 """

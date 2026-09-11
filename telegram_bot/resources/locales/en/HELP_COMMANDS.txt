@@ -1,0 +1,27 @@
+Commands
+
+/menu — menu: spreadsheet link, sync, sharing by email, unlinking, settings
+/help — this help
+/start — entry point; it also interrupts a dialog in progress
+
+/add currency amount category note
+    Example: /add euros 20 food coffee to go
+/del id
+    Without an id, I'll delete the last transaction of the period.
+
+/check — process a receipt scanned in the app
+    I show the items and suggest types and categories.
+    To correct: lines like “1,3 - dairy”.
+    Postpone the receipt, delete it or leave processing — with the buttons under the message.
+
+Everything you do with the spreadsheet itself is in /menu.
+
+While I'm creating the spreadsheet, nothing works except /start and /help: there is nothing to look at yet. I'll send a message as soon as it's ready.
+
+Write the amount without a sign: I tell income from expenses by the category.
+You can write the fractional part with either a dot or a comma.
+
+The currency is required and comes first:
+/add euros 20 food coffee
+Write it as you like: rubles, dollars, euros, dinars — or short: rub, usd, eur, rsd.
+The currency of a receipt isn't asked: I know it from the receipt itself.

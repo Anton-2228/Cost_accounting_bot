@@ -21,14 +21,23 @@ from aiogram.methods import SendMessage
 from fastapi import status
 from fastapi.testclient import TestClient
 
+from telegram_bot.i18n import Language, t, t_in
 from telegram_bot.notify_server import NotifyServer
 
 _PAYLOAD = {
     "notification_id": 1,
     "telegram_id": 777,
+    "language": "RU",
     "kind": "TABLE_READY",
-    "text": "Таблица готова",
+    "code": "table_ready",
+    "params": {"google_spreadsheet_id": "abc"},
 }
+
+#: Ссылка, которую бот собирает сам из идентификатора документа.
+_URL = "https://docs.google.com/spreadsheets/d/abc"
+
+#: Что увидит пользователь с русским языком.
+_READY_TEXT = f"Таблица готова: {_URL}"
 
 
 class _FakeWrapper:
@@ -83,7 +92,7 @@ def test_delivered_message_is_confirmed() -> None:
     response = client.post("/notify", json=_PAYLOAD)
 
     assert response.status_code == status.HTTP_204_NO_CONTENT
-    assert wrapper.sent == [(777, "Таблица готова")]
+    assert wrapper.sent == [(777, _READY_TEXT)]
     assert menu.shown == [777]
 
 
@@ -112,7 +121,7 @@ def test_unknown_kind_is_still_delivered() -> None:
     response = client.post("/notify", json={**_PAYLOAD, "kind": "СОВСЕМ_НОВОЕ"})
 
     assert response.status_code == status.HTTP_204_NO_CONTENT
-    assert wrapper.sent == [(777, "Таблица готова")]
+    assert wrapper.sent == [(777, _READY_TEXT)]
     assert menu.shown == []
 
 
@@ -128,7 +137,7 @@ def test_broken_menu_does_not_resend_the_notification() -> None:
     response = client.post("/notify", json=_PAYLOAD)
 
     assert response.status_code == status.HTTP_204_NO_CONTENT
-    assert wrapper.sent == [(777, "Таблица готова")]
+    assert wrapper.sent == [(777, _READY_TEXT)]
     assert menu.shown == [777]
 
 
@@ -171,6 +180,40 @@ def test_temporary_failure_keeps_the_notification(error: Exception) -> None:
     response = client.post("/notify", json=_PAYLOAD)
 
     assert response.status_code == status.HTTP_503_SERVICE_UNAVAILABLE
+
+
+def test_broken_params_are_still_delivered() -> None:
+    """Параметры не той формы — общая фраза и 204, а не 503.
+
+    Ответ 503 заставил бы api повторять то же уведомление вечно, а вместе с ним
+    застряли бы и все следующие уведомления этого пользователя.
+    """
+    client, wrapper, _menu = _client()
+
+    response = client.post("/notify", json={**_PAYLOAD, "params": {}})
+
+    assert response.status_code == status.HTTP_204_NO_CONTENT
+    assert wrapper.sent == [(777, t("notification.fallback"))]
+
+
+def test_unknown_language_is_still_delivered() -> None:
+    """Язык из будущей версии api — повод говорить на языке по умолчанию."""
+    client, wrapper, _menu = _client()
+
+    response = client.post("/notify", json={**_PAYLOAD, "language": "XX"})
+
+    assert response.status_code == status.HTTP_204_NO_CONTENT
+    assert len(wrapper.sent) == 1
+
+
+def test_text_follows_the_recipient_language() -> None:
+    """Язык едет в пакете, и фраза собирается на нём, а не на языке бота."""
+    client, wrapper, _menu = _client()
+
+    response = client.post("/notify", json={**_PAYLOAD, "language": "EN"})
+
+    assert response.status_code == status.HTTP_204_NO_CONTENT
+    assert wrapper.sent == [(777, t_in(Language.EN, "notification.table_ready", url=_URL))]
 
 
 def test_unknown_field_is_rejected() -> None:

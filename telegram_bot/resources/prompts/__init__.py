@@ -1,8 +1,12 @@
 """Промпты модели, поднятые из `.txt` в константы.
 
-Читаются один раз на импорте и с явным `encoding="utf-8"` — по той же причине,
-что и тексты сообщений: файлы целиком кириллические, а `Path.read_text()` без
-кодировки берёт локаль системы.
+Промпты — по-английски, а язык ответа называется в них явно: модель одна на
+пять языков интерфейса, и промпт на русском тянул бы её отвечать по-русски
+там, где пользователь выбрал хинди. Английский здесь не язык пользователя, а
+язык инструкции.
+
+Читаются один раз на импорте и с явным `encoding="utf-8"`: `Path.read_text()`
+без кодировки берёт локаль системы.
 
 Промпта «достать реквизиты из текста чека» здесь нет и не будет: реквизиты
 разбирает `checks_service/formats/ru_fns/parser.py` из QR-строки. Вместе с этим
@@ -28,7 +32,14 @@ TYPES_USER_PROMPT = _load("TYPES_USER.txt")
 CATEGORIES_SYSTEM_PROMPT = _load("CATEGORIES_SYSTEM.txt")
 CATEGORIES_USER_PROMPT = _load("CATEGORIES_USER.txt")
 
+#: Что делать с типом, которому не нашлось категории: уйти в корзину, если она
+#: у документа есть, либо взять ближайшую из списка.
+CATEGORIES_FALLBACK_RULE = _load("CATEGORIES_FALLBACK.txt")
+CATEGORIES_NO_FALLBACK_RULE = _load("CATEGORIES_NO_FALLBACK.txt")
+
 __all__ = [
+    "CATEGORIES_FALLBACK_RULE",
+    "CATEGORIES_NO_FALLBACK_RULE",
     "CATEGORIES_SYSTEM_PROMPT",
     "CATEGORIES_USER_PROMPT",
     "TYPES_SYSTEM_PROMPT",

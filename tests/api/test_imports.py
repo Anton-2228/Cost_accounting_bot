@@ -24,6 +24,7 @@ async def test_categories_import_creates_and_reports_counts(
     assert response.status_code == 200
     assert response.json()["data"] == {
         "error": None,
+        "error_params": {},
         "created": 1,
         "updated": 0,
         "deleted": 0,
@@ -33,15 +34,15 @@ async def test_categories_import_creates_and_reports_counts(
     assert [item["title"] for item in categories.json()["items"]] == ["Еда"]
 
 
-async def test_broken_sheet_returns_200_with_russian_error(
+async def test_broken_sheet_returns_200_with_error_code(
     client: AsyncClient,
     session: AsyncSession,
 ) -> None:
     """Ошибка разбора листа едет как данные, а не как код ошибки.
 
-    Она собрана из содержимого листа и номера строки, поэтому 200 и текст в
-    поле: бот печатает его как есть. Ошибка не в запросе — она в таблице
-    пользователя.
+    Отказ собран из содержимого листа и номера строки, поэтому 200 и код с
+    параметрами в полях: фразу на языке пользователя собирает бот. Ошибка не в
+    запросе — она в таблице пользователя.
     """
     spreadsheet = await factories.create_spreadsheet(session, ready=True)
     await session.commit()
@@ -52,7 +53,11 @@ async def test_broken_sheet_returns_200_with_russian_error(
     )
 
     assert response.status_code == 200
-    assert response.json()["data"]["error"] == "В категориях в 1 строке Active странный"
+    data = response.json()["data"]
+    assert (data["error"], data["error_params"]) == (
+        "import_error.flag_invalid",
+        {"row": 1, "column": "Active"},
+    )
 
     categories = await client.get(f"/api/v1/spreadsheets/{spreadsheet.id}/categories")
     assert categories.json()["items"] == []

@@ -10,27 +10,29 @@ from aiogram.types import CallbackQuery, Message
 from telegram_bot.access import AccessGuard
 from telegram_bot.aiogram_wrapper import AiogramWrapper
 from telegram_bot.api_client import ApiGateway
+from telegram_bot.commands import language_picker
 from telegram_bot.commands.base_command import BaseCommand
 from telegram_bot.commands.manager import Manager
+from telegram_bot.i18n import t
 from telegram_bot.notifications import NotificationCatchUp
-from telegram_bot.resources.messages import SETTINGS_ADMIN_MESSAGE, SETTINGS_STUB_MESSAGE
 
-#: Надпись и `callback_data` единственной кнопки экрана. Префикс тот же, что
-#: ключ команды, которая её обслуживает: по нему кнопка и находит обработчик.
-LLM_COSTS_BUTTON = ("Траты на LLM", "settings_llm:costs")
+#: `callback_data` админской кнопки экрана. Префикс тот же, что ключ команды,
+#: которая её обслуживает: по нему кнопка и находит обработчик.
+LLM_COSTS_DATA = "settings_llm:costs"
 
 
 class SettingsCommand(BaseCommand):
     """Показывает настройки.
 
     Ветка общая: `requires_admin` не переопределяется, потому что кнопка
-    «Настройки» есть в меню у всех. Разной у ролей будет не доступность, а
-    содержимое экрана — у обычного пользователя здесь пока нечего менять.
+    «Настройки» есть в меню у всех. Разное у ролей — не доступность, а
+    содержимое экрана: язык меняет каждый, а траты на модель видит только
+    админ.
 
     Сама команда ничего не решает о правах: кнопка ведёт в отдельную команду, и
     именно та объявлена админской. Проверять роль дважды — здесь для показа и
     там для выполнения — значило бы завести две точки правды о ней; здесь роль
-    спрашивается только чтобы выбрать текст.
+    спрашивается только чтобы выбрать текст и набор кнопок.
     """
 
     def __init__(
@@ -64,16 +66,18 @@ class SettingsCommand(BaseCommand):
     async def show(self, *, chat_id: int, telegram_id: int) -> None:
         """Рисует экран в произвольном чате.
 
-        Отдельный метод, а не только `execute`: этим же экраном заканчивается
-        показ трат, где сообщения пользователя нет — последний шаг мог прийти
-        как угодно, а возвращаться после отчёта нужно туда же, откуда ушли.
+        Отдельный метод, а не только `execute`: этим же экраном заканчиваются
+        показ трат и выбор языка, где сообщения пользователя нет — последний
+        шаг пришёл кнопкой, а возвращаться нужно туда же, откуда ушли.
         """
-        if not self._access.is_admin(telegram_id):
-            await self.aiogram.send_message(chat_id, SETTINGS_STUB_MESSAGE)
-            return
-
+        buttons = [(t("buttons.settings.language"), language_picker.open_data())]
+        if self._access.is_admin(telegram_id):
+            text = t("text.settings_admin")
+            buttons.append((t("buttons.settings.llm_costs"), LLM_COSTS_DATA))
+        else:
+            text = t("text.settings_user")
         await self.aiogram.send_message(
             chat_id,
-            SETTINGS_ADMIN_MESSAGE,
-            keyboard=self.aiogram.inline_keyboard([LLM_COSTS_BUTTON]),
+            text,
+            keyboard=self.aiogram.inline_keyboard(buttons),
         )

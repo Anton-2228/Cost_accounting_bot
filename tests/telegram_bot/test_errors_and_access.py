@@ -1,4 +1,4 @@
-"""Тесты перевода ошибок api в русский текст и проверки доступа."""
+"""Тесты перевода ошибок api в текст для пользователя и проверки доступа."""
 
 from __future__ import annotations
 
@@ -12,7 +12,8 @@ from telegram_bot.api_client.errors import (
     ApiUnavailableError,
     ApiValidationError,
 )
-from telegram_bot.errors import UNAVAILABLE_MESSAGE, UNEXPECTED_MESSAGE, ApiErrorPresenter
+from telegram_bot.errors import ApiErrorPresenter
+from telegram_bot.i18n import t
 
 
 class TestNotFound:
@@ -65,21 +66,43 @@ class TestConflict:
 
 
 class TestValidation:
-    """422 печатается как есть."""
+    """422 различается по `details.reason`, а `message` не показывается."""
 
-    def test_message_is_shown_verbatim(self) -> None:
-        """Текст собран из данных документа, кодом его не выразить."""
+    def test_closed_period_names_its_date(self) -> None:
+        """Дата приходит в ISO и печатается по правилам языка."""
         error = ApiValidationError(
             422,
             code="business_rule_violation",
             message="Период с 2026-07-01 закрыт",
+            details={"reason": "period_closed", "period_id": 1, "start_date": "2026-07-01"},
         )
-        assert ApiErrorPresenter.present(error) == "Период с 2026-07-01 закрыт"
+        assert ApiErrorPresenter.present(error) == "Период с 01.07.2026 закрыт"
 
-    def test_empty_message_has_fallback(self) -> None:
-        """Пустой текст не превращается в пустое сообщение пользователю."""
-        error = ApiValidationError(422, code="business_rule_violation", message="")
-        assert ApiErrorPresenter.present(error)
+    def test_message_is_never_shown(self) -> None:
+        """`message` — для журнала, на одном языке для всех."""
+        error = ApiValidationError(
+            422,
+            code="business_rule_violation",
+            message="internal detail",
+            details={"reason": "amount_not_positive"},
+        )
+        text = ApiErrorPresenter.present(error)
+        assert text == t("errors.validation.amount_not_positive")
+        assert "internal detail" not in text
+
+    @pytest.mark.parametrize(
+        "details",
+        [{}, {"reason": "from_the_future"}, {"reason": "period_closed", "start_date": "вчера"}],
+    )
+    def test_unknown_or_broken_reason_has_fallback(self, details: dict[str, object]) -> None:
+        """Незнакомый признак и испорченная дата не превращаются в молчание."""
+        error = ApiValidationError(422, code="business_rule_violation", details=details)
+        assert ApiErrorPresenter.present(error) == t("errors.validation.generic")
+
+    def test_schema_violation_has_fallback(self) -> None:
+        """У нарушения схемы в `details` список полей, а не признак."""
+        error = ApiValidationError(422, code="validation_error", details=[{"loc": ["body"]}])
+        assert ApiErrorPresenter.present(error) == t("errors.validation.generic")
 
 
 class TestUnavailable:
@@ -87,11 +110,11 @@ class TestUnavailable:
 
     def test_unavailable(self) -> None:
         """Сеть, таймаут и 5xx выглядят для пользователя одинаково."""
-        assert ApiErrorPresenter.present(ApiUnavailableError(0)) == UNAVAILABLE_MESSAGE
+        assert ApiErrorPresenter.present(ApiUnavailableError(0)) == t("errors.unavailable")
 
     def test_unknown_error(self) -> None:
         """Незнакомый статус тоже получает ответ, а не молчание."""
-        assert ApiErrorPresenter.present(ApiError(418)) == UNEXPECTED_MESSAGE
+        assert ApiErrorPresenter.present(ApiError(418)) == t("errors.unexpected")
 
 
 class TestAccessGuard:

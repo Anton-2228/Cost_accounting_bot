@@ -1,0 +1,6 @@
+¿En qué zona horaria vives?
+
+De ella dependen la fecha de las operaciones y el momento en que cambia el periodo.
+Formato IANA, por ejemplo: Europe/Madrid, America/Mexico_City.
+
+Envía «-» para usar {default}.

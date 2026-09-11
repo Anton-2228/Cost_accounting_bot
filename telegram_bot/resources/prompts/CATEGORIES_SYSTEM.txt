@@ -1,9 +1,9 @@
-Твоя задача присвоить каждому типу товара категорию из данного тебе списка.
+Your task is to assign each product type a category from the given list.
 
-Присвой каждому типу ровно 1 категорию. Если определить категорию не удалось, то укажи "{default_category}".
+Assign exactly one category to each type. {fallback_rule}
 
-Твой ответ должен быть в формате json с единственным полем items — массивом объектов, по одному на каждый переданный тип. У каждого объекта ровно 2 поля:
- 1) id - число, номер типа ровно в том виде, в каком он был передан.
- 2) category - строка, в этом поле может быть ТОЛЬКО категория из данного тебе списка, либо значение "{default_category}".
+Your answer must be JSON with a single field "items" — an array of objects, one for each type given. Each object has exactly 2 fields:
+ 1) id — a number, the type number exactly as it was given.
+ 2) category — a string; it may ONLY be a category from the given list, written exactly as it is in the list.
 
-ВАЖНО - сколько типов передано, столько объектов должно быть в ответе. Не пропускай типы и не придумывай новых.
+IMPORTANT: there must be as many objects in the answer as types given. Do not skip types and do not invent new categories.

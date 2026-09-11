@@ -1,0 +1,210 @@
+# Chaînes courtes du bot en français. Le catalogue russe est la source : les clés
+# et les paramètres doivent correspondre (vérifié par `test_i18n_catalog.py`).
+
+[access]
+admin_only = "Accès refusé"
+
+[errors]
+table_creating = "Votre tableur est encore en cours de création — je vous enverrai le lien dès qu'il sera prêt"
+unavailable = "Le service de données est indisponible, réessayez plus tard"
+unexpected = "Une erreur s'est produite. Réessayez"
+
+[errors.not_found]
+spreadsheet = "Créez d'abord un tableur : /start"
+user = "Créez d'abord un tableur : /start"
+category = "Cette catégorie n'existe pas ou est désactivée"
+record = "Aucune opération avec cet id"
+period = "Rien n'a encore été enregistré pour cette période"
+access = "Cet accès n'a pas été accordé"
+check = "Ce ticket n'est plus dans la file"
+notification = "Ce message n'existe plus"
+default = "Je n'ai pas trouvé ce que vous cherchez"
+
+[errors.conflict]
+spreadsheet_exists = "Vous avez déjà un tableur. Le voir : /menu"
+access_exists = "Cette adresse a déjà accès"
+google_id_already_set = "Un document est déjà lié à ce tableur"
+check_already_saved = "Ce ticket a déjà été ajouté"
+check_already_processed = "Ce ticket a déjà été traité — ses opérations sont dans le registre"
+default = "Ce n'est pas possible pour le moment"
+
+[errors.type_taken]
+named_with_category = "Le type « {product_type} » appartient déjà à la catégorie « {category} ».\nChoisissez cette catégorie ou un autre type"
+named = "Le type « {product_type} » appartient déjà à une autre catégorie. Choisissez un autre type"
+unnamed_with_category = "Ce type appartient déjà à la catégorie « {category} ».\nChoisissez cette catégorie ou un autre type"
+unnamed = "Ce type appartient déjà à une autre catégorie. Choisissez un autre type"
+
+[errors.validation]
+generic = "Ce n'est pas possible"
+period_closed = "La période commençant le {start_date} est clôturée"
+amount_not_positive = "Le montant doit être supérieur à zéro"
+filters_incompatible = "Ce n'est pas possible : les conditions de la requête se contredisent"
+period_target_mismatch = "La période ne correspond pas à cette feuille"
+
+[notification]
+table_ready = "Votre tableur est prêt : {url}"
+import_ok = "La feuille « {sheet} » a été lue, vos modifications sont enregistrées"
+rollover_done = "Une nouvelle période comptable a commencé le {start_date}"
+sync_failed = "Je n'arrive pas à mettre à jour le tableur — tentatives échouées d'affilée : {attempts}. Vérifiez que l'accès au document n'a pas été révoqué."
+sync_terminal = "Le tableur n'a pas pu être mis à jour : {error}. Vérifiez que le document n'a pas été supprimé et que l'accès n'a pas été révoqué — ensuite, le tableur se mettra à jour tout seul."
+access_failed = "Je n'ai pas pu donner accès au tableur à {email}. Vérifiez l'adresse et ajoutez-la de nouveau."
+fallback = "Une notification concernant votre tableur est arrivée, mais je n'ai pas pu l'afficher. Jetez un œil au tableur — tout y est."
+
+[notification.import_error]
+empty = "Ajoutez au moins une catégorie"
+unknown_id = "Catégories, ligne {row} : ID inconnu"
+flag_invalid = "Catégories, ligne {row} : la valeur de {column} est incorrecte"
+income_equals_cost = "Catégories, ligne {row} : Income et Cost ont la même valeur"
+name_empty = "Catégories, ligne {row} : Name est vide"
+name_not_one_word = "Catégories, ligne {row} : Name doit être un seul mot"
+default_removed = "Catégories, ligne {row} : c'est une catégorie par défaut — elle ne peut pas être supprimée"
+default_deactivated = "Catégories, ligne {row} : c'est une catégorie par défaut — elle ne peut pas être désactivée"
+default_kind_changed = "Catégories, ligne {row} : c'est une catégorie par défaut — son Income et son Cost ne peuvent pas être modifiés"
+duplicate_id = "Catégories : le même ID est utilisé plusieurs fois"
+duplicate_name = "Catégories : le même name est utilisé plusieurs fois"
+duplicate_association = "Catégories : la même association est utilisée plusieurs fois"
+duplicate_product_type = "Catégories : le même product type est utilisé plusieurs fois"
+
+[buttons]
+cancel = "Annuler"
+
+[buttons.menu]
+table = "Obtenir le tableur"
+sync = "Synchroniser le tableur"
+email = "Partager le tableur"
+unlink = "Dissocier le tableur"
+settings = "Paramètres"
+
+[buttons.start]
+create_table = "Créer un tableur"
+
+[buttons.settings]
+language = "Langue"
+llm_costs = "Coûts LLM"
+
+[buttons.check]
+done = "Terminé"
+skip = "Reporter"
+delete = "Supprimer"
+
+[buttons.check_delete]
+confirm = "Oui, supprimer"
+decline = "Non"
+
+[language]
+choose = "Choisissez votre langue :"
+choose_start = "Choisissez votre langue :"
+changed = "Langue : français"
+
+[table_email]
+skipped = "D'accord, je ne donne pas d'accès"
+
+[table_unlink]
+phrase = "JE CONFIRME LA DISSOCIATION"
+
+[record_delete]
+bad_id = "« {raw} » ne ressemble pas à un id. Comme ceci : /del 42"
+
+[settings_llm]
+user_not_found = "Utilisateur {telegram_id} introuvable. Envoyez un autre id."
+
+[parse]
+category_not_found = "La catégorie « {value} » n'existe pas ou est désactivée.\nDisponibles : {hint}"
+hint_more = "{shown} et d'autres"
+
+[parse.amount]
+invalid = "« {raw} » ne ressemble pas à un montant"
+not_positive = "Le montant doit être supérieur à zéro"
+too_big = "Le montant est trop élevé"
+too_precise = "Le montant a plus de deux décimales"
+
+[parse.record]
+usage = "Comme ceci : /add devise montant catégorie note"
+bad_currency = "« {word} » ne ressemble pas à une devise.\nVous pouvez l'écrire ainsi : {hint}\n{usage}"
+notes_too_long = "La note dépasse {limit} caractères"
+
+[parse.currency]
+hint = "roubles, dollars, euros, dinars"
+
+[parse.check]
+usage = "Je n'ai pas compris la correction. Comme ceci : « 1,3 - laitages », une correction par ligne.\nSi tout est correct, appuyez sur « Terminé »"
+repeated = "L'article {numbers} est indiqué deux fois — gardez une seule correction"
+value_too_long = "La valeur dépasse {limit} caractères"
+no_position = "Il n'y a pas d'article n° {number} dans le ticket. Nombre d'articles : {count}"
+
+[parse.onboarding]
+title_empty = "Le nom ne peut pas être vide"
+title_too_long = "Le nom dépasse {limit} caractères"
+not_a_number = "« {raw} » ne ressemble pas à un nombre"
+reset_day_range = "Le jour doit être compris entre {min} et {max} : ce jour existe dans chaque mois"
+timezone_too_long = "Le nom du fuseau horaire est trop long"
+timezone_unknown = "Le fuseau horaire « {name} » n'existe pas. Exemple : Europe/Paris"
+email_too_long = "L'adresse est trop longue"
+email_invalid = "Cela ne ressemble pas à une adresse e-mail"
+
+[receipt]
+unnamed_product = "Sans nom"
+manual_tail = "Ajoutez les achats à la main avec /add, puis retirez le ticket avec le bouton « Supprimer »"
+remove_tail = "Vous pouvez retirer le ticket de la file avec le bouton « Supprimer »"
+unexpected_shape = "Les données de ce ticket ont une forme inattendue — je ne peux pas les traiter."
+refund = "Les tickets de remboursement ne sont pas encore pris en charge, ajoutez l'opération à la main."
+no_items = "Les données du ticket ne contiennent aucun article — il n'y a rien à traiter."
+items_shape = "Les articles du ticket ne sont pas enregistrés comme prévu — je ne peux pas les traiter."
+not_kopecks = "Les montants des données du ticket ne sont pas en kopecks — je ne peux pas le traiter."
+not_numbers = "Les montants des données du ticket ne sont pas des nombres — je ne peux pas le traiter."
+negative_item = "Le ticket contient un article au montant négatif — ajoutez-le à la main."
+no_total = "Le ticket n'a pas de montant total, impossible de vérifier les articles."
+mismatch = "La somme des articles ne correspond pas au total du ticket : {items} contre {total}.\nJe n'enregistrerai pas ce ticket — ajoutez les achats à la main avec /add"
+not_sale = "Ce n'est pas une vente ordinaire mais « {invoice_type} » — je ne traite pas encore ce type de tickets, ajoutez l'opération à la main."
+unknown_format = "Je ne traite pas encore les tickets de ce format."
+
+[currency.sign]
+RUB = "₽"
+USD = "$"
+EUR = "€"
+RSD = "din."
+
+[format]
+money = "{amount} {sign}"
+
+[format.record]
+saved_expense = "Dépense enregistrée : {amount}"
+saved_income = "Revenu enregistré : {amount}"
+category = "Catégorie : {title}"
+notes = "Note : {notes}"
+date = "Date : {date}"
+id = "id : {id}"
+deleted = "Opération supprimée : {amount}"
+
+[format.table]
+creating = "Le tableur « {title} » est encore en cours de création — je vous enverrai le lien dès qu'il sera prêt"
+link = "Tableur « {title} » : {url}"
+
+[format.check]
+title = "Ticket"
+title_place = "Ticket : {place}"
+purchased = "Acheté : {when}"
+total = "Total : {amount}"
+items = "Articles : {count}"
+queue_left = "Encore dans la file : {count}"
+saved = "Opérations enregistrées : {count}"
+learned = "Retenu : {name} → {product_type}"
+finished = "Plus de tickets."
+finished_saved = "Enregistrés : {count}."
+finished_skipped = "Reportés : {count} — ils restent dans la liste, /check les affichera de nouveau."
+new_suffix = " (nouveau)"
+
+[format.llm]
+title = "Coûts LLM, utilisateur {telegram_id}"
+no_spreadsheets = "L'utilisateur n'a aucun tableur."
+no_usages = "Aucun appel au modèle."
+outside_periods = "hors périodes"
+total = "Total : {totals}"
+tables = "Tableurs : {count}"
+tables_unlinked = "Tableurs : {count}, dont dissociés : {unlinked}"
+spreadsheet = "« {title} »"
+spreadsheet_unlinked = "« {title} » (dissocié)"
+tokens = "{count} jetons"
+calls = "{count} appels"
+less_than = "moins de {amount}"
+unknown_cost = "Sans prix connu : {count}"

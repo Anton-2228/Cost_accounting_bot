@@ -21,6 +21,7 @@ from telegram_bot.api_client.notifications import NotificationsClient
 from telegram_bot.api_client.periods import PeriodsClient
 from telegram_bot.api_client.records import RecordsClient
 from telegram_bot.api_client.spreadsheets import SpreadsheetsClient
+from telegram_bot.api_client.users import UsersClient
 
 
 class ApiGateway:
@@ -35,6 +36,7 @@ class ApiGateway:
         self.notifications = NotificationsClient(self._http)
         self.llm_usages = LlmUsagesClient(self._http)
         self.periods = PeriodsClient(self._http)
+        self.users = UsersClient(self._http)
 
     async def aclose(self) -> None:
         """Закрывает соединение с api."""
@@ -57,4 +59,5 @@ __all__ = [
     "PeriodsClient",
     "RecordsClient",
     "SpreadsheetsClient",
+    "UsersClient",
 ]

@@ -40,29 +40,37 @@ from telegram_bot.api_client.models import (
     Record,
 )
 from telegram_bot.checks.models import currency_of
-from telegram_bot.commands.cancel import CANCEL_BUTTON_TEXT, CancelCommand
-from telegram_bot.commands.check import _DONE_BUTTON, DELETE_BUTTON, SKIP_BUTTON, CheckCommand
-from telegram_bot.commands.check_delete import (
-    _CONFIRM_BUTTON,
-    _DECLINE_BUTTON,
-    CheckDeleteCommand,
-)
+from telegram_bot.commands.cancel import CancelCommand
+from telegram_bot.commands.check import CheckCommand
+from telegram_bot.commands.check_delete import CheckDeleteCommand
 from telegram_bot.commands.check_skip import CheckSkipCommand
 from telegram_bot.commands.manager import Manager
 from telegram_bot.commands.menu import MenuCommand
 from telegram_bot.enums import CommandName
-from telegram_bot.errors import TABLE_CREATING_MESSAGE
+from telegram_bot.i18n import Language, t
 from telegram_bot.notifications import NotificationCatchUp
 from telegram_bot.states import States
-from tests.telegram_bot.conftest import make_category
+from tests.telegram_bot.conftest import FakeLanguages, make_category
 
 _USER_ID = 7
 _CHAT_ID = 7
+
+#: Надписи кнопок и отказов — из русского каталога: язык тестов бота русский
+#: (см. `conftest.py`), а сверять с каталогом надёжнее, чем с копией строки.
+CANCEL_BUTTON_TEXT = t("buttons.cancel")
+_DONE_BUTTON = t("buttons.check.done")
+SKIP_BUTTON = t("buttons.check.skip")
+DELETE_BUTTON = t("buttons.check.delete")
+_CONFIRM_BUTTON = t("buttons.check_delete.confirm")
+_DECLINE_BUTTON = t("buttons.check_delete.decline")
+TABLE_CREATING_MESSAGE = t("errors.table_creating")
 _TOKEN = "123456:AAHtesttesttesttesttesttesttesttest"
 
 _FOOD = make_category(category_id=1, title="Еда", associations=["еда", "продукты"])
 _FOOD.product_types.append("молочка")
-_BASKET = make_category(category_id=2, title="НеопределенныеТраты", associations=["прочее"])
+_BASKET = make_category(
+    category_id=2, title="НеопределенныеТраты", associations=["прочее"], is_default=True
+)
 
 
 def _payload(*items: tuple[str, int]) -> dict[str, Any]:
@@ -333,25 +341,34 @@ class FakeAi:
         self.usage: LlmUsage | None = usage if usage is not None else make_usage()
         self.type_calls: list[list[str]] = []
         self.category_calls: list[list[str]] = []
+        #: Язык, на котором просили новые типы, и корзина, названная модели.
+        self.type_languages: list[Language] = []
+        self.default_categories: list[str | None] = []
 
     async def suggest_types(
         self,
         products: Any,
         known_types: Any,
+        *,
+        language: Language,
     ) -> tuple[dict[int, str], LlmUsage | None]:
         if self.broken:
             raise AiUnavailableError("нет связи")
         self.type_calls.append(list(products))
+        self.type_languages.append(language)
         return dict(self.types), self.usage
 
     async def suggest_categories(
         self,
         product_types: Any,
         categories: Any,
+        *,
+        default_category: str | None = None,
     ) -> tuple[dict[int, str], LlmUsage | None]:
         if self.broken:
             raise AiUnavailableError("нет связи")
         self.category_calls.append(list(product_types))
+        self.default_categories.append(default_category)
         return dict(self.categories), self.usage
 
 
@@ -412,7 +429,7 @@ class Harness:
         )
         catch_up = cast("NotificationCatchUp", FakeCatchUp())
 
-        self.manager = Manager(AccessGuard(frozenset({_USER_ID})), self.aiogram)
+        self.manager = Manager(AccessGuard(frozenset({_USER_ID})), self.aiogram, FakeLanguages())
         command = CheckCommand(
             self.manager,
             api,
@@ -488,6 +505,8 @@ async def test_whole_check_reaches_commit() -> None:
     await _walk_to_commit(harness)
 
     assert harness.ai.type_calls == [["конфеты"]]
+    # Новые типы просят на языке пользователя, а не на языке бота.
+    assert harness.ai.type_languages == [Language.RU]
     assert harness.ai.category_calls == [["сладости"]]
 
     committed = harness.checks.committed

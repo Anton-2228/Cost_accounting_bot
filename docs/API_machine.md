@@ -3,8 +3,8 @@
 Документ для последующих сессий. Описывает **что уже сделано** в `new_version/api`,
 какие инварианты нельзя нарушать и **что делать дальше**.
 
-Пиши на русском: сообщения пользователю, комментарии, докстринги, сообщения
-коммитов.
+Пиши на русском: комментарии, докстринги, сообщения коммитов. Текстов
+пользователю в api нет вовсе (§8): он отдаёт коды, фразы собирает бот.
 
 ---
 
@@ -20,7 +20,7 @@
 |---|---|---|
 | `api/` | **готов** | Владеет Postgres. Вся предметная логика и все деньги |
 | `google_sheets_service/` | **готов**, см. [GSHEETS_machine.md](GSHEETS_machine.md) | Единственный, кто ходит в Google API. Разгребает очередь перерисовки, читает правки пользователя и отдаёт в api |
-| `telegram_bot/` | **готов**, см. [BOT_machine.md](BOT_machine.md) | aiogram-фронтенд: разбирает ввод, зовёт api, печатает ответ по-русски |
+| `telegram_bot/` | **готов**, см. [BOT_machine.md](BOT_machine.md) | aiogram-фронтенд: разбирает ввод, зовёт api, печатает ответ на языке пользователя |
 | `checks_service/` + `mini_app/` | **готов**, см. [CHECKS_machine.md](CHECKS_machine.md) | Единственная публичная часть системы: Mini App сканирует QR-код чека, сервис получает расшифровку и кладёт сырьё в api |
 
 Разбор чека — последняя недостающая часть — сделан и живёт в боте
@@ -84,7 +84,7 @@ new_version/
 │   ├── repositories/            # base + 14
 │   ├── services/                # base, _periods + 11 сервисов
 │   ├── tasks/                   # rollover_loop.py
-│   ├── validation.py            # разбор листов, русские тексты ошибок
+│   ├── validation.py            # разбор листа Categories, коды отказов импорта
 │   ├── exceptions/              # base, handlers
 │   ├── requests/                # подпакет на домен, extra="forbid"
 │   ├── responses/               # common (DataResponse, ItemsResponse, Page, Error) + по домену
@@ -153,17 +153,18 @@ new_version/
 | `sync_task_kind` | `REDRAW` (БД → лист), `IMPORT` (лист → БД) |
 | `access_role` | `READER`, `WRITER` |
 | `notification_kind` | `TABLE_READY`, `IMPORT_OK`, `IMPORT_ERROR`, `SYNC_FAILED`, `ROLLOVER` |
+| `language` | `RU`, `EN`, `HI`, `ES`, `FR` — язык интерфейса; зеркалится в `telegram_bot/i18n/language.py` |
 
 Миксины: `PkMixin` (BIGINT IDENTITY), `TimestampMixin`, `SoftDeleteMixin`
 (`deleted_at`). Деньги везде `NUMERIC(14,2)` / `Decimal`.
 
 | Таблица | Ключевое |
 |---|---|
-| `users` | `telegram_id` UNIQUE |
+| `users` | `telegram_id` UNIQUE; `language` (умолчание `EN`) — язык интерфейса: живёт у пользователя, а не у таблицы, и переживает отвязку |
 | `spreadsheets` | `user_id` FK, партиальный UNIQUE `WHERE deleted_at IS NULL` (одна **живая** таблица на пользователя, отвязанных сколько угодно); `google_spreadsheet_id` **nullable** UNIQUE (глобально: отвязанный документ держит свой файл навсегда); `reset_day` SMALLINT CHECK 1..28; `timezone` VARCHAR default `Europe/Moscow`; `deleted_at` |
 | `spreadsheet_accesses` | `(spreadsheet_id, email)` UNIQUE, `granted_at` NULL = «выдать предстоит» |
 | `periods` | UNIQUE `(spreadsheet_id, start_date)`; UNIQUE `(id, spreadsheet_id)`; CHECK `end_date > start_date` |
-| `categories` | `kind`, `status`, `title`; партиальный UNIQUE `(spreadsheet_id, lower(title)) WHERE deleted_at IS NULL` |
+| `categories` | `kind`, `status`, `title`; партиальный UNIQUE `(spreadsheet_id, lower(title)) WHERE deleted_at IS NULL`; `is_default` + партиальный UNIQUE `(spreadsheet_id, kind) WHERE is_default AND deleted_at IS NULL` — категория по умолчанию, одна на вид |
 | `category_associations` | `(spreadsheet_id, alias)` UNIQUE; CHECK `alias = lower(alias)` |
 | `category_product_types` | `(spreadsheet_id, product_type)` UNIQUE; CHECK lower |
 | `records` | `amount` **знаковая и может быть нулевой**, `added_at DATE`, `period_id`/`category_id`/`source_id`/`check_id` — составные FK, `deleted_at`, `product_name`/`product_type` |
@@ -172,7 +173,7 @@ new_version/
 | `llm_usages` | учёт денег на модель: `operation`, `model` (возвращённая провайдером), три счётчика токенов, `cost NUMERIC(18,10)` nullable («неизвестно» ≠ ноль), `raw_usage` JSONB, полиморфная пара `entity_kind`/`entity_id` **без FK** с CHECK «обе или ни одной»; индекс `(spreadsheet_id, created_at)`. Пишутся только состоявшиеся вызовы |
 | `sheet_sync_tasks` | очередь, см. §5 |
 | `sheet_mappings` | `(spreadsheet_id, target, period_id) → google_sheet_id, title` |
-| `user_notifications` | исходящие сообщения, `delivered_at`; партиальный индекс по недоставленным |
+| `user_notifications` | исходящие сообщения: `kind`, `code`, `params` JSONB — текста нет, фразу собирает бот; `delivered_at`; партиальный индекс по недоставленным |
 
 **Составные внешние ключи** везде, где есть `spreadsheet_id`:
 `records.(category_id, spreadsheet_id) → categories.(id, spreadsheet_id)` и т. д.
@@ -290,6 +291,7 @@ backoff перестал бы работать.
 | `POST /spreadsheets` | создать таблицу (`/start`), 201; повтор — 409 |
 | `GET /spreadsheets/by-telegram/{telegram_id}` | **живая** таблица пользователя (объявлен **до** `/{id}`) |
 | `GET /users/{telegram_id}/spreadsheets` | вся история таблиц пользователя, **включая отвязанные** (`deleted_at`); неизвестный id — 404 `user` |
+| `GET /users/{telegram_id}` · `PUT /users/{telegram_id}/language` | язык пользователя; незнакомый — 404 `user`, умолчание — забота спрашивающего. `PUT` заводит пользователя, если его нет: язык выбирается на `/start` раньше, чем появится таблица |
 | `GET /spreadsheets/{id}` · `DELETE /spreadsheets/{id}` | чтение, отвязывание (204, мягко: `deleted_at`, гашение очереди листов и недоставленных уведомлений; пользователь не удаляется) |
 | `GET /spreadsheets/{id}/categories` | справочник категорий, `?only_active=` |
 | `GET/POST /spreadsheets/{id}/accesses` · `POST .../accesses/{id}/granted` | доступы; `?pending_only=` |
@@ -311,10 +313,13 @@ backoff перестал бы работать.
 обслуживает и бота («покажи мои операции»), и gsheets («перерисуй лист периода 7»).
 
 Конверты: `{"data": ...}` для одиночного ресурса, `{"items": [...]}` для списка,
-`{"code", "message", "details"}` для ошибки. **Русский текст для пользователя
-живёт в боте** и подбирается по `code`. Исключения — два, и оба потому, что текст
-собирается из пользовательских данных: разбор листа (`api/validation.py`, едет в
-поле `error` ответа импорта) и уведомления фоновой работы (`api/core/messages.py`).
+`{"code", "message", "details"}` для ошибки. **Весь текст для пользователя
+живёт в боте** — на его языке, без исключений. Api отдаёт машинные признаки:
+`details.resource` у 404, `details.reason` у 409 и 422 (данные для фразы —
+рядом, например `start_date` у `period_closed`). Уведомления фоновой работы и
+отказы импорта листа — `UserMessage(code, params)` (`api/core/messages.py`,
+`api/validation.py`): в очереди `user_notifications` и в полях `error` /
+`error_params` ответа импорта. `message` — для журнала, бот его не показывает.
 
 ---
 
@@ -544,6 +549,34 @@ TYPE` снимаются **все** CHECK по колонке `target`.
 переживших `upgrade`, не знает никто, а выдуманный «счёт по умолчанию» был бы
 неправдой в реестре.
 
+### Шаг 8. Язык интерфейса — сделан
+
+Бот, уведомления и Mini App заговорили на пяти языках (ru, en, hi, es, fr),
+подробности — в [BOT_machine.md](BOT_machine.md) §11. В api это перестроило
+правило «текст пользователю живёт в боте» — теперь без исключений.
+
+- Миграция `e7c2a94f1b38`: enum `language`; `users.language` с умолчанием `EN`,
+  но существующим пользователям — `RU` (колонка добавляется с умолчанием `'RU'`,
+  которым заполняются строки, и умолчание тут же меняется); `categories.
+  is_default` + частичный UNIQUE `(spreadsheet_id, kind)` среди живых. Флаг
+  существующим корзинам поставлен по старым названиям.
+- Категорию по умолчанию находят **по флагу, а не по названию**: в новой таблице
+  названия на языке пользователя (`constants.DEFAULT_CATEGORY_TITLES`, по слову
+  на язык — лист не примет название из двух). Импорт листа не даёт удалить,
+  выключить или перевести в другой вид категорию по умолчанию; переименовать
+  можно.
+- Миграция `f1d8b3a6c52e`: `user_notifications.text` → `code` + `params` JSONB.
+  История переехала в `params.text` с кодом `legacy`, недоставленное на момент
+  миграции помечено доставленным: показать готовую русскую фразу по-новому
+  нечем. Push-пакет несёт `language` получателя тем же join'ом, что и
+  `telegram_id`.
+- `api/core/messages.py` и `api/validation.py` возвращают `UserMessage(code,
+  params)`; ответ импорта — `error` (код) и `error_params`.
+- 422 получили `details.reason`: `period_closed` (+ `start_date`),
+  `amount_not_positive`, `filters_incompatible`, `period_target_mismatch`.
+- `GET /users/{telegram_id}`, `PUT /users/{telegram_id}/language` (одним
+  `INSERT … ON CONFLICT`), `UserService`.
+
 ---
 
 ## 10. Как добавить новый домен
@@ -608,6 +641,15 @@ TYPE` снимаются **все** CHECK по колонке `target`.
 13. **`RolloverLoop.stop()` до первого прохода отменяет и первый проход**: цикл
     проверяет событие остановки до вызова. В работе это незаметно, но тест обязан
     дождаться прохода, прежде чем останавливать.
+14. **`BaseRepository.update` переписывает все колонки из доменной модели.** Поле,
+    которое вызывающий не заполнил, получит умолчание домена: так импорт листа
+    молча снимал бы с корзины `is_default`. Колонки, которые вызывающий не
+    меняет, переносятся явно (`CategoryImportService`: `is_default=current.
+    is_default`).
+15. **`INSERT … ON CONFLICT … RETURNING` и карта идентичности.** Если строка уже
+    загружена в сессию, ORM-выборка по `RETURNING` отдаст прежний объект со
+    старыми значениями. Нужен `execution_options(populate_existing=True)`
+    (`UserRepository.set_language`).
 
 ---
 

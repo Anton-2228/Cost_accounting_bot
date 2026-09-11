@@ -1,0 +1,3 @@
+¿Qué día del mes empieza un nuevo periodo contable?
+
+Un número del 1 al 28: solo esos días existen en todos los meses.

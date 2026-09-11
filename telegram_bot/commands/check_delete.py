@@ -14,21 +14,13 @@ from telegram_bot.commands.base_command import BaseCommand
 from telegram_bot.commands.check import CheckCommand
 from telegram_bot.commands.manager import Manager
 from telegram_bot.enums import CommandName
+from telegram_bot.i18n import t
 from telegram_bot.notifications import NotificationCatchUp
-from telegram_bot.resources.messages import (
-    ASK_CHECK_DELETE_MESSAGE,
-    CHECK_DELETED_MESSAGE,
-    CHECK_LOST_MESSAGE,
-    CHECK_STALE_BUTTON_MESSAGE,
-)
 
 #: Ответы на вопрос подтверждения. Едут в `callback_data` перед номером чека —
 #: тот везде остаётся последним, и сверка «моя ли это кнопка» одна на все.
 _CONFIRM = "yes"
 _DECLINE = "no"
-
-_CONFIRM_BUTTON = "Да, удалить"
-_DECLINE_BUTTON = "Нет"
 
 
 class CheckDeleteCommand(BaseCommand):
@@ -81,11 +73,11 @@ class CheckDeleteCommand(BaseCommand):
         draft = await self.check.current_draft(state)
         if draft is None:
             await self.finish(chat_id=chat_id, state=state)
-            await self.aiogram.send_message(chat_id, CHECK_LOST_MESSAGE)
+            await self.aiogram.send_message(chat_id, t("text.check_lost"))
             return
 
         if not self.check.is_current(callback.data, draft):
-            await self.aiogram.send_message(chat_id, CHECK_STALE_BUTTON_MESSAGE)
+            await self.aiogram.send_message(chat_id, t("text.check_stale_button"))
             return
 
         spreadsheet = await self.spreadsheet_for(user_id=telegram_id, chat_id=chat_id)
@@ -106,7 +98,7 @@ class CheckDeleteCommand(BaseCommand):
             return
 
         await self.api.checks.delete(spreadsheet.id, draft.check_id)
-        await self.aiogram.send_message(chat_id, CHECK_DELETED_MESSAGE)
+        await self.aiogram.send_message(chat_id, t("text.check_deleted"))
         await self.check.show_next(chat_id=chat_id, state=state, spreadsheet=spreadsheet)
 
     async def _confirm(self, *, chat_id: int, state: FSMContext, draft: CheckDraft) -> None:
@@ -120,11 +112,11 @@ class CheckDeleteCommand(BaseCommand):
         await self.ask(
             chat_id=chat_id,
             state=state,
-            text=ASK_CHECK_DELETE_MESSAGE,
+            text=t("text.ask_check_delete"),
             rows=[
                 (
-                    (_CONFIRM_BUTTON, self._data(_CONFIRM, draft)),
-                    (_DECLINE_BUTTON, self._data(_DECLINE, draft)),
+                    (t("buttons.check_delete.confirm"), self._data(_CONFIRM, draft)),
+                    (t("buttons.check_delete.decline"), self._data(_DECLINE, draft)),
                 ),
             ],
         )

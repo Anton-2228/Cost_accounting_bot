@@ -5,8 +5,8 @@
     1,3 - молочка
     2 - бытовая химия
 
-Разбор возвращает модель либо бросает :class:`ParseError` с готовым русским
-текстом. Протокол `{"status": "success"|"error"}`, которым старая версия
+Разбор возвращает модель либо бросает :class:`ParseError` с готовым текстом.
+Протокол `{"status": "success"|"error"}`, которым старая версия
 отвечала именно в разборе чека, не воспроизводится: в боте один способ сообщить
 о неудачном вводе, и он тот же, что у `/add`.
 """
@@ -14,12 +14,13 @@
 from __future__ import annotations
 
 from telegram_bot import constants
+from telegram_bot.i18n import t
 from telegram_bot.parsers.results import ParsedCheckEdit, ParseError
 
-_USAGE = (
-    "Не понял правку. Нужно так: «1,3 - молочка», по строке на каждую правку.\n"
-    "Если всё верно — нажмите «Готово»"
-)
+
+def _usage() -> ParseError:
+    """Отказ «не понял правку» с образцом ввода."""
+    return ParseError(t("parse.check.usage"))
 
 
 class CheckParser:
@@ -42,7 +43,7 @@ class CheckParser:
         """
         lines = [line.strip() for line in (text or "").splitlines() if line.strip()]
         if not lines:
-            raise ParseError(_USAGE)
+            raise _usage()
 
         edits: list[ParsedCheckEdit] = []
         seen: set[int] = set()
@@ -51,7 +52,7 @@ class CheckParser:
             repeated = seen.intersection(edit.numbers)
             if repeated:
                 numbers = ", ".join(str(number) for number in sorted(repeated))
-                raise ParseError(f"Позиция {numbers} указана дважды — оставьте одну правку")
+                raise ParseError(t("parse.check.repeated", numbers=numbers))
             seen.update(edit.numbers)
             edits.append(edit)
         return edits
@@ -67,13 +68,13 @@ class CheckParser:
         """Разбирает одну строку правки."""
         head, separator, tail = line.partition(constants.CHECK_EDIT_SEPARATOR)
         if not separator:
-            raise ParseError(_USAGE)
+            raise _usage()
 
         value = tail.strip()
         if not value:
-            raise ParseError(_USAGE)
+            raise _usage()
         if max_value_length is not None and len(value) > max_value_length:
-            raise ParseError(f"Значение длиннее {max_value_length} символов")
+            raise ParseError(t("parse.check.value_too_long", limit=max_value_length))
 
         return ParsedCheckEdit(numbers=cls._numbers(head, count=count), value=value)
 
@@ -86,14 +87,14 @@ class CheckParser:
 
         parts = normalized.split()
         if not parts:
-            raise ParseError(_USAGE)
+            raise _usage()
 
         numbers: list[int] = []
         for part in parts:
             if not part.isdigit():
-                raise ParseError(_USAGE)
+                raise _usage()
             number = int(part)
             if not 1 <= number <= count:
-                raise ParseError(f"Позиции №{number} в чеке нет. Всего позиций: {count}")
+                raise ParseError(t("parse.check.no_position", number=number, count=count))
             numbers.append(number)
         return tuple(dict.fromkeys(numbers))

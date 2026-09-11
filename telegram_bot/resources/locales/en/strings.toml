@@ -1,0 +1,210 @@
+# Short bot strings in English. The Russian catalog is the source one: keys and
+# placeholders here must match it (checked by `test_i18n_catalog.py`).
+
+[access]
+admin_only = "Access denied"
+
+[errors]
+table_creating = "Your spreadsheet is still being created — I'll send the link as soon as it's ready"
+unavailable = "The data service is unavailable, please try again later"
+unexpected = "Something went wrong. Please try again"
+
+[errors.not_found]
+spreadsheet = "Create a spreadsheet first: /start"
+user = "Create a spreadsheet first: /start"
+category = "There is no such category, or it is turned off"
+record = "There is no transaction with this id"
+period = "Nothing has been recorded for this period yet"
+access = "No such access was granted"
+check = "This receipt is no longer in the queue"
+notification = "This message no longer exists"
+default = "I couldn't find what you're asking for"
+
+[errors.conflict]
+spreadsheet_exists = "You already have a spreadsheet. See it here: /menu"
+access_exists = "This email already has access"
+google_id_already_set = "A document is already linked to this spreadsheet"
+check_already_saved = "This receipt has already been added"
+check_already_processed = "This receipt has already been processed — its transactions are in the register"
+default = "You can't do that right now"
+
+[errors.type_taken]
+named_with_category = "The type “{product_type}” already belongs to the category “{category}”.\nChoose that category or a different type"
+named = "The type “{product_type}” already belongs to another category. Choose a different type"
+unnamed_with_category = "This type already belongs to the category “{category}”.\nChoose that category or a different type"
+unnamed = "This type already belongs to another category. Choose a different type"
+
+[errors.validation]
+generic = "That's not allowed"
+period_closed = "The period starting {start_date} is closed"
+amount_not_positive = "The amount must be greater than zero"
+filters_incompatible = "That's not allowed: the request conditions contradict each other"
+period_target_mismatch = "The period doesn't match this sheet"
+
+[notification]
+table_ready = "Your spreadsheet is ready: {url}"
+import_ok = "The “{sheet}” sheet has been read, your changes are saved"
+rollover_done = "A new accounting period started on {start_date}"
+sync_failed = "I can't update the spreadsheet — failed attempts in a row: {attempts}. Please check that access to the document hasn't been revoked."
+sync_terminal = "The spreadsheet couldn't be updated: {error}. Please check that the document hasn't been deleted and access hasn't been revoked — after that the spreadsheet will update by itself."
+access_failed = "I couldn't grant access to the spreadsheet for {email}. Please check the address and add it again."
+fallback = "A notification about your spreadsheet arrived, but I couldn't display it. Take a look at the spreadsheet — everything is there."
+
+[notification.import_error]
+empty = "Add at least one category"
+unknown_id = "Categories, row {row}: unknown ID"
+flag_invalid = "Categories, row {row}: {column} looks wrong"
+income_equals_cost = "Categories, row {row}: Income and Cost have the same value"
+name_empty = "Categories, row {row}: Name is empty"
+name_not_one_word = "Categories, row {row}: Name must be a single word"
+default_removed = "Categories, row {row}: this is a default category — it can't be deleted"
+default_deactivated = "Categories, row {row}: this is a default category — it can't be turned off"
+default_kind_changed = "Categories, row {row}: this is a default category — its Income and Cost can't be changed"
+duplicate_id = "Categories: the same ID is used more than once"
+duplicate_name = "Categories: the same name is used more than once"
+duplicate_association = "Categories: the same association is used more than once"
+duplicate_product_type = "Categories: the same product type is used more than once"
+
+[buttons]
+cancel = "Cancel"
+
+[buttons.menu]
+table = "Get the spreadsheet"
+sync = "Sync the spreadsheet"
+email = "Share the spreadsheet"
+unlink = "Unlink the spreadsheet"
+settings = "Settings"
+
+[buttons.start]
+create_table = "Create a spreadsheet"
+
+[buttons.settings]
+language = "Language"
+llm_costs = "LLM costs"
+
+[buttons.check]
+done = "Done"
+skip = "Postpone"
+delete = "Delete"
+
+[buttons.check_delete]
+confirm = "Yes, delete"
+decline = "No"
+
+[language]
+choose = "Choose your language:"
+choose_start = "Choose your language:"
+changed = "Language: English"
+
+[table_email]
+skipped = "OK, I won't grant access"
+
+[table_unlink]
+phrase = "I CONFIRM UNLINKING"
+
+[record_delete]
+bad_id = "“{raw}” doesn't look like an id. Like this: /del 42"
+
+[settings_llm]
+user_not_found = "User {telegram_id} not found. Send another id."
+
+[parse]
+category_not_found = "There is no category “{value}”, or it is turned off.\nAvailable: {hint}"
+hint_more = "{shown} and others"
+
+[parse.amount]
+invalid = "“{raw}” doesn't look like an amount"
+not_positive = "The amount must be greater than zero"
+too_big = "The amount is too large"
+too_precise = "The amount has more than two decimal places"
+
+[parse.record]
+usage = "Like this: /add currency amount category note"
+bad_currency = "“{word}” doesn't look like a currency.\nYou can write it like this: {hint}\n{usage}"
+notes_too_long = "The note is longer than {limit} characters"
+
+[parse.currency]
+hint = "rubles, dollars, euros, dinars"
+
+[parse.check]
+usage = "I didn't understand the correction. Like this: “1,3 - dairy”, one correction per line.\nIf everything is correct, press “Done”"
+repeated = "Item {numbers} is listed twice — keep one correction"
+value_too_long = "The value is longer than {limit} characters"
+no_position = "There is no item #{number} in the receipt. Total items: {count}"
+
+[parse.onboarding]
+title_empty = "The name can't be empty"
+title_too_long = "The name is longer than {limit} characters"
+not_a_number = "“{raw}” doesn't look like a number"
+reset_day_range = "The day must be between {min} and {max}: every month has such a day"
+timezone_too_long = "The time zone name is too long"
+timezone_unknown = "There is no time zone “{name}”. Example: Europe/London"
+email_too_long = "The address is too long"
+email_invalid = "That doesn't look like an email address"
+
+[receipt]
+unnamed_product = "Unnamed"
+manual_tail = "Add the purchases manually with /add, and remove the receipt with the “Delete” button"
+remove_tail = "You can remove the receipt from the queue with the “Delete” button"
+unexpected_shape = "The data of this receipt has an unexpected shape — I can't process it."
+refund = "Refund receipts aren't supported yet, please add the transaction manually."
+no_items = "The receipt data has no items — there is nothing to process."
+items_shape = "The receipt items aren't recorded as expected — I can't process them."
+not_kopecks = "The amounts in the receipt data aren't in kopecks — I can't process it."
+not_numbers = "The amounts in the receipt data aren't numbers — I can't process it."
+negative_item = "The receipt has an item with a negative amount — please add it manually."
+no_total = "The receipt has no total amount, there is nothing to check the items against."
+mismatch = "The items don't add up to the receipt total: {items} vs {total}.\nI won't record this receipt — please add the purchases manually with /add"
+not_sale = "This is not a regular sale but “{invoice_type}” — I can't process such receipts yet, please add the transaction manually."
+unknown_format = "I can't process receipts of this format yet."
+
+[currency.sign]
+RUB = "₽"
+USD = "$"
+EUR = "€"
+RSD = "din."
+
+[format]
+money = "{amount} {sign}"
+
+[format.record]
+saved_expense = "Recorded an expense: {amount}"
+saved_income = "Recorded an income: {amount}"
+category = "Category: {title}"
+notes = "Note: {notes}"
+date = "Date: {date}"
+id = "id: {id}"
+deleted = "Deleted the transaction: {amount}"
+
+[format.table]
+creating = "The spreadsheet “{title}” is still being created — I'll send the link as soon as it's ready"
+link = "Spreadsheet “{title}”: {url}"
+
+[format.check]
+title = "Receipt"
+title_place = "Receipt: {place}"
+purchased = "Purchased: {when}"
+total = "Total: {amount}"
+items = "Items: {count}"
+queue_left = "Left in the queue: {count}"
+saved = "Transactions recorded: {count}"
+learned = "Remembered: {name} → {product_type}"
+finished = "No more receipts."
+finished_saved = "Recorded: {count}."
+finished_skipped = "Postponed: {count} — they stay in the list, /check will show them again."
+new_suffix = " (new)"
+
+[format.llm]
+title = "LLM costs, user {telegram_id}"
+no_spreadsheets = "The user has no spreadsheets."
+no_usages = "There were no LLM calls."
+outside_periods = "outside periods"
+total = "Total: {totals}"
+tables = "Spreadsheets: {count}"
+tables_unlinked = "Spreadsheets: {count}, unlinked: {unlinked}"
+spreadsheet = "“{title}”"
+spreadsheet_unlinked = "“{title}” (unlinked)"
+tokens = "{count} tokens"
+calls = "{count} calls"
+less_than = "less than {amount}"
+unknown_cost = "Without a known price: {count}"

@@ -1,0 +1,213 @@
+# बॉट के छोटे पाठ हिन्दी में। स्रोत रूसी कैटलॉग है: यहाँ की कुंजियाँ और
+# प्लेसहोल्डर उसी से मेल खाने चाहिए (`test_i18n_catalog.py` जाँचता है)।
+#
+# बॉट अपने बारे में कर्मवाच्य या अवैयक्तिक वाक्यों में बात करता है
+# («लिंक भेजा जाएगा»), ताकि क्रिया का लिंग चुनना न पड़े।
+
+[access]
+admin_only = "पहुँच अस्वीकृत"
+
+[errors]
+table_creating = "आपकी स्प्रेडशीट अभी बन रही है — तैयार होते ही लिंक भेजा जाएगा"
+unavailable = "डेटा सेवा उपलब्ध नहीं है, कृपया बाद में फिर कोशिश करें"
+unexpected = "कुछ गड़बड़ हो गई। कृपया फिर से कोशिश करें"
+
+[errors.not_found]
+spreadsheet = "पहले एक स्प्रेडशीट बनाएँ: /start"
+user = "पहले एक स्प्रेडशीट बनाएँ: /start"
+category = "ऐसी कोई श्रेणी नहीं है, या वह बंद है"
+record = "इस id का कोई लेन-देन नहीं है"
+period = "इस अवधि में अभी तक कुछ दर्ज नहीं हुआ है"
+access = "ऐसी कोई पहुँच नहीं दी गई थी"
+check = "यह रसीद अब कतार में नहीं है"
+notification = "यह संदेश अब मौजूद नहीं है"
+default = "आप जो माँग रहे हैं, वह नहीं मिला"
+
+[errors.conflict]
+spreadsheet_exists = "आपकी स्प्रेडशीट पहले से है। देखें: /menu"
+access_exists = "इस ईमेल को पहले से पहुँच है"
+google_id_already_set = "इस स्प्रेडशीट से पहले से एक दस्तावेज़ जुड़ा है"
+check_already_saved = "यह रसीद पहले ही जोड़ी जा चुकी है"
+check_already_processed = "यह रसीद पहले ही संसाधित हो चुकी है — इसके लेन-देन रजिस्टर में हैं"
+default = "अभी यह नहीं किया जा सकता"
+
+[errors.type_taken]
+named_with_category = "प्रकार “{product_type}” पहले से श्रेणी “{category}” में है।\nवही श्रेणी चुनें या कोई दूसरा प्रकार"
+named = "प्रकार “{product_type}” पहले से किसी दूसरी श्रेणी में है। कोई दूसरा प्रकार चुनें"
+unnamed_with_category = "यह प्रकार पहले से श्रेणी “{category}” में है।\nवही श्रेणी चुनें या कोई दूसरा प्रकार"
+unnamed = "यह प्रकार पहले से किसी दूसरी श्रेणी में है। कोई दूसरा प्रकार चुनें"
+
+[errors.validation]
+generic = "ऐसा नहीं किया जा सकता"
+period_closed = "{start_date} से शुरू होने वाली अवधि बंद है"
+amount_not_positive = "राशि शून्य से अधिक होनी चाहिए"
+filters_incompatible = "ऐसा नहीं किया जा सकता: अनुरोध की शर्तें आपस में टकराती हैं"
+period_target_mismatch = "यह अवधि इस शीट से मेल नहीं खाती"
+
+[notification]
+table_ready = "आपकी स्प्रेडशीट तैयार है: {url}"
+import_ok = "शीट “{sheet}” पढ़ ली गई, आपके बदलाव सहेज लिए गए"
+rollover_done = "{start_date} से नई लेखा अवधि शुरू हो गई है"
+sync_failed = "स्प्रेडशीट अपडेट नहीं हो पा रही — लगातार विफल प्रयास: {attempts}। जाँच लें कि दस्तावेज़ की पहुँच वापस नहीं ली गई है।"
+sync_terminal = "स्प्रेडशीट अपडेट नहीं हो सकी: {error}। जाँच लें कि दस्तावेज़ हटाया नहीं गया है और पहुँच वापस नहीं ली गई है — इसके बाद स्प्रेडशीट अपने आप अपडेट हो जाएगी।"
+access_failed = "{email} को स्प्रेडशीट की पहुँच नहीं दी जा सकी। पता जाँचें और उसे फिर से जोड़ें।"
+fallback = "आपकी स्प्रेडशीट के बारे में एक सूचना आई, लेकिन उसे दिखाया नहीं जा सका। स्प्रेडशीट देख लें — सब कुछ वहाँ है।"
+
+[notification.import_error]
+empty = "कम से कम एक श्रेणी जोड़ें"
+unknown_id = "Categories, पंक्ति {row}: अज्ञात ID"
+flag_invalid = "Categories, पंक्ति {row}: {column} का मान गलत है"
+income_equals_cost = "Categories, पंक्ति {row}: Income और Cost का मान एक जैसा है"
+name_empty = "Categories, पंक्ति {row}: Name खाली है"
+name_not_one_word = "Categories, पंक्ति {row}: Name एक ही शब्द होना चाहिए"
+default_removed = "Categories, पंक्ति {row}: यह डिफ़ॉल्ट श्रेणी है — इसे हटाया नहीं जा सकता"
+default_deactivated = "Categories, पंक्ति {row}: यह डिफ़ॉल्ट श्रेणी है — इसे बंद नहीं किया जा सकता"
+default_kind_changed = "Categories, पंक्ति {row}: यह डिफ़ॉल्ट श्रेणी है — इसका Income और Cost बदला नहीं जा सकता"
+duplicate_id = "Categories: एक ही ID कई बार इस्तेमाल हुआ है"
+duplicate_name = "Categories: एक ही name कई बार इस्तेमाल हुआ है"
+duplicate_association = "Categories: एक ही association कई बार इस्तेमाल हुआ है"
+duplicate_product_type = "Categories: एक ही product type कई बार इस्तेमाल हुआ है"
+
+[buttons]
+cancel = "रद्द करें"
+
+[buttons.menu]
+table = "स्प्रेडशीट खोलें"
+sync = "स्प्रेडशीट सिंक करें"
+email = "स्प्रेडशीट साझा करें"
+unlink = "स्प्रेडशीट अलग करें"
+settings = "सेटिंग्स"
+
+[buttons.start]
+create_table = "स्प्रेडशीट बनाएँ"
+
+[buttons.settings]
+language = "भाषा"
+llm_costs = "LLM खर्च"
+
+[buttons.check]
+done = "हो गया"
+skip = "बाद में"
+delete = "हटाएँ"
+
+[buttons.check_delete]
+confirm = "हाँ, हटाएँ"
+decline = "नहीं"
+
+[language]
+choose = "अपनी भाषा चुनें:"
+choose_start = "अपनी भाषा चुनें:"
+changed = "भाषा: हिन्दी"
+
+[table_email]
+skipped = "ठीक है, पहुँच नहीं दी जाएगी"
+
+[table_unlink]
+phrase = "हाँ, स्प्रेडशीट अलग करें"
+
+[record_delete]
+bad_id = "“{raw}” id जैसा नहीं दिखता। ऐसे लिखें: /del 42"
+
+[settings_llm]
+user_not_found = "उपयोगकर्ता {telegram_id} नहीं मिला। कोई दूसरा id भेजें।"
+
+[parse]
+category_not_found = "श्रेणी “{value}” नहीं है, या वह बंद है।\nउपलब्ध: {hint}"
+hint_more = "{shown} और अन्य"
+
+[parse.amount]
+invalid = "“{raw}” राशि जैसा नहीं दिखता"
+not_positive = "राशि शून्य से अधिक होनी चाहिए"
+too_big = "राशि बहुत बड़ी है"
+too_precise = "राशि में दशमलव के बाद दो से अधिक अंक हैं"
+
+[parse.record]
+usage = "ऐसे लिखें: /add मुद्रा राशि श्रेणी टिप्पणी"
+bad_currency = "“{word}” मुद्रा जैसा नहीं दिखता।\nमुद्रा ऐसे लिख सकते हैं: {hint}\n{usage}"
+notes_too_long = "टिप्पणी {limit} अक्षरों से लंबी है"
+
+[parse.currency]
+hint = "रूबल, डॉलर, यूरो, दीनार"
+
+[parse.check]
+usage = "सुधार समझ नहीं आया। ऐसे लिखें: “1,3 - डेयरी”, हर सुधार अलग पंक्ति में।\nअगर सब सही है — “हो गया” दबाएँ"
+repeated = "आइटम {numbers} दो बार लिखा गया है — एक ही सुधार रखें"
+value_too_long = "मान {limit} अक्षरों से लंबा है"
+no_position = "रसीद में आइटम नंबर {number} नहीं है। कुल आइटम: {count}"
+
+[parse.onboarding]
+title_empty = "नाम खाली नहीं हो सकता"
+title_too_long = "नाम {limit} अक्षरों से लंबा है"
+not_a_number = "“{raw}” संख्या जैसा नहीं दिखता"
+reset_day_range = "दिन {min} से {max} के बीच होना चाहिए: ऐसा दिन हर महीने में होता है"
+timezone_too_long = "समय क्षेत्र का नाम बहुत लंबा है"
+timezone_unknown = "समय क्षेत्र “{name}” मौजूद नहीं है। उदाहरण: Asia/Kolkata"
+email_too_long = "पता बहुत लंबा है"
+email_invalid = "यह ईमेल पते जैसा नहीं दिखता"
+
+[receipt]
+unnamed_product = "बिना नाम"
+manual_tail = "खरीदारी /add से खुद जोड़ें, और रसीद को “हटाएँ” बटन से हटा दें"
+remove_tail = "रसीद को “हटाएँ” बटन से कतार से हटाया जा सकता है"
+unexpected_shape = "इस रसीद का डेटा अनपेक्षित रूप में है — इसे संसाधित नहीं किया जा सकता।"
+refund = "वापसी वाली रसीदें अभी समर्थित नहीं हैं, लेन-देन खुद जोड़ें।"
+no_items = "रसीद के डेटा में कोई आइटम नहीं है — संसाधित करने को कुछ नहीं है।"
+items_shape = "रसीद के आइटम अपेक्षित रूप में दर्ज नहीं हैं — इन्हें संसाधित नहीं किया जा सकता।"
+not_kopecks = "रसीद के डेटा में राशियाँ कोपेक में नहीं हैं — इसे संसाधित नहीं किया जा सकता।"
+not_numbers = "रसीद के डेटा में राशियाँ संख्याएँ नहीं हैं — इसे संसाधित नहीं किया जा सकता।"
+negative_item = "रसीद में ऋणात्मक राशि वाला आइटम है — उसे खुद जोड़ें।"
+no_total = "रसीद में कुल राशि नहीं मिली, आइटमों का मिलान करने को कुछ नहीं है।"
+mismatch = "आइटमों का जोड़ रसीद की कुल राशि से मेल नहीं खाता: {items} बनाम {total}।\nयह रसीद दर्ज नहीं की जाएगी — खरीदारी /add से खुद जोड़ें"
+not_sale = "यह सामान्य बिक्री नहीं, बल्कि “{invoice_type}” है — ऐसी रसीदें अभी संसाधित नहीं होतीं, लेन-देन खुद जोड़ें।"
+unknown_format = "इस प्रारूप की रसीदें अभी संसाधित नहीं होतीं।"
+
+[currency.sign]
+RUB = "₽"
+USD = "$"
+EUR = "€"
+RSD = "din."
+
+[format]
+money = "{amount} {sign}"
+
+[format.record]
+saved_expense = "खर्च दर्ज किया गया: {amount}"
+saved_income = "आय दर्ज की गई: {amount}"
+category = "श्रेणी: {title}"
+notes = "टिप्पणी: {notes}"
+date = "तारीख: {date}"
+id = "id: {id}"
+deleted = "लेन-देन हटाया गया: {amount}"
+
+[format.table]
+creating = "स्प्रेडशीट “{title}” अभी बन रही है — तैयार होते ही लिंक भेजा जाएगा"
+link = "स्प्रेडशीट “{title}”: {url}"
+
+[format.check]
+title = "रसीद"
+title_place = "रसीद: {place}"
+purchased = "खरीद: {when}"
+total = "कुल: {amount}"
+items = "आइटम: {count}"
+queue_left = "कतार में बाकी: {count}"
+saved = "दर्ज लेन-देन: {count}"
+learned = "याद रखा गया: {name} → {product_type}"
+finished = "और रसीदें नहीं हैं।"
+finished_saved = "दर्ज: {count}।"
+finished_skipped = "बाद के लिए रखी गईं: {count} — ये सूची में बनी रहेंगी, /check इन्हें फिर दिखाएगा।"
+new_suffix = " (नया)"
+
+[format.llm]
+title = "LLM खर्च, उपयोगकर्ता {telegram_id}"
+no_spreadsheets = "उपयोगकर्ता की कोई स्प्रेडशीट नहीं है।"
+no_usages = "मॉडल को कोई कॉल नहीं हुई।"
+outside_periods = "अवधियों के बाहर"
+total = "कुल: {totals}"
+tables = "स्प्रेडशीट: {count}"
+tables_unlinked = "स्प्रेडशीट: {count}, इनमें से अलग की गईं: {unlinked}"
+spreadsheet = "“{title}”"
+spreadsheet_unlinked = "“{title}” (अलग की गई)"
+tokens = "{count} टोकन"
+calls = "{count} कॉल"
+less_than = "{amount} से कम"
+unknown_cost = "अज्ञात कीमत वाली: {count}"

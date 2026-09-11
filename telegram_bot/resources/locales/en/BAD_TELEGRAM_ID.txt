@@ -1,0 +1,3 @@
+A telegram id is a positive whole number.
+
+Send it as a single number.

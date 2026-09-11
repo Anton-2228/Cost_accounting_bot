@@ -1,0 +1,2 @@
+Delete this receipt? It will disappear from the queue.
+You can scan the same paper receipt again.

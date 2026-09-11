@@ -22,7 +22,7 @@ from aiogram.fsm.storage.memory import MemoryStorage
 from aiogram.types import CallbackQuery, Chat, InlineKeyboardMarkup, Message
 from aiogram.types import User as TelegramUser
 
-from telegram_bot.access import ACCESS_DENIED_MESSAGE, AccessGuard
+from telegram_bot.access import AccessGuard
 from telegram_bot.aiogram_wrapper import AiogramWrapper
 from telegram_bot.api_client import ApiGateway
 from telegram_bot.api_client.errors import ApiNotFoundError
@@ -34,13 +34,16 @@ from telegram_bot.api_client.models import (
     PeriodStatus,
     Spreadsheet,
 )
+from telegram_bot.commands import language_picker
 from telegram_bot.commands.manager import Manager
-from telegram_bot.commands.settings import LLM_COSTS_BUTTON, SettingsCommand
+from telegram_bot.commands.settings import LLM_COSTS_DATA, SettingsCommand
 from telegram_bot.commands.settings_llm import SettingsLlmCostsCommand
 from telegram_bot.enums import CommandName
 from telegram_bot.formatting import LlmUsageFormatter, SpreadsheetUsage
+from telegram_bot.i18n import t
 from telegram_bot.notifications import NotificationCatchUp
 from telegram_bot.states import States
+from tests.telegram_bot.conftest import FakeLanguages
 
 _ADMIN_ID = 7
 _USER_ID = 8
@@ -167,10 +170,14 @@ class FakeAiogram(AiogramWrapper):
         return any(fragment in text for text in self.sent)
 
     def last_callback_data(self) -> str:
-        """`callback_data` последней показанной кнопки."""
+        """`callback_data` нижней кнопки последней клавиатуры.
+
+        Нижней, а не первой: над админской кнопкой теперь стоит «Язык», общий
+        для всех.
+        """
         if not self.keyboards:
             return ""
-        return self.keyboards[-1].inline_keyboard[0][0].callback_data or ""
+        return self.keyboards[-1].inline_keyboard[-1][0].callback_data or ""
 
 
 class FakeSpreadsheets:
@@ -252,7 +259,7 @@ class Harness:
         catch_up = cast("NotificationCatchUp", FakeCatchUp())
         access = AccessGuard(frozenset({_USER_ID}), frozenset({_ADMIN_ID}))
 
-        self.manager = Manager(access, self.aiogram)
+        self.manager = Manager(access, self.aiogram, FakeLanguages())
         settings = SettingsCommand(self.manager, api, self.aiogram, catch_up, access)
         self.manager.register(
             {
@@ -283,7 +290,7 @@ class Harness:
         """Нажимает кнопку «Траты на LLM»."""
         await self.manager.launch_callback(
             CommandName.SETTINGS_LLM,
-            _callback(LLM_COSTS_BUTTON[1], user_id=user_id),
+            _callback(LLM_COSTS_DATA, user_id=user_id),
             self.state(user_id),
         )
 
@@ -302,19 +309,19 @@ class TestScreen:
         harness = Harness()
         await harness.open_settings()
 
-        assert harness.aiogram.last_callback_data() == LLM_COSTS_BUTTON[1]
+        assert harness.aiogram.last_callback_data() == LLM_COSTS_DATA
 
-    async def test_ordinary_user_gets_stub(self) -> None:
-        """Обычный пользователь видит заглушку и ни одной кнопки.
+    async def test_ordinary_user_gets_only_language(self) -> None:
+        """Обычный пользователь видит только выбор языка.
 
-        Отказом отвечать нечему: `/settings` доступна всем, разным у ролей будет
-        содержимое экрана.
+        Отказом отвечать нечему: `/settings` доступна всем, разное у ролей —
+        набор кнопок: язык меняет каждый, траты на модель видит только админ.
         """
         harness = Harness()
         await harness.open_settings(_USER_ID)
 
-        assert harness.aiogram.said("нечего менять")
-        assert harness.aiogram.keyboards == []
+        assert harness.aiogram.said(t("text.settings_user"))
+        assert harness.aiogram.last_callback_data() == language_picker.open_data()
 
 
 class TestRoleGuard:
@@ -329,7 +336,7 @@ class TestRoleGuard:
         harness = Harness(spreadsheets={_TARGET_ID: []})
         await harness.answer(str(_TARGET_ID), _USER_ID)
 
-        assert harness.aiogram.said(ACCESS_DENIED_MESSAGE)
+        assert harness.aiogram.said(t("access.admin_only"))
         assert harness.spreadsheets.asked == []
 
     async def test_button_is_denied(self) -> None:
@@ -342,7 +349,7 @@ class TestRoleGuard:
         harness = Harness()
         await harness.press_costs(_USER_ID)
 
-        assert harness.aiogram.said(ACCESS_DENIED_MESSAGE)
+        assert harness.aiogram.said(t("access.admin_only"))
         assert await harness.state(_USER_ID).get_state() is None
 
 
@@ -403,7 +410,7 @@ class TestDialog:
 
         assert harness.aiogram.said("0,0100 $")
         assert await harness.state().get_state() is None
-        assert harness.aiogram.last_callback_data() == LLM_COSTS_BUTTON[1]
+        assert harness.aiogram.last_callback_data() == LLM_COSTS_DATA
 
 
 class TestReport:

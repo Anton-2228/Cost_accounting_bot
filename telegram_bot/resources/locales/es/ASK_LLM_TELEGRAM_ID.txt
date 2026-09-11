@@ -1,0 +1,3 @@
+¿De quién muestro los gastos en el modelo?
+
+Envía el telegram id del usuario como un solo número.

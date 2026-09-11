@@ -1,0 +1,27 @@
+Comandos
+
+/menu — menú: enlace a la hoja, sincronización, acceso por correo, desvinculación, ajustes
+/help — esta ayuda
+/start — entrada; también interrumpe un diálogo en curso
+
+/add moneda importe categoría nota
+    Ejemplo: /add euros 20 comida café para llevar
+/del id
+    Sin id, eliminaré la última operación del periodo.
+
+/check — procesar un recibo escaneado en la app
+    Muestro los artículos y propongo tipos y categorías.
+    Para corregir: líneas como «1,3 - lácteos».
+    Aplazar el recibo, eliminarlo o salir del procesamiento: con los botones bajo el mensaje.
+
+Todo lo que se hace con la propia hoja está en /menu.
+
+Mientras creo la hoja de cálculo no funciona nada salvo /start y /help: todavía no hay nada que ver. Te escribiré en cuanto esté lista.
+
+Escribe el importe sin signo: sé si es ingreso o gasto por la categoría.
+Los decimales se pueden separar con punto o con coma.
+
+La moneda es obligatoria y va primero:
+/add euros 20 comida café
+Escríbela como prefieras: rublos, dólares, euros, dinares, o abreviada: rub, usd, eur, rsd.
+La moneda de un recibo no se pregunta: la sé por el propio recibo.

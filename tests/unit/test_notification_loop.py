@@ -14,13 +14,19 @@ import httpx
 import pytest
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
-from api.enums import NotificationKind
+from api.domain.user_message import UserMessage
+from api.enums import Language, NotificationKind
 from api.repositories.user_notification_repository import UserNotificationRepository
 from api.tasks.notification_loop import NotificationLoop
 from tests.factories import create_spreadsheet, create_user
 
 _LONG_INTERVAL = 3600
 _NOTIFY_URL = "http://bot:8002/notify"
+
+
+def _message(label: str) -> UserMessage:
+    """Сообщение, отличимое от соседних по параметру."""
+    return UserMessage(code="import_ok", params={"sheet": label})
 
 
 class _FakeClient:
@@ -63,11 +69,11 @@ async def test_accepted_notification_is_marked_delivered(
 ) -> None:
     """Бот ответил 2xx — сообщение подтверждено и второй раз не уйдёт."""
     async with session_factory() as session:
-        user = await create_user(session, telegram_id=777)
+        user = await create_user(session, telegram_id=777, language=Language.RU)
         spreadsheet = await create_spreadsheet(session, user=user, ready=True)
         assert spreadsheet.id is not None
         await UserNotificationRepository(session).notify(
-            spreadsheet.id, NotificationKind.TABLE_READY, "Таблица готова"
+            spreadsheet.id, NotificationKind.TABLE_READY, _message("Таблица готова")
         )
         await session.commit()
 
@@ -76,7 +82,11 @@ async def test_accepted_notification_is_marked_delivered(
 
     assert await loop.run_once() == 1
     assert client.calls[0]["telegram_id"] == 777
-    assert client.calls[0]["text"] == "Таблица готова"
+    # Текста в пакете нет: едут код, данные и язык, а фразу собирает бот.
+    assert "text" not in client.calls[0]
+    assert client.calls[0]["code"] == "import_ok"
+    assert client.calls[0]["params"] == {"sheet": "Таблица готова"}
+    assert client.calls[0]["language"] == Language.RU.value
     assert client.calls[0]["kind"] == NotificationKind.TABLE_READY.value
 
     # Второй проход не находит работы: подтверждённое из очереди ушло.
@@ -93,7 +103,7 @@ async def test_rejected_notification_stays_in_the_queue(
         spreadsheet = await create_spreadsheet(session, ready=True)
         assert spreadsheet.id is not None
         await UserNotificationRepository(session).notify(
-            spreadsheet.id, NotificationKind.IMPORT_ERROR, "В категориях в 5 строке беда"
+            spreadsheet.id, NotificationKind.IMPORT_ERROR, _message("В категориях в 5 строке беда")
         )
         await session.commit()
 
@@ -119,7 +129,9 @@ async def test_unreachable_bot_stops_the_tick(
         assert spreadsheet.id is not None
         repository = UserNotificationRepository(session)
         for number in range(3):
-            await repository.notify(spreadsheet.id, NotificationKind.ROLLOVER, str(number))
+            await repository.notify(
+                spreadsheet.id, NotificationKind.ROLLOVER, _message(str(number))
+            )
         await session.commit()
 
     client = _FakeClient(httpx.ConnectError("бот лежит"))
@@ -132,7 +144,7 @@ async def test_unreachable_bot_stops_the_tick(
     recovered = _FakeClient()
     loop = _loop(session_factory, recovered)
     assert await loop.run_once() == 3
-    assert [call["text"] for call in recovered.calls] == ["0", "1", "2"]
+    assert [call["params"]["sheet"] for call in recovered.calls] == ["0", "1", "2"]
 
 
 async def test_empty_queue_is_not_an_error(
@@ -154,7 +166,7 @@ async def test_push_without_started_loop_is_a_programming_error(
         spreadsheet = await create_spreadsheet(session, ready=True)
         assert spreadsheet.id is not None
         await UserNotificationRepository(session).notify(
-            spreadsheet.id, NotificationKind.ROLLOVER, "новый период"
+            spreadsheet.id, NotificationKind.ROLLOVER, _message("новый период")
         )
         await session.commit()
 

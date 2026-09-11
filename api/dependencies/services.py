@@ -50,6 +50,7 @@ from api.services.record_service import RecordService
 from api.services.sheet_mapping_service import SheetMappingService
 from api.services.sheet_sync_task_service import SheetSyncTaskService
 from api.services.spreadsheet_service import SpreadsheetService
+from api.services.user_service import UserService
 
 
 def get_exchange_rate_service(
@@ -88,6 +89,14 @@ def get_spreadsheet_service(
         tasks=tasks,
         notifications=notifications,
     )
+
+
+def get_user_service(
+    session: AsyncSession = Depends(get_session),
+    users: UserRepository = Depends(get_user_repository),
+) -> UserService:
+    """Сервис пользователя целиком: язык интерфейса."""
+    return UserService(session, users)
 
 
 def get_record_service(

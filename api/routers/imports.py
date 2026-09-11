@@ -22,8 +22,8 @@ async def import_categories(
     """Применяет лист `Categories` целиком.
 
     Ответ 200 и с ошибкой разбора: ошибка не в запросе, а в содержимом листа
-    пользователя. Она едет как **данные** (`error` с русским текстом) вместе с
-    гарантией, что в БД не записано ничего.
+    пользователя. Она едет как **данные** (`error` — код отказа, `error_params` —
+    номер строки и колонка) вместе с гарантией, что в БД не записано ничего.
     """
     result = await service.import_rows(spreadsheet_id, payload.rows)
-    return DataResponse(data=SheetImportResultResponse.model_validate(result))
+    return DataResponse(data=SheetImportResultResponse.from_domain(result))

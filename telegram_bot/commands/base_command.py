@@ -14,7 +14,7 @@ from telegram_bot.api_client import ApiGateway
 from telegram_bot.api_client.errors import ApiNotFoundError
 from telegram_bot.api_client.models import NotificationKind, Spreadsheet
 from telegram_bot.enums import CommandName, FsmDataKeys
-from telegram_bot.errors import NO_TABLE_MESSAGE, TABLE_CREATING_MESSAGE
+from telegram_bot.i18n import t
 from telegram_bot.notifications import NotificationCatchUp
 
 if TYPE_CHECKING:
@@ -182,10 +182,10 @@ class BaseCommand(ABC):
         """
         spreadsheet = await self.find_spreadsheet(user_id=user_id, chat_id=chat_id)
         if spreadsheet is None:
-            await self.aiogram.send_message(chat_id, NO_TABLE_MESSAGE)
+            await self.aiogram.send_message(chat_id, t("errors.not_found.spreadsheet"))
             return None
         if not spreadsheet.is_ready:
-            await self.aiogram.send_message(chat_id, TABLE_CREATING_MESSAGE)
+            await self.aiogram.send_message(chat_id, t("errors.table_creating"))
             return None
         return spreadsheet
 

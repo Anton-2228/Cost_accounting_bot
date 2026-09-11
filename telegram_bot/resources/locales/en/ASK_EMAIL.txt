@@ -1,0 +1,3 @@
+Which email should get access to the spreadsheet?
+
+Send “-” to skip — you can grant access later in /menu.

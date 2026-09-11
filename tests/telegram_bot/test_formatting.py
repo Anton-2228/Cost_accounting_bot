@@ -20,6 +20,7 @@ from telegram_bot.formatting import (
     RecordFormatter,
     TableFormatter,
 )
+from telegram_bot.i18n import Language, language_scope, t_in
 from telegram_bot.parsers.results import ParsedRecord
 
 
@@ -286,3 +287,18 @@ class TestCheckFormatter:
             )
         )
         assert "\n\n" not in text
+
+
+def test_new_type_in_caseless_script_is_marked() -> None:
+    """В хинди нет регистра: новый тип отмечается пометкой, а не капсом."""
+    draft = _draft(DraftItem(name="दूध", amount=Decimal("1.00"), product_type="डेयरी"))
+    with language_scope(Language.HI):
+        text = CheckFormatter.types(draft, set())
+    assert f"डेयरी{t_in(Language.HI, 'format.check.new_suffix')}" in text
+
+
+def test_new_type_with_letter_case_is_shouted() -> None:
+    """Где регистр есть, капс остаётся: он заметнее любой пометки."""
+    draft = _draft(DraftItem(name="молоко", amount=Decimal("1.00"), product_type="молочка"))
+    text = CheckFormatter.types(draft, set())
+    assert "МОЛОЧКА" in text

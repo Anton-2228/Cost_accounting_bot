@@ -1,0 +1,2 @@
+Supprimer ce ticket ? Il disparaîtra de la file.
+Vous pourrez scanner à nouveau le même ticket papier.

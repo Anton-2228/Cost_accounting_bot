@@ -1,0 +1,216 @@
+# Короткие строки бота. Ключ — путь из таблиц через точку: `[buttons.menu]` и
+# поле `table` дают `buttons.menu.table`. Подстановки — `{имя}`, как у
+# `str.format`; буквальная фигурная скобка пишется двойной.
+#
+# Русский каталог — исходный: остальные языки переводятся с него, и тест
+# `test_i18n_catalog.py` следит, чтобы ключи и подстановки у всех совпадали.
+
+[access]
+admin_only = "Доступ запрещён"
+
+[errors]
+table_creating = "Таблица ещё создаётся — пришлю ссылку, как только будет готова"
+unavailable = "Сервис данных недоступен, попробуйте позже"
+unexpected = "Что-то пошло не так. Попробуйте ещё раз"
+
+[errors.not_found]
+spreadsheet = "Сначала создайте таблицу: /start"
+user = "Сначала создайте таблицу: /start"
+category = "Такой категории нет, либо она выключена"
+record = "Операции с таким id нет"
+period = "За этот период ещё ничего не записано"
+access = "Такой доступ не выдавался"
+check = "Этого чека уже нет в очереди"
+notification = "Этого сообщения уже нет"
+default = "Не нашёл того, о чём вы просите"
+
+[errors.conflict]
+spreadsheet_exists = "У вас уже есть таблица. Посмотреть: /menu"
+access_exists = "Этой почте доступ уже открыт"
+google_id_already_set = "К этой таблице уже привязан документ"
+check_already_saved = "Этот чек уже добавлен"
+check_already_processed = "Этот чек уже разобран — его операции в реестре"
+default = "Так сейчас нельзя"
+
+[errors.type_taken]
+named_with_category = "Тип «{product_type}» уже закреплён за категорией «{category}».\nВыберите её же или другой тип"
+named = "Тип «{product_type}» уже закреплён за другой категорией. Выберите другой тип"
+unnamed_with_category = "Этот тип уже закреплён за категорией «{category}».\nВыберите её же или другой тип"
+unnamed = "Этот тип уже закреплён за другой категорией. Выберите другой тип"
+
+[errors.validation]
+generic = "Так нельзя"
+period_closed = "Период с {start_date} закрыт"
+amount_not_positive = "Сумма должна быть больше нуля"
+filters_incompatible = "Так нельзя: условия запроса противоречат друг другу"
+period_target_mismatch = "Период указан не для того листа"
+
+[notification]
+table_ready = "Таблица готова: {url}"
+import_ok = "Лист «{sheet}» прочитан, правки сохранены"
+rollover_done = "Начался новый расчётный период с {start_date}"
+sync_failed = "Не удаётся обновить таблицу, попыток подряд: {attempts}. Проверьте, что доступ к документу не отозван."
+sync_terminal = "Таблицу не удалось обновить: {error}. Проверьте, что документ не удалён и доступ к нему не отозван — после этого таблица обновится сама."
+access_failed = "Не удалось открыть доступ к таблице для {email}. Проверьте адрес и добавьте его заново."
+fallback = "Пришло уведомление о таблице, но показать его я не смог. Загляните в таблицу — всё видно там."
+
+[notification.import_error]
+empty = "Добавьте хотя бы одну категорию"
+unknown_id = "В категориях в {row} строке неизвестный ID"
+flag_invalid = "В категориях в {row} строке {column} странный"
+income_equals_cost = "В категориях в {row} строке одинаковое значение у Income и Cost"
+name_empty = "В категориях в {row} строке Name пустой"
+name_not_one_word = "В категориях в {row} строке Name записан не одним словом"
+default_removed = "В категориях в {row} строке категория по умолчанию — её нельзя удалить"
+default_deactivated = "В категориях в {row} строке категория по умолчанию — её нельзя выключить"
+default_kind_changed = "В категориях в {row} строке категория по умолчанию — у неё нельзя поменять Income и Cost"
+duplicate_id = "В категориях один ID используется несколько раз"
+duplicate_name = "В категориях один name используется несколько раз"
+duplicate_association = "В категориях один association используется несколько раз"
+duplicate_product_type = "В категориях один product type используется несколько раз"
+
+[buttons]
+cancel = "Отмена"
+
+[buttons.menu]
+table = "Получить таблицу"
+sync = "Синхронизировать таблицу"
+email = "Дать доступ к таблице"
+unlink = "Отвязать таблицу от бота"
+settings = "Настройки"
+
+[buttons.start]
+create_table = "Создать таблицу"
+
+[buttons.settings]
+language = "Язык"
+llm_costs = "Траты на LLM"
+
+[buttons.check]
+done = "Готово"
+skip = "Отложить"
+delete = "Удалить"
+
+[buttons.check_delete]
+confirm = "Да, удалить"
+decline = "Нет"
+
+[language]
+choose = "Выберите язык:"
+# Подпись над выбором на `/start` всегда берётся из английского каталога: её
+# читает и тот, кто язык ещё не выбирал. Здесь ключ — ради сверки каталогов.
+choose_start = "Выберите язык:"
+changed = "Язык: русский"
+
+[table_email]
+skipped = "Хорошо, доступ не выдаю"
+
+[table_unlink]
+phrase = "ПОДТВЕРЖДАЮ ОТВЯЗЫВАНИЕ"
+
+[record_delete]
+bad_id = "«{raw}» не похоже на id. Нужно так: /del 42"
+
+[settings_llm]
+user_not_found = "Пользователь {telegram_id} не найден. Пришлите другой id."
+
+[parse]
+category_not_found = "Категории «{value}» нет, либо она выключена.\nЕсть такие: {hint}"
+hint_more = "{shown} и другие"
+
+[parse.amount]
+invalid = "«{raw}» не похоже на сумму"
+not_positive = "Сумма должна быть больше нуля"
+too_big = "Сумма слишком большая"
+too_precise = "В сумме больше двух знаков после запятой"
+
+[parse.record]
+usage = "Нужно так: /add валюта сумма категория пометка"
+bad_currency = "«{word}» не похоже на валюту.\nВалюту можно так: {hint}\n{usage}"
+notes_too_long = "Пометка длиннее {limit} символов"
+
+[parse.currency]
+hint = "рубли, доллары, евро, динары"
+
+[parse.check]
+usage = "Не понял правку. Нужно так: «1,3 - молочка», по строке на каждую правку.\nЕсли всё верно — нажмите «Готово»"
+repeated = "Позиция {numbers} указана дважды — оставьте одну правку"
+value_too_long = "Значение длиннее {limit} символов"
+no_position = "Позиции №{number} в чеке нет. Всего позиций: {count}"
+
+[parse.onboarding]
+title_empty = "Название не может быть пустым"
+title_too_long = "Название длиннее {limit} символов"
+not_a_number = "«{raw}» не похоже на число"
+reset_day_range = "День должен быть от {min} до {max}: этот день есть в каждом месяце"
+timezone_too_long = "Слишком длинное название пояса"
+timezone_unknown = "Пояса «{name}» не существует. Пример: Europe/Moscow"
+email_too_long = "Слишком длинный адрес"
+email_invalid = "Это не похоже на адрес почты"
+
+[receipt]
+unnamed_product = "Без названия"
+manual_tail = "Внесите покупки вручную через /add, а чек уберите кнопкой «Удалить»"
+remove_tail = "Убрать чек из очереди можно кнопкой «Удалить»"
+unexpected_shape = "Расшифровка этого чека неожиданной формы — разобрать её не могу."
+refund = "Чеки-возвраты пока не поддерживаются, внесите операцию вручную."
+no_items = "В расшифровке чека нет ни одной позиции — разбирать нечего."
+items_shape = "Позиции чека записаны не так, как ожидалось — разобрать не могу."
+not_kopecks = "Суммы в расшифровке чека записаны не в копейках — разобрать не могу."
+not_numbers = "Суммы в расшифровке чека записаны не числами — разобрать не могу."
+negative_item = "В чеке есть позиция с отрицательной суммой — внесите её вручную."
+no_total = "В чеке не нашлось итоговой суммы, сверить позиции не с чем."
+mismatch = "Сумма позиций не сошлась с итогом чека: {items} против {total}.\nЗаписывать такой чек не буду — внесите покупки вручную через /add"
+not_sale = "Это не обычная продажа, а «{invoice_type}» — такие чеки пока не разбираю, внесите операцию вручную."
+unknown_format = "Чеки этого формата я пока не разбираю."
+
+[currency.sign]
+RUB = "₽"
+USD = "$"
+EUR = "€"
+RSD = "дин."
+
+[format]
+money = "{amount} {sign}"
+
+[format.record]
+saved_expense = "Записал расход: {amount}"
+saved_income = "Записал доход: {amount}"
+category = "Категория: {title}"
+notes = "Пометка: {notes}"
+date = "Дата: {date}"
+id = "id: {id}"
+deleted = "Удалил операцию: {amount}"
+
+[format.table]
+creating = "Таблица «{title}» ещё создаётся — пришлю ссылку, как только будет готова"
+link = "Таблица «{title}»: {url}"
+
+[format.check]
+title = "Чек"
+title_place = "Чек: {place}"
+purchased = "Куплено: {when}"
+total = "Итого: {amount}"
+items = "Позиций: {count}"
+queue_left = "Ещё в очереди: {count}"
+saved = "Записано операций: {count}"
+learned = "Запомнил: {name} → {product_type}"
+finished = "Чеки закончились."
+finished_saved = "Записано: {count}."
+finished_skipped = "Пропущено: {count} — они остались в списке, /check покажет их снова."
+new_suffix = " (новый)"
+
+[format.llm]
+title = "Траты на модель, пользователь {telegram_id}"
+no_spreadsheets = "У пользователя нет ни одной таблицы."
+no_usages = "Обращений к модели не было."
+outside_periods = "вне периодов"
+total = "Итого: {totals}"
+tables = "Таблиц: {count}"
+tables_unlinked = "Таблиц: {count}, из них отвязанных: {unlinked}"
+spreadsheet = "«{title}»"
+spreadsheet_unlinked = "«{title}» (отвязана)"
+tokens = "{count} токенов"
+calls = "{count} вызовов"
+less_than = "менее {amount}"
+unknown_cost = "Без известной цены: {count}"

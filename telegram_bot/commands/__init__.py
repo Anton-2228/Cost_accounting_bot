@@ -12,6 +12,7 @@ from telegram_bot.commands.check import CheckCommand
 from telegram_bot.commands.check_delete import CheckDeleteCommand
 from telegram_bot.commands.check_skip import CheckSkipCommand
 from telegram_bot.commands.help import HelpCommand
+from telegram_bot.commands.language import LanguageCommand
 from telegram_bot.commands.manager import Manager
 from telegram_bot.commands.menu import MenuCommand
 from telegram_bot.commands.record_add import RecordAddCommand
@@ -24,6 +25,7 @@ from telegram_bot.commands.table_email import TableEmailCommand
 from telegram_bot.commands.table_sync import TableSyncCommand
 from telegram_bot.commands.table_unlink import TableUnlinkCommand
 from telegram_bot.enums import CommandName
+from telegram_bot.languages import LanguageStore
 from telegram_bot.notifications import NotificationCatchUp
 
 
@@ -34,6 +36,7 @@ def get_commands(
     catch_up: NotificationCatchUp,
     ai: AiClient,
     access: AccessGuard,
+    languages: LanguageStore,
 ) -> dict[str, BaseCommand]:
     """Собирает реестр команд.
 
@@ -68,6 +71,7 @@ def get_commands(
         CommandName.CHECK_DEL: CheckDeleteCommand(*arguments, check),
         CommandName.SETTINGS: settings,
         CommandName.SETTINGS_LLM: SettingsLlmCostsCommand(*arguments, settings),
+        CommandName.LANGUAGE: LanguageCommand(*arguments, languages),
     }
 
 

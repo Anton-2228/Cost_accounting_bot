@@ -12,12 +12,8 @@ from telegram_bot.api_client import ApiGateway
 from telegram_bot.commands.base_command import BaseCommand
 from telegram_bot.commands.check import CheckCommand
 from telegram_bot.commands.manager import Manager
+from telegram_bot.i18n import t
 from telegram_bot.notifications import NotificationCatchUp
-from telegram_bot.resources.messages import (
-    CHECK_LOST_MESSAGE,
-    CHECK_SKIPPED_MESSAGE,
-    CHECK_STALE_BUTTON_MESSAGE,
-)
 
 
 class CheckSkipCommand(BaseCommand):
@@ -68,11 +64,11 @@ class CheckSkipCommand(BaseCommand):
         draft = await self.check.current_draft(state)
         if draft is None:
             await self.finish(chat_id=chat_id, state=state)
-            await self.aiogram.send_message(chat_id, CHECK_LOST_MESSAGE)
+            await self.aiogram.send_message(chat_id, t("text.check_lost"))
             return
 
         if not self.check.is_current(callback.data, draft):
-            await self.aiogram.send_message(chat_id, CHECK_STALE_BUTTON_MESSAGE)
+            await self.aiogram.send_message(chat_id, t("text.check_stale_button"))
             return
 
         spreadsheet = await self.spreadsheet_for(user_id=telegram_id, chat_id=chat_id)
@@ -80,5 +76,5 @@ class CheckSkipCommand(BaseCommand):
             return
 
         await self.check.add_skipped(state, draft.check_id)
-        await self.aiogram.send_message(chat_id, CHECK_SKIPPED_MESSAGE)
+        await self.aiogram.send_message(chat_id, t("text.check_skipped"))
         await self.check.show_next(chat_id=chat_id, state=state, spreadsheet=spreadsheet)

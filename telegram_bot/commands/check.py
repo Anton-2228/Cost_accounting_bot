@@ -40,6 +40,7 @@ from telegram_bot.api_client.checks import CommitItem, NewProductType
 from telegram_bot.api_client.errors import ApiConflictError, ApiError
 from telegram_bot.api_client.models import (
     Category,
+    CategoryKind,
     Check,
     LlmEntityKind,
     LlmOperation,
@@ -53,40 +54,17 @@ from telegram_bot.commands.manager import Manager
 from telegram_bot.enums import CommandName, FsmDataKeys
 from telegram_bot.errors import TYPE_TAKEN_REASON, ApiErrorPresenter
 from telegram_bot.formatting import CheckFormatter
+from telegram_bot.i18n import current_language, t
 from telegram_bot.logging import get_logger
 from telegram_bot.notifications import NotificationCatchUp
 from telegram_bot.parsers import AssociationMatcher, CheckParser, ParseError
-from telegram_bot.resources.messages import (
-    CHECK_AI_UNAVAILABLE_MESSAGE,
-    CHECK_ASK_CATEGORIES_MESSAGE,
-    CHECK_ASK_TYPES_MESSAGE,
-    CHECK_BROKEN_MESSAGE,
-    CHECK_LOST_MESSAGE,
-    CHECK_NO_CATEGORY_MESSAGE,
-    CHECK_QUEUE_EMPTY_MESSAGE,
-    CHECK_STALE_BUTTON_MESSAGE,
-)
 from telegram_bot.states import States
 
 logger = get_logger(__name__)
 
-#: Надпись на кнопке перехода к следующей стадии.
-_DONE_BUTTON = "Готово"
-
 #: Префикс `callback_data`. Дальше — стадия и `check_id`: без него кнопка от
 #: предыдущего чека применилась бы к текущему, ровно как в старой версии.
 _DONE_PREFIX = "check_done"
-
-#: Кнопки судьбы чека. Команд `/check_skip` и `/check_del` больше нет: они были
-#: осмысленны ровно внутри разбора и нигде больше, а набирать их приходилось
-#: посреди кнопочного диалога.
-#:
-#: Надписи и префиксы живут здесь, рядом с клавиатурой, хотя обслуживают их
-#: отдельные команды: те импортируют `check.py` ради очереди и черновика, и
-#: обратный импорт замкнул бы круг. Префикс совпадает с ключом команды — по
-#: нему нажатие и находит обработчик.
-SKIP_BUTTON = "Отложить"
-DELETE_BUTTON = "Удалить"
 
 #: Метки стадий в `callback_data`. Короткие и свои, а не строка состояния:
 #: `States.CHECK_TYPES.state` — это «States:CHECK_TYPES», и двоеточие внутри
@@ -152,11 +130,11 @@ class CheckCommand(BaseCommand):
         draft = await self._draft(state)
         if draft is None:
             await self.finish(chat_id=chat_id, state=state)
-            await self.aiogram.send_message(chat_id, CHECK_LOST_MESSAGE)
+            await self.aiogram.send_message(chat_id, t("text.check_lost"))
             return
 
         if not self.is_current(callback.data, draft):
-            await self.aiogram.send_message(chat_id, CHECK_STALE_BUTTON_MESSAGE)
+            await self.aiogram.send_message(chat_id, t("text.check_stale_button"))
             return
 
         spreadsheet = await self.spreadsheet_for(user_id=callback.from_user.id, chat_id=chat_id)
@@ -190,7 +168,7 @@ class CheckCommand(BaseCommand):
         pending = [check for check in checks if check.id not in skipped]
         if not pending:
             text = (
-                CHECK_QUEUE_EMPTY_MESSAGE
+                t("text.check_queue_empty")
                 if not saved and not skipped
                 else CheckFormatter.finished(saved=saved, skipped=len(skipped))
             )
@@ -242,7 +220,7 @@ class CheckCommand(BaseCommand):
             check_id=check.id,
             retail_place=receipt.retail_place,
             purchased_at=(
-                receipt.purchased_at.strftime("%d.%m.%Y %H:%M") if receipt.purchased_at else ""
+                receipt.purchased_at.isoformat(timespec="minutes") if receipt.purchased_at else ""
             ),
             total=receipt.total,
             currency=receipt.currency,
@@ -300,11 +278,12 @@ class CheckCommand(BaseCommand):
             answer, usage = await self.ai.suggest_types(
                 [draft.items[number - 1].name for number in unknown],
                 known_types,
+                language=current_language(),
             )
         except AiError as error:
             logger.warning("Модель не подсказала типы: %s", error)
             await self.finish(chat_id=chat_id, state=state)
-            await self.aiogram.send_message(chat_id, CHECK_AI_UNAVAILABLE_MESSAGE)
+            await self.aiogram.send_message(chat_id, t("text.check_ai_unavailable"))
             return False
 
         await self._report_usage(
@@ -365,7 +344,7 @@ class CheckCommand(BaseCommand):
         """Печатает список «товар → тип» и клавиатуру стадии.
 
         Справочник нужен не для подбора, а для показа: тип, которого нет ни у
-        одной категории, печатается капсом — он будет заведён при записи чека.
+        одной категории, выделяется — он будет заведён при записи чека.
 
         Блок из двух сообщений, клавиатура — у нижнего: список бывает длинным,
         и кнопки, приклеенные к его началу, уехали бы за край экрана.
@@ -379,7 +358,7 @@ class CheckCommand(BaseCommand):
         await self.ask(
             chat_id=chat_id,
             state=state,
-            text=CHECK_ASK_TYPES_MESSAGE,
+            text=t("text.check_ask_types"),
             rows=self.stage_rows(draft, stage=_STAGE_TYPES),
         )
 
@@ -393,7 +372,7 @@ class CheckCommand(BaseCommand):
         await self.ask(
             chat_id=chat_id,
             state=state,
-            text=CHECK_BROKEN_MESSAGE,
+            text=t("text.check_broken"),
             rows=self.stage_rows(draft, stage=None),
         )
 
@@ -465,17 +444,19 @@ class CheckCommand(BaseCommand):
             product_type for product_type in draft.types() if product_type not in by_type
         ]
 
+        default = _default_expense(categories)
         suggested: dict[str, str] = {}
         if unknown_types:
             try:
                 answer, usage = await self.ai.suggest_categories(
                     unknown_types,
                     [category.title for category in categories],
+                    default_category=default.title if default is not None else None,
                 )
             except AiError as error:
                 logger.warning("Модель не подсказала категории: %s", error)
                 await self.finish(chat_id=chat_id, state=state)
-                await self.aiogram.send_message(chat_id, CHECK_AI_UNAVAILABLE_MESSAGE)
+                await self.aiogram.send_message(chat_id, t("text.check_ai_unavailable"))
                 return
 
             await self._report_usage(
@@ -490,7 +471,6 @@ class CheckCommand(BaseCommand):
                 if title:
                     suggested[product_type] = title
 
-        default = _by_title(categories, constants.DEFAULT_EXPENSE_CATEGORY)
         for item in draft.items:
             resolved = self._category_for(item, by_type, suggested, categories)
             category = resolved or default
@@ -544,7 +524,7 @@ class CheckCommand(BaseCommand):
         await self.ask(
             chat_id=chat_id,
             state=state,
-            text=CHECK_ASK_CATEGORIES_MESSAGE,
+            text=t("text.check_ask_categories"),
             rows=self.stage_rows(draft, stage=_STAGE_CATEGORIES),
         )
 
@@ -578,7 +558,7 @@ class CheckCommand(BaseCommand):
                 await self.ask(
                     chat_id=chat_id,
                     state=state,
-                    text=f"Категории «{edit.value}» нет, либо она выключена.\nЕсть такие: {hint}",
+                    text=t("parse.category_not_found", value=edit.value, hint=hint),
                     rows=self.stage_rows(draft, stage=_STAGE_CATEGORIES),
                 )
                 return
@@ -616,13 +596,13 @@ class CheckCommand(BaseCommand):
             await self.ask(
                 chat_id=chat_id,
                 state=state,
-                text=CHECK_NO_CATEGORY_MESSAGE,
+                text=t("text.check_no_category"),
                 rows=self.stage_rows(draft, stage=_STAGE_CATEGORIES),
             )
             return
 
         categories = await self.api.catalog.categories(spreadsheet.id)
-        default = _by_title(categories, constants.DEFAULT_EXPENSE_CATEGORY)
+        default = _default_expense(categories)
         default_id = default.id if default is not None else None
 
         try:
@@ -713,7 +693,7 @@ class CheckCommand(BaseCommand):
         draft = await self._draft(state)
         if draft is None:
             await self.finish(chat_id=message.chat.id, state=state)
-            await self.aiogram.answer_message(message, CHECK_LOST_MESSAGE)
+            await self.aiogram.answer_message(message, t("text.check_lost"))
         return draft
 
     async def _save_draft(self, state: FSMContext, draft: CheckDraft) -> None:
@@ -790,14 +770,20 @@ class CheckCommand(BaseCommand):
         `check_id` едет в каждой `callback_data`: кнопка живёт в переписке
         дольше своего чека, и без номера нажатая на прошлом блоке «Удалить»
         снесла бы чек, который разбирают сейчас.
+
+        Кнопки судьбы чека собираются здесь, рядом с клавиатурой, хотя
+        обслуживают их отдельные команды: те импортируют `check.py` ради очереди
+        и черновика, и обратный импорт замкнул бы круг. Команд `/check_skip` и
+        `/check_del` больше нет: они были осмысленны ровно внутри разбора, а
+        набирать их приходилось посреди кнопочного диалога.
         """
         rows: list[tuple[tuple[str, str], ...]] = []
         if stage is not None:
-            rows.append(((_DONE_BUTTON, f"{_DONE_PREFIX}:{stage}:{draft.check_id}"),))
+            rows.append(((t("buttons.check.done"), f"{_DONE_PREFIX}:{stage}:{draft.check_id}"),))
         rows.append(
             (
-                (SKIP_BUTTON, f"{CommandName.CHECK_SKIP}:{draft.check_id}"),
-                (DELETE_BUTTON, f"{CommandName.CHECK_DEL}:{draft.check_id}"),
+                (t("buttons.check.skip"), f"{CommandName.CHECK_SKIP}:{draft.check_id}"),
+                (t("buttons.check.delete"), f"{CommandName.CHECK_DEL}:{draft.check_id}"),
             )
         )
         rows.append(cancel_row(BRANCH_CHECK))
@@ -819,6 +805,20 @@ class CheckCommand(BaseCommand):
 def _product_types(categories: list[Category]) -> set[str]:
     """Все типы товаров, закреплённые за категориями документа."""
     return {product_type for item in categories for product_type in item.product_types}
+
+
+def _default_expense(categories: list[Category]) -> Category | None:
+    """Корзина расходов: категория по умолчанию вида «расход».
+
+    По флагу, а не по названию: название на языке пользователя и может быть
+    переименовано в листе. Корзины может не оказаться вовсе — у таблицы, где её
+    переименовали до появления флага, — и тогда позиция, которой не нашлось
+    категории, так и останется без неё до правки пользователем.
+    """
+    return next(
+        (item for item in categories if item.is_default and item.kind is CategoryKind.EXPENSE),
+        None,
+    )
 
 
 def _by_title(categories: list[Category], title: str | None) -> Category | None:

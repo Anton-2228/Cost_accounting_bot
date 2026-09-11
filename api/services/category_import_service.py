@@ -62,7 +62,12 @@ class CategoryImportService(BaseSpreadsheetService):
         existing = await self._categories.list_by_spreadsheet(spreadsheet_id)
         by_id = {category.id: category for category in existing if category.id is not None}
 
-        error = validation.validate_category_rows(padded, set(by_id))
+        defaults = {
+            category_id: category.kind is CategoryKind.INCOME
+            for category_id, category in by_id.items()
+            if category.is_default
+        }
+        error = validation.validate_category_rows(padded, set(by_id), defaults=defaults)
         if error is not None:
             await self._notifications.notify(
                 spreadsheet_id, NotificationKind.IMPORT_ERROR, error
@@ -120,6 +125,10 @@ class CategoryImportService(BaseSpreadsheetService):
                     kind=_kind(row),
                     status=_status(row[1]),
                     title=row[4].strip(),
+                    # Флаг переносится явно: `update` переписывает все колонки
+                    # из доменной модели, и без этой строки любой импорт листа
+                    # молча снимал бы с корзины её роль.
+                    is_default=current.is_default,
                 )
             )
             assert updated is not None

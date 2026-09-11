@@ -23,6 +23,7 @@ from api.enums import (
     CheckKind,
     Currency,
     EntityStatus,
+    Language,
     LlmEntityKind,
     LlmOperation,
     NotificationKind,
@@ -106,5 +107,11 @@ LLM_OPERATION = SAEnum(
 LLM_ENTITY_KIND = SAEnum(
     LlmEntityKind,
     name="llm_entity_kind",
+    metadata=Base.metadata,
+)
+
+LANGUAGE = SAEnum(
+    Language,
+    name="language",
     metadata=Base.metadata,
 )

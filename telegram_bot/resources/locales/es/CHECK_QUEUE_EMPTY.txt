@@ -1,0 +1,1 @@
+No hay recibos sin procesar. Escanea un recibo en la app del bot y vuelve.

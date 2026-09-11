@@ -161,7 +161,8 @@ async def test_terminal_failure_notifies_immediately(
 
     alerts = await UserNotificationRepository(session).list_undelivered(spreadsheet.id)
     assert [item.kind for item in alerts] == [NotificationKind.SYNC_FAILED]
-    assert "403" in alerts[0].text
+    assert alerts[0].code == "sync_terminal"
+    assert "403" in alerts[0].params["error"]
 
     # Задача осталась в очереди: доступ могут вернуть, и лист догонит сам.
     stored = (await tasks.list_by_spreadsheet(spreadsheet.id))[0]

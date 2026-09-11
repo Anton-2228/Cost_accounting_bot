@@ -9,7 +9,8 @@ from aiogram.types import Message
 
 from telegram_bot.commands.base_command import BaseCommand
 from telegram_bot.enums import CommandName
-from telegram_bot.resources.messages import MENU_MESSAGE
+from telegram_bot.i18n import t
+
 
 #: Кнопки экрана: надпись и `callback_data`. Префикс `callback_data` совпадает с
 #: ключом команды, которая кнопку обслуживает, — по нему нажатие и находит
@@ -18,13 +19,15 @@ from telegram_bot.resources.messages import MENU_MESSAGE
 #:
 #: Порядок значим: `AiogramWrapper.inline_keyboard` кладёт по кнопке в ряд, и
 #: список читается сверху вниз ровно так, как выглядит на экране.
-MENU_BUTTONS = (
-    ("Получить таблицу", f"{CommandName.TABLE}:show"),
-    ("Синхронизировать таблицу", f"{CommandName.TABLE_SYNC}:run"),
-    ("Дать доступ к таблице", f"{CommandName.TABLE_EMAIL}:ask"),
-    ("Отвязать таблицу от бота", f"{CommandName.TABLE_UNLINK}:ask"),
-    ("Настройки", f"{CommandName.SETTINGS}:open"),
-)
+def menu_buttons() -> tuple[tuple[str, str], ...]:
+    """Кнопки экрана на языке обращения."""
+    return (
+        (t("buttons.menu.table"), f"{CommandName.TABLE}:show"),
+        (t("buttons.menu.sync"), f"{CommandName.TABLE_SYNC}:run"),
+        (t("buttons.menu.email"), f"{CommandName.TABLE_EMAIL}:ask"),
+        (t("buttons.menu.unlink"), f"{CommandName.TABLE_UNLINK}:ask"),
+        (t("buttons.menu.settings"), f"{CommandName.SETTINGS}:open"),
+    )
 
 
 class MenuCommand(BaseCommand):
@@ -62,6 +65,6 @@ class MenuCommand(BaseCommand):
         """
         await self.aiogram.send_message(
             chat_id,
-            MENU_MESSAGE,
-            keyboard=self.aiogram.inline_keyboard(MENU_BUTTONS),
+            t("text.menu"),
+            keyboard=self.aiogram.inline_keyboard(menu_buttons()),
         )

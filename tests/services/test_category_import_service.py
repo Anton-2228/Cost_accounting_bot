@@ -5,7 +5,8 @@ from __future__ import annotations
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from api.domain.cashed_record import CashedRecord
-from api.enums import EntityStatus, NotificationKind, SheetTarget
+from api.domain.user_message import UserMessage
+from api.enums import CategoryKind, EntityStatus, NotificationKind, SheetTarget
 from api.repositories.cashed_record_repository import CashedRecordRepository
 from api.repositories.category_repository import CategoryRepository
 from api.repositories.sheet_sync_task_repository import SheetSyncTaskRepository
@@ -162,9 +163,7 @@ async def test_inactive_flag_is_read(
     await session.commit()
     assert spreadsheet.id is not None
 
-    await category_import_service.import_rows(
-        spreadsheet.id, [_row(active="0", name="Скрытая")]
-    )
+    await category_import_service.import_rows(spreadsheet.id, [_row(active="0", name="Скрытая")])
 
     categories = CategoryRepository(session)
     assert await categories.list_by_spreadsheet(spreadsheet.id, only_active=True) == []
@@ -176,7 +175,7 @@ async def test_broken_sheet_writes_nothing_and_notifies(
     session: AsyncSession,
     category_import_service: CategoryImportService,
 ) -> None:
-    """Ошибка разбора: в БД ничего, пользователю — русский текст с номером строки.
+    """Ошибка разбора: в БД ничего, пользователю — отказ с номером строки.
 
     Лист правится целиком, и применить его половину значит оставить справочник в
     состоянии, которого пользователь не задумывал. Сказать об этом можно только
@@ -191,13 +190,21 @@ async def test_broken_sheet_writes_nothing_and_notifies(
         [_row(name="Хорошая"), _row(active="да", name="Плохая")],
     )
 
-    assert result.error == "В категориях в 2 строке Active странный"
+    assert result.error == UserMessage(
+        code="import_error.flag_invalid", params={"row": 2, "column": "Active"}
+    )
     assert (result.created, result.updated, result.deleted) == (0, 0, 0)
     assert await CategoryRepository(session).list_by_spreadsheet(spreadsheet.id) == []
 
     notifications = await UserNotificationRepository(session).list_undelivered(spreadsheet.id)
     assert [item.kind for item in notifications] == [NotificationKind.IMPORT_ERROR]
-    assert notifications[0].text == result.error
+    assert (notifications[0].code, notifications[0].params) == (
+        "import_error.flag_invalid",
+        {
+            "row": 2,
+            "column": "Active",
+        },
+    )
 
 
 async def test_successful_import_confirms_itself(
@@ -218,7 +225,7 @@ async def test_successful_import_confirms_itself(
 
     notifications = await UserNotificationRepository(session).list_undelivered(spreadsheet.id)
     assert [item.kind for item in notifications] == [NotificationKind.IMPORT_OK]
-    assert "Categories" in notifications[0].text
+    assert notifications[0].params == {"sheet": "Categories"}
 
 
 async def test_import_that_changes_nothing_still_confirms(
@@ -268,7 +275,7 @@ async def test_repeated_id_is_rejected(
         ],
     )
 
-    assert result.error == "В категориях один ID используется несколько раз"
+    assert result.error == UserMessage(code="import_error.duplicate_id")
 
 
 async def test_unknown_id_is_rejected(
@@ -283,10 +290,8 @@ async def test_unknown_id_is_rejected(
     await session.commit()
     assert spreadsheet.id is not None
 
-    result = await category_import_service.import_rows(
-        spreadsheet.id, [_row("4242", name="Чужая")]
-    )
-    assert result.error == "В категориях в 1 строке неизвестный ID"
+    result = await category_import_service.import_rows(spreadsheet.id, [_row("4242", name="Чужая")])
+    assert result.error == UserMessage(code="import_error.unknown_id", params={"row": 1})
 
 
 async def test_short_rows_are_padded(
@@ -298,9 +303,7 @@ async def test_short_rows_are_padded(
     await session.commit()
     assert spreadsheet.id is not None
 
-    result = await category_import_service.import_rows(
-        spreadsheet.id, [["", "1", "0", "1", "Еда"]]
-    )
+    result = await category_import_service.import_rows(spreadsheet.id, [["", "1", "0", "1", "Еда"]])
     assert result.error is None
     assert result.created == 1
 
@@ -328,3 +331,81 @@ async def test_import_marks_dependent_sheets_stale(
         SheetTarget.STATISTICS,
     }
     assert {task.period_id for task in tasks} == {None, period.id}
+
+
+async def test_import_keeps_the_default_flag(
+    session: AsyncSession,
+    category_import_service: CategoryImportService,
+) -> None:
+    """Переименованная в листе корзина остаётся корзиной.
+
+    `update` переписывает все колонки из доменной модели, и забытый при
+    импорте флаг снимался бы с корзины молча, при любой правке листа.
+    """
+    spreadsheet = await factories.create_spreadsheet(session, ready=True)
+    basket = await factories.create_category(session, spreadsheet, title="Корзина", is_default=True)
+    await session.commit()
+    assert spreadsheet.id is not None and basket.id is not None
+
+    result = await category_import_service.import_rows(
+        spreadsheet.id, [_row(str(basket.id), name="Прочее")]
+    )
+
+    assert result.error is None
+    stored = await CategoryRepository(session).get_for_spreadsheet(basket.id, spreadsheet.id)
+    assert stored is not None
+    assert (stored.title, stored.is_default) == ("Прочее", True)
+
+
+async def _rejected(
+    session: AsyncSession,
+    service: CategoryImportService,
+    row: list[str] | None = None,
+    **fields: str,
+) -> UserMessage | None:
+    """Отказ импорта строки с корзиной; корзина при этом цела."""
+    spreadsheet = await factories.create_spreadsheet(session, ready=True)
+    basket = await factories.create_category(session, spreadsheet, title="Корзина", is_default=True)
+    await session.commit()
+    assert spreadsheet.id is not None and basket.id is not None
+
+    sheet_row = row if row is not None else _row(str(basket.id), name="Корзина", **fields)
+    if row is not None:
+        sheet_row[0] = str(basket.id)
+    result = await service.import_rows(spreadsheet.id, [sheet_row])
+
+    stored = await CategoryRepository(session).get_for_spreadsheet(basket.id, spreadsheet.id)
+    assert stored is not None
+    assert (stored.status, stored.kind, stored.is_default) == (
+        EntityStatus.ACTIVE,
+        CategoryKind.EXPENSE,
+        True,
+    )
+    return result.error
+
+
+async def test_default_category_cannot_be_deleted(
+    session: AsyncSession,
+    category_import_service: CategoryImportService,
+) -> None:
+    """Очищенная строка корзины — отказ: неразложенному некуда было бы деться."""
+    error = await _rejected(session, category_import_service, row=["", "", "", "", "", "", ""])
+    assert error == UserMessage(code="import_error.default_removed", params={"row": 1})
+
+
+async def test_default_category_cannot_be_deactivated(
+    session: AsyncSession,
+    category_import_service: CategoryImportService,
+) -> None:
+    """Выключенная корзина пропала бы из подсказок, оставшись корзиной."""
+    error = await _rejected(session, category_import_service, active="0")
+    assert error == UserMessage(code="import_error.default_deactivated", params={"row": 1})
+
+
+async def test_default_category_cannot_change_kind(
+    session: AsyncSession,
+    category_import_service: CategoryImportService,
+) -> None:
+    """Корзина расходов не становится доходной: разбор чека остался бы без неё."""
+    error = await _rejected(session, category_import_service, income="1", cost="0")
+    assert error == UserMessage(code="import_error.default_kind_changed", params={"row": 1})
