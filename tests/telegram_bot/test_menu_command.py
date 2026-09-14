@@ -26,6 +26,7 @@ from aiogram.types import CallbackQuery, Chat, InlineKeyboardMarkup, Message
 from aiogram.types import User as TelegramUser
 
 from telegram_bot.access import AccessGuard
+from telegram_bot.ai import AiClient
 from telegram_bot.aiogram_wrapper import AiogramWrapper
 from telegram_bot.api_client import ApiGateway
 from telegram_bot.api_client.errors import ApiNotFoundError
@@ -35,6 +36,7 @@ from telegram_bot.commands.cancel import (
     BRANCH_EMAIL,
     CancelCommand,
 )
+from telegram_bot.commands.check import CheckCommand
 from telegram_bot.commands.language import LanguageCommand
 from telegram_bot.commands.manager import Manager
 from telegram_bot.commands.menu import OPEN_DATA, MenuCommand, menu_buttons
@@ -58,6 +60,20 @@ _TOKEN = "123456:AAHtesttesttesttesttesttesttesttest"
 #: `conftest.py`), а сверять с каталогом надёжнее, чем с копией строки.
 CANCEL_BUTTON_TEXT = t("buttons.cancel")
 MENU_BUTTONS = menu_buttons()
+
+
+def menu_data(name: str) -> str:
+    """`callback_data` кнопки меню по ключу её команды.
+
+    По команде, а не по месту в списке: порядок кнопок экрана — решение о его
+    внешнем виде, и тест, привязанный к номеру ряда, ломается от перестановки,
+    ничего при этом не найдя.
+    """
+    for _, data in MENU_BUTTONS:
+        if data.startswith(f"{name}:"):
+            return data
+    raise AssertionError(f"Кнопки команды {name} в меню нет")
+
 CREATE_TABLE_BUTTON = create_table_button()
 CONFIRM_WORD = t("table_unlink.phrase")
 NO_TABLE_MESSAGE = t("errors.not_found.spreadsheet")
@@ -228,11 +244,33 @@ class FakeSpreadsheets:
         self.deleted.append(spreadsheet_id)
 
 
+class FakeChecks:
+    """Очередь чеков: этим экранам она всегда пуста.
+
+    Нужна кнопке «Обработать чеки»: разбор самого чека проверяется в
+    `test_check_command`, а здесь — что кнопка доходит до своей команды.
+    """
+
+    async def list_unprocessed(self, spreadsheet_id: int) -> list[Any]:
+        return []
+
+
+class FakeAi:
+    """Модель, до которой пустая очередь дойти не может."""
+
+    async def suggest_types(self, *args: Any, **kwargs: Any) -> Any:
+        raise AssertionError("Пустая очередь не спрашивает модель")
+
+    async def suggest_categories(self, *args: Any, **kwargs: Any) -> Any:
+        raise AssertionError("Пустая очередь не спрашивает модель")
+
+
 class FakeApi:
-    """Шлюз api из единственного клиента, который нужен этим экранам."""
+    """Шлюз api из тех клиентов, что нужны этим экранам."""
 
     def __init__(self, spreadsheets: FakeSpreadsheets) -> None:
         self.spreadsheets = spreadsheets
+        self.checks = FakeChecks()
 
 
 class FakeCatchUp:
@@ -265,6 +303,7 @@ class Harness:
             {
                 CommandName.START: StartCommand(*arguments),
                 CommandName.MENU: MenuCommand(*arguments),
+                CommandName.CHECK: CheckCommand(*arguments, cast("AiClient", FakeAi())),
                 CommandName.CANCEL: CancelCommand(*arguments),
                 CommandName.TABLE: TableCommand(*arguments),
                 CommandName.TABLE_SYNC: TableSyncCommand(*arguments),
@@ -425,12 +464,12 @@ class TestMenuScreen:
     """Сам экран меню."""
 
     async def test_all_buttons_in_one_column(self) -> None:
-        """Пять кнопок в заданном порядке, по одной в ряд."""
+        """Шесть кнопок в заданном порядке, по одной в ряд."""
         harness = Harness(spreadsheet=_spreadsheet())
         await harness.command(CommandName.MENU, "/menu")
 
         assert harness.aiogram.buttons() == list(MENU_BUTTONS)
-        assert harness.aiogram.rows() == [1, 1, 1, 1, 1]
+        assert harness.aiogram.rows() == [1, 1, 1, 1, 1, 1]
 
     async def test_without_table_menu_is_refused(self) -> None:
         """Без таблицы меню бессмысленно: все его кнопки работают с документом."""
@@ -460,21 +499,21 @@ class TestMenuButtons:
     async def test_table_button_answers_link(self) -> None:
         """«Получить таблицу» — адрес документа."""
         harness = Harness(spreadsheet=_spreadsheet())
-        await harness.press(MENU_BUTTONS[0][1])
+        await harness.press(menu_data(CommandName.TABLE))
 
         assert harness.aiogram.said("docs.google.com/spreadsheets/d/google-1")
 
     async def test_sync_button_requests_sync(self) -> None:
         """«Синхронизировать таблицу» ставит задачу api."""
         harness = Harness(spreadsheet=_spreadsheet())
-        await harness.press(MENU_BUTTONS[1][1])
+        await harness.press(menu_data(CommandName.TABLE_SYNC))
 
         assert harness.spreadsheets.synced == [1]
 
     async def test_email_button_opens_dialog(self) -> None:
         """«Дать доступ к таблице» спрашивает почту и ждёт ответа."""
         harness = Harness(spreadsheet=_spreadsheet())
-        await harness.press(MENU_BUTTONS[2][1])
+        await harness.press(menu_data(CommandName.TABLE_EMAIL))
 
         assert await harness.state.get_state() == States.ADD_EMAIL.state
 
@@ -486,7 +525,7 @@ class TestMenuButtons:
     async def test_unlink_button_asks_confirmation(self) -> None:
         """«Отвязать таблицу от бота» отвязывает только после слова-подтверждения."""
         harness = Harness(spreadsheet=_spreadsheet())
-        await harness.press(MENU_BUTTONS[3][1])
+        await harness.press(menu_data(CommandName.TABLE_UNLINK))
 
         assert await harness.state.get_state() == States.CONFIRM_UNLINK_TABLE.state
         assert harness.spreadsheets.deleted == []
@@ -498,7 +537,7 @@ class TestMenuButtons:
     async def test_settings_button_opens_screen(self) -> None:
         """«Настройки» открывает экран настроек — у обычного пользователя заглушку."""
         harness = Harness(spreadsheet=_spreadsheet())
-        await harness.press(MENU_BUTTONS[4][1])
+        await harness.press(menu_data(CommandName.SETTINGS))
 
         assert harness.aiogram.said("Настройки")
 
@@ -521,7 +560,7 @@ class TestBack:
     async def test_settings_replace_the_menu(self) -> None:
         """«Настройки» переписывают меню, а внизу у них — «Назад» в меню."""
         harness = Harness(spreadsheet=_spreadsheet())
-        await harness.press(MENU_BUTTONS[4][1])
+        await harness.press(menu_data(CommandName.SETTINGS))
 
         assert harness.aiogram.edits[-1][:2] == (1, t("text.settings_user"))
         assert harness.aiogram.buttons()[-1] == (t("buttons.back"), OPEN_DATA)
@@ -603,9 +642,9 @@ class TestRouting:
     async def test_button_during_dialog_gets_a_hint(self) -> None:
         """Нажатие посреди диалога объясняется и несёт выход из ветки."""
         harness = Harness(spreadsheet=_spreadsheet())
-        await harness.press(MENU_BUTTONS[2][1])  # «Дать доступ к таблице»
+        await harness.press(menu_data(CommandName.TABLE_EMAIL))  # «Дать доступ к таблице»
         await harness.manager.launch_callback(
-            CommandName.CANCEL, _callback(MENU_BUTTONS[0][1]), harness.state
+            CommandName.CANCEL, _callback(menu_data(CommandName.TABLE)), harness.state
         )
 
         assert harness.aiogram.said(t("text.dialog_in_progress"))
@@ -620,7 +659,7 @@ class TestCancelButton:
     async def test_cancel_closes_the_dialog_and_shows_menu(self) -> None:
         """Отмена снимает состояние и возвращает туда, откуда диалог начали."""
         harness = Harness(spreadsheet=_spreadsheet())
-        await harness.press(MENU_BUTTONS[2][1])
+        await harness.press(menu_data(CommandName.TABLE_EMAIL))
 
         await harness.press(f"{CommandName.CANCEL}:{BRANCH_EMAIL}")
 
@@ -635,7 +674,7 @@ class TestCancelButton:
         неделю «Отмена» от почты снесла бы недоразобранный чек.
         """
         harness = Harness(spreadsheet=_spreadsheet())
-        await harness.press(MENU_BUTTONS[2][1])
+        await harness.press(menu_data(CommandName.TABLE_EMAIL))
 
         await harness.press(f"{CommandName.CANCEL}:{BRANCH_CHECK}")
 
@@ -658,7 +697,7 @@ class TestStartAsExit:
     async def test_start_clears_any_dialog(self) -> None:
         """Из ветки с кнопкой он тоже выпускает: кнопку можно и не найти."""
         harness = Harness(spreadsheet=_spreadsheet())
-        await harness.press(MENU_BUTTONS[2][1])
+        await harness.press(menu_data(CommandName.TABLE_EMAIL))
 
         await harness.restart()
 

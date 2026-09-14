@@ -70,6 +70,7 @@ cancel = "Cancel"
 back = "Back"
 
 [buttons.menu]
+checks = "Process receipts"
 table = "Get the spreadsheet"
 sync = "Sync the spreadsheet"
 email = "Share the spreadsheet"

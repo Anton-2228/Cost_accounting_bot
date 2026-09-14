@@ -123,6 +123,27 @@ class CheckCommand(BaseCommand):
         spreadsheet = await self.spreadsheet(message)
         if spreadsheet is None:
             return
+        await self._open_queue(chat_id, state, spreadsheet=spreadsheet)
+
+    async def _open_queue(
+        self,
+        chat_id: int,
+        state: FSMContext,
+        *,
+        user_id: int | None = None,
+        spreadsheet: Spreadsheet | None = None,
+    ) -> None:
+        """Начинает сессию разбора: с команды `/check` или с кнопки меню.
+
+        Один метод на оба входа: команда приносит сообщение, кнопка — только
+        номер пользователя, а дальше сессия у них общая до последнего чека.
+        """
+        if spreadsheet is None:
+            if user_id is None:
+                return
+            spreadsheet = await self.spreadsheet_for(user_id=user_id, chat_id=chat_id)
+            if spreadsheet is None:
+                return
 
         # Сессия начинается начисто: пропущенные в прошлый раз чеки снова
         # попадают в очередь — иначе «пропустить» означало бы «удалить».
@@ -135,11 +156,18 @@ class CheckCommand(BaseCommand):
         state: FSMContext,
         **kwargs: Any,
     ) -> None:
-        """Кнопки «Готово» и «Вернуться к типам»: переход между стадиями."""
+        """Кнопки ветки: вход из меню и переходы между стадиями."""
         await self.aiogram.answer_callback(callback)
         if callback.message is None or callback.from_user is None:
             return
         chat_id = callback.message.chat.id
+
+        # Кнопка меню «Обработать чеки» — до всего остального: очередь ещё не
+        # начата, черновика нет, и спрашивать о нём здесь нечего. Разбирается
+        # по префиксу, а не по состоянию: кнопка живёт вне состояний вовсе.
+        if (callback.data or "").startswith(f"{CommandName.CHECK}:"):
+            await self._open_queue(chat_id, state, user_id=callback.from_user.id)
+            return
 
         draft = await self._draft(state)
         if draft is None:
@@ -197,6 +225,9 @@ class CheckCommand(BaseCommand):
             # там, где отменять и удалять уже нечего.
             await self.finish(chat_id=chat_id, state=state)
             await self.aiogram.send_message(chat_id, text)
+            # И сразу меню: разбор кончается там же, откуда начался кнопкой, и
+            # оставлять пользователя с итогом без единого действия незачем.
+            await self.menu().show(chat_id=chat_id)
             return
 
         await self._start_check(
@@ -890,14 +921,15 @@ class CheckCommand(BaseCommand):
         """
         rows: list[tuple[tuple[str, str], ...]] = []
         if stage is not None:
-            first = [(t("buttons.check.done"), f"{_DONE_PREFIX}:{stage}:{draft.check_id}")]
-            # «Вернуться к типам» — только со второй стадии: с первой возвращаться
-            # некуда, а у неразобранного чека нет и самих стадий.
+            rows.append(((t("buttons.check.done"), f"{_DONE_PREFIX}:{stage}:{draft.check_id}"),))
+            # «К типам» — только со второй стадии: с первой возвращаться некуда,
+            # а у неразобранного чека нет и самих стадий. Своим рядом, а не
+            # рядом с «Готово»: это движение в обратную сторону, и стоять
+            # вплотную к кнопке, которая ведёт вперёд, ему незачем.
             if stage == _STAGE_CATEGORIES:
-                first.append(
-                    (t("buttons.check.back_to_types"), f"{_BACK_PREFIX}:{draft.check_id}")
+                rows.append(
+                    ((t("buttons.check.back_to_types"), f"{_BACK_PREFIX}:{draft.check_id}"),)
                 )
-            rows.append(tuple(first))
         rows.append(
             (
                 (t("buttons.check.skip"), f"{CommandName.CHECK_SKIP}:{draft.check_id}"),

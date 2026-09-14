@@ -70,6 +70,7 @@ cancel = "Annuler"
 back = "Retour"
 
 [buttons.menu]
+checks = "Traiter les tickets"
 table = "Obtenir le tableur"
 sync = "Synchroniser le tableur"
 email = "Partager le tableur"

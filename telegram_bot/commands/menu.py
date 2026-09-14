@@ -26,6 +26,9 @@ OPEN_DATA = f"{CommandName.MENU}:open"
 def menu_buttons() -> tuple[tuple[str, str], ...]:
     """Кнопки экрана на языке обращения."""
     return (
+        # Разбор чеков — первым: это единственное здесь действие, которое
+        # делается регулярно, и остальные кнопки экрана трогают саму таблицу.
+        (t("buttons.menu.checks"), f"{CommandName.CHECK}:run"),
         (t("buttons.menu.table"), f"{CommandName.TABLE}:show"),
         (t("buttons.menu.sync"), f"{CommandName.TABLE_SYNC}:run"),
         (t("buttons.menu.email"), f"{CommandName.TABLE_EMAIL}:ask"),

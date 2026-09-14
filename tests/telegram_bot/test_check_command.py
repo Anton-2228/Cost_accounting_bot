@@ -758,10 +758,11 @@ async def test_every_stage_can_drop_the_check() -> None:
     ]
 
     await harness.press_done()
-    # На второй стадии к «Готово» добавляется возврат: с первой возвращаться
-    # некуда, а со второй — есть куда.
+    # На второй стадии появляется возврат — своим рядом под «Готово»: с первой
+    # возвращаться некуда, а со второй есть куда.
     assert harness.aiogram.rows() == [
-        [_DONE_BUTTON, _BACK_BUTTON],
+        [_DONE_BUTTON],
+        [_BACK_BUTTON],
         [SKIP_BUTTON, DELETE_BUTTON],
         [CANCEL_BUTTON_TEXT],
     ]
@@ -885,6 +886,45 @@ async def test_unknown_category_edit_is_explained() -> None:
 
     assert harness.aiogram.said("Есть такие:")
     assert await harness.current_state() == States.CHECK_CATEGORIES.state
+
+
+async def test_menu_button_opens_the_queue() -> None:
+    """Кнопка меню «Обработать чеки» начинает сессию так же, как `/check`.
+
+    Черновика в этот момент нет, и спрашивать о нём нельзя: кнопка приходит
+    снаружи любого состояния.
+    """
+    harness = Harness(checks=[_check(1, ("молоко", 8990))], cached={"молоко": "молочка"})
+
+    await harness.press_data(f"{CommandName.CHECK}:run")
+
+    assert harness.aiogram.said("молоко")
+    assert await harness.current_state() == States.CHECK_TYPES.state
+
+
+async def test_menu_returns_when_the_queue_ends() -> None:
+    """Конец очереди возвращает в меню, а не оставляет итог без действий."""
+    harness = Harness(
+        checks=[_check(1, ("молоко", 8990))],
+        cached={"молоко": "молочка"},
+        ai=FakeAi(categories={1: "Еда"}),
+    )
+
+    await _walk_to_commit(harness)
+
+    assert harness.aiogram.said("Записано операций: 1")
+    assert harness.aiogram.last == t("text.menu")
+    assert await harness.current_state() is None
+
+
+async def test_empty_queue_also_returns_to_the_menu() -> None:
+    """Меню приходит и тогда, когда разбирать было нечего вовсе."""
+    harness = Harness(checks=[])
+
+    await harness.send("/check")
+
+    assert harness.aiogram.said(t("text.check_queue_empty"))
+    assert harness.aiogram.last == t("text.menu")
 
 
 async def test_deleted_item_does_not_become_a_record() -> None:

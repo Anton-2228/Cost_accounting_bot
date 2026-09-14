@@ -70,6 +70,7 @@ cancel = "Cancelar"
 back = "Atrás"
 
 [buttons.menu]
+checks = "Procesar recibos"
 table = "Ver la hoja de cálculo"
 sync = "Sincronizar la hoja"
 email = "Compartir la hoja"
