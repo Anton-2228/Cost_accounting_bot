@@ -87,6 +87,7 @@ llm_costs = "LLM costs"
 done = "Done"
 skip = "Postpone"
 delete = "Delete"
+back_to_types = "Back to types"
 
 [buttons.check_delete]
 confirm = "Yes, delete"
@@ -130,7 +131,7 @@ notes_too_long = "The note is longer than {limit} characters"
 hint = "rubles, dollars, euros, dinars"
 
 [parse.check]
-usage = "I didn't understand the correction. Like this: “1,3 - dairy”, one correction per line.\nIf everything is correct, press “Done”"
+usage = "I didn't understand the correction. Like this: “1,3 - dairy”, one correction per line.\nRemove an item with “!1”; “!1” again brings it back.\nIf everything is correct, press “Done”"
 repeated = "Item {numbers} is listed twice — keep one correction"
 value_too_long = "The value is longer than {limit} characters"
 no_position = "There is no item #{number} in the receipt. Total items: {count}"
@@ -198,6 +199,7 @@ finished = "No more receipts."
 finished_saved = "Recorded: {count}."
 finished_skipped = "Postponed: {count} — they stay in the list, /check will show them again."
 new_suffix = " (new)"
+excluded = "Removed items: {count} for {amount}"
 
 [format.llm]
 title = "LLM costs, user {telegram_id}"

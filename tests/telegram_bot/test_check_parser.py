@@ -1,4 +1,4 @@
-"""Тесты разбора правок «1,3 - молочка»."""
+"""Тесты разбора правок «1,3 - молочка» и удалений «!1,3»."""
 
 from __future__ import annotations
 
@@ -61,3 +61,51 @@ def test_value_length_is_checked_before_api() -> None:
     """Слишком длинное значение объясняется по-русски, а не 422 без текста."""
     with pytest.raises(ParseError):
         CheckParser.parse("1 - " + "я" * 100, count=1, max_value_length=64)
+
+
+def test_delete_line_has_no_value() -> None:
+    """«!1» — удаление позиции, а не правка: значения у неё нет."""
+    edits = CheckParser.parse("!1", count=3)
+    assert len(edits) == 1
+    assert edits[0].numbers == (1,)
+    assert edits[0].delete
+    assert edits[0].value == ""
+
+
+def test_delete_takes_several_numbers() -> None:
+    """«!1,2,13» убирает три позиции разом — теми же разделителями, что правка."""
+    assert CheckParser.parse("!1,2,13", count=13)[0].numbers == (1, 2, 13)
+    assert CheckParser.parse("!1 2", count=2)[0].numbers == (1, 2)
+
+
+def test_delete_mixes_with_edits_in_one_message() -> None:
+    """Удаление и правка живут в одном сообщении разными строками."""
+    edits = CheckParser.parse("!1\n2 - молочка", count=2)
+    assert [(edit.numbers, edit.delete, edit.value) for edit in edits] == [
+        ((1,), True, ""),
+        ((2,), False, "молочка"),
+    ]
+
+
+def test_delete_out_of_range_is_named() -> None:
+    """Номер вне списка отвергается так же, как у обычной правки."""
+    with pytest.raises(ParseError) as failure:
+        CheckParser.parse("!5", count=3)
+    assert "5" in failure.value.message
+
+
+def test_delete_refuses_a_value() -> None:
+    """«!1 - молочка» одинаково читается двумя способами — значит, отказ.
+
+    И «!» без номеров тоже: удалять нечего, а угадывать «наверное, все» —
+    худшее, что тут можно сделать.
+    """
+    for text in ("!1 - молочка", "!", "!х"):
+        with pytest.raises(ParseError):
+            CheckParser.parse(text, count=3)
+
+
+def test_delete_and_edit_of_one_position_is_refused() -> None:
+    """«!1» и «1 - молочка» рядом — отказ: непонятно, чего хотели."""
+    with pytest.raises(ParseError):
+        CheckParser.parse("!1\n1 - молочка", count=3)

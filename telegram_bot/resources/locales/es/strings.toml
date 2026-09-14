@@ -87,6 +87,7 @@ llm_costs = "Gastos en LLM"
 done = "Listo"
 skip = "Aplazar"
 delete = "Eliminar"
+back_to_types = "Volver a los tipos"
 
 [buttons.check_delete]
 confirm = "Sí, eliminar"
@@ -130,7 +131,7 @@ notes_too_long = "La nota supera los {limit} caracteres"
 hint = "rublos, dólares, euros, dinares"
 
 [parse.check]
-usage = "No entendí la corrección. Así: «1,3 - lácteos», una corrección por línea.\nSi todo está bien, pulsa «Listo»"
+usage = "No entendí la corrección. Así: «1,3 - lácteos», una corrección por línea.\nElimina un artículo con «!1»; «!1» de nuevo lo devuelve.\nSi todo está bien, pulsa «Listo»"
 repeated = "El artículo {numbers} aparece dos veces: deja una sola corrección"
 value_too_long = "El valor supera los {limit} caracteres"
 no_position = "No hay ningún artículo n.º {number} en el recibo. Total de artículos: {count}"
@@ -198,6 +199,7 @@ finished = "No hay más recibos."
 finished_saved = "Registrados: {count}."
 finished_skipped = "Aplazados: {count}; siguen en la lista y /check los volverá a mostrar."
 new_suffix = " (nuevo)"
+excluded = "Artículos eliminados: {count} por {amount}"
 
 [format.llm]
 title = "Gastos en LLM, usuario {telegram_id}"

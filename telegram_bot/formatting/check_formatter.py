@@ -13,7 +13,9 @@
 * **новый тип печатается КАПСОМ.** Единственный способ увидеть, что тип ещё не
   существует ни у одной категории и будет заведён. В письме без регистра
   (хинди) капс ничего не меняет, и там вместо него пометка из каталога;
-* **значение жирным.** Список из полусотни позиций иначе сливается в стену.
+* **значение жирным.** Список из полусотни позиций иначе сливается в стену;
+* **удалённая позиция зачёркнута на своём месте.** Не убрана из списка и не
+  сдвинута в конец: вернуть её можно только по номеру.
 
 Жирный требует HTML, а названия товаров приезжают из чека — то есть из внешнего
 источника. Поэтому всё подставляемое проходит через `html.escape`: товар
@@ -25,6 +27,7 @@ from __future__ import annotations
 
 from collections.abc import Callable, Collection, Sequence
 from datetime import datetime
+from decimal import Decimal
 from html import escape
 
 from telegram_bot.checks.draft import CheckDraft, DraftItem
@@ -70,7 +73,11 @@ class CheckFormatter:
             draft,
             confirmed=lambda item: item.cached_type is not None,
             value=lambda item: item.product_type,
-            shout=lambda item: bool(item.product_type) and item.product_type not in known_types,
+            shout=lambda item: (
+                not item.deleted
+                and bool(item.product_type)
+                and item.product_type not in known_types
+            ),
         )
 
     @classmethod
@@ -96,13 +103,36 @@ class CheckFormatter:
 
         Пустой блок не оставляет за собой лишнего разрыва: у чека, где все
         товары знакомы, нижней части просто нет.
+
+        Удалённая позиция остаётся на своём месте и со своим номером, а не
+        уезжает в конец списка: вернуть её можно только по номеру, и номер,
+        разъезжающийся с каждым «!N», сделал бы возврат угадыванием.
         """
         known: list[str] = []
         rest: list[str] = []
         for number, item in enumerate(draft.items, 1):
             entry = cls._entry(number, item, value(item), shout=shout(item))
             (known if confirmed(item) else rest).append(entry)
-        return "\n\n".join(block for block in ("\n".join(known), "\n".join(rest)) if block)
+        blocks = ["\n".join(known), "\n".join(rest), cls._excluded(draft)]
+        return "\n\n".join(block for block in blocks if block)
+
+    @staticmethod
+    def _excluded(draft: CheckDraft) -> str:
+        """Сводка по удалённым позициям или пустая строка, если их нет.
+
+        Нужна затем, что шапка чека печатается один раз и обновиться не может:
+        без этой строки «Итого» над списком продолжало бы обещать сумму, на
+        которую чек уже не запишется.
+        """
+        excluded = draft.excluded()
+        if not excluded:
+            return ""
+        amount = sum((item.amount for item in excluded), Decimal("0"))
+        return t(
+            "format.check.excluded",
+            count=len(excluded),
+            amount=MoneyFormatter.format(amount, draft.currency),
+        )
 
     @staticmethod
     def _entry(number: int, item: DraftItem, value: str | None, *, shout: bool) -> str:
@@ -111,11 +141,20 @@ class CheckFormatter:
         Номер стоит и у позиций из кэша, хотя в старой версии его там не было.
         Без номера их нельзя было поправить — и правка типа у уже знакомого
         товара молча терялась.
+
+        Удалённая позиция зачёркнута целиком, вместе со значением: значение у
+        неё остаётся живым — она вернётся с ним же, — но обещать по нему
+        операцию нельзя.
         """
         shown = value or _EMPTY
         if shout and value:
             shown = _emphasize_new(value)
-        return f"{number}) {escape(item.name)}\n{_INDENT}<b>{escape(shown)}</b>"
+        name = escape(item.name)
+        shown = escape(shown)
+        if item.deleted:
+            name = f"<s>{name}</s>"
+            shown = f"<s>{shown}</s>"
+        return f"{number}) {name}\n{_INDENT}<b>{shown}</b>"
 
     @staticmethod
     def saved(draft: CheckDraft, *, count: int) -> str:

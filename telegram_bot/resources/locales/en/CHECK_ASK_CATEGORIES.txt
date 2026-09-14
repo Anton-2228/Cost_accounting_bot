@@ -1,2 +1,3 @@
 Correct the categories with lines like “1,3 - groceries”, one correction per line.
+Remove an unwanted item with “!1” — “!1” again brings it back.
 If everything is correct, press “Done”.

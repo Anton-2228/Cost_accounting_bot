@@ -5,6 +5,14 @@
     1,3 - молочка
     2 - бытовая химия
 
+Строка, начатая с «!», не назначает значение, а убирает позиции из записи:
+
+    !4,5
+
+Обе формы живут в одном сообщении вперемешку и разбираются одним проходом:
+проверка «позиция указана дважды» обязана видеть их вместе, иначе «!1» и
+«1 - молочка» рядом означали бы неизвестно что.
+
 Разбор возвращает модель либо бросает :class:`ParseError` с готовым текстом.
 Протокол `{"status": "success"|"error"}`, которым старая версия
 отвечала именно в разборе чека, не воспроизводится: в боте один способ сообщить
@@ -66,6 +74,9 @@ class CheckParser:
         max_value_length: int | None,
     ) -> ParsedCheckEdit:
         """Разбирает одну строку правки."""
+        if line.startswith(constants.CHECK_DELETE_PREFIX):
+            return cls._parse_delete(line, count=count)
+
         head, separator, tail = line.partition(constants.CHECK_EDIT_SEPARATOR)
         if not separator:
             raise _usage()
@@ -77,6 +88,20 @@ class CheckParser:
             raise ParseError(t("parse.check.value_too_long", limit=max_value_length))
 
         return ParsedCheckEdit(numbers=cls._numbers(head, count=count), value=value)
+
+    @classmethod
+    def _parse_delete(cls, line: str, *, count: int) -> ParsedCheckEdit:
+        """Разбирает строку удаления: «!1,2,13».
+
+        Значения такая строка не принимает: «!1 - молочка» одинаково читается и
+        как «удалить», и как «назначить тип», и принять её значило бы выбрать
+        за пользователя одно из двух. Номера разбираются тем же `_numbers`, что
+        и у обычной правки, — вместе с проверкой диапазона и разделителями.
+        """
+        numbers = line[len(constants.CHECK_DELETE_PREFIX) :]
+        if constants.CHECK_EDIT_SEPARATOR in numbers:
+            raise _usage()
+        return ParsedCheckEdit(numbers=cls._numbers(numbers, count=count), delete=True)
 
     @staticmethod
     def _numbers(raw: str, *, count: int) -> tuple[int, ...]:

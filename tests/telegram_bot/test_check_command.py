@@ -59,6 +59,7 @@ _CHAT_ID = 7
 #: (см. `conftest.py`), а сверять с каталогом надёжнее, чем с копией строки.
 CANCEL_BUTTON_TEXT = t("buttons.cancel")
 _DONE_BUTTON = t("buttons.check.done")
+_BACK_BUTTON = t("buttons.check.back_to_types")
 SKIP_BUTTON = t("buttons.check.skip")
 DELETE_BUTTON = t("buttons.check.delete")
 _CONFIRM_BUTTON = t("buttons.check_delete.confirm")
@@ -473,9 +474,9 @@ class Harness:
     async def press_data(self, data: str) -> None:
         """Нажимает кнопку с явной `callback_data`: для устаревших кнопок."""
         prefix = data.split(":", maxsplit=1)[0]
-        # Единственный префикс, не совпадающий с ключом команды: «Готово»
-        # обслуживает сам разбор, и `main` разводит его тем же правилом.
-        name = CommandName.CHECK if prefix == "check_done" else prefix
+        # Префиксы, не совпадающие с ключом команды: «Готово» и «К типам»
+        # обслуживает сам разбор, и `main` разводит их тем же правилом.
+        name = CommandName.CHECK if prefix in {"check_done", "check_back"} else prefix
         await self.manager.launch_callback(name, _callback(data), self.state)
 
     async def current_state(self) -> str | None:
@@ -757,8 +758,10 @@ async def test_every_stage_can_drop_the_check() -> None:
     ]
 
     await harness.press_done()
+    # На второй стадии к «Готово» добавляется возврат: с первой возвращаться
+    # некуда, а со второй — есть куда.
     assert harness.aiogram.rows() == [
-        [_DONE_BUTTON],
+        [_DONE_BUTTON, _BACK_BUTTON],
         [SKIP_BUTTON, DELETE_BUTTON],
         [CANCEL_BUTTON_TEXT],
     ]
@@ -882,6 +885,197 @@ async def test_unknown_category_edit_is_explained() -> None:
 
     assert harness.aiogram.said("Есть такие:")
     assert await harness.current_state() == States.CHECK_CATEGORIES.state
+
+
+async def test_deleted_item_does_not_become_a_record() -> None:
+    """«!2» убирает позицию из записи, а сам чек записывается целиком.
+
+    Чек при этом не удаляется и помечается разобранным: сырьё остаётся в базе,
+    ключ среди живых строк занят, и повторный скан той же бумажки по-прежнему
+    отвергается.
+    """
+    harness = Harness(
+        checks=[_check(1, ("молоко", 8990), ("пакет", 700))],
+        cached={"молоко": "молочка", "пакет": "упаковка"},
+        ai=FakeAi(categories={1: "Еда"}),
+    )
+
+    await harness.send("/check")
+    await harness.send("!2")
+    await harness.press_done()
+    await harness.press_done()
+
+    committed = harness.checks.committed
+    assert len(committed) == 1
+    assert [item.product_name for item in committed[0]["items"]] == ["молоко"]
+    assert harness.checks.deleted == []
+    assert harness.aiogram.said("Записано операций: 1")
+
+
+async def test_repeated_bang_returns_the_item() -> None:
+    """Повторное «!2» возвращает позицию — с прежним типом и категорией.
+
+    Отдельного синтаксиса возврата нет намеренно: «!2» дважды — это «убрал» и
+    «передумал», и второе не должно отправлять позицию выясняться заново.
+    """
+    harness = Harness(
+        checks=[_check(1, ("молоко", 8990), ("пакет", 700))],
+        cached={"молоко": "молочка", "пакет": "упаковка"},
+        ai=FakeAi(categories={1: "Еда"}),
+    )
+
+    await harness.send("/check")
+    await harness.send("!2")
+    await harness.send("!2")
+    await harness.press_done()
+    await harness.press_done()
+
+    items = harness.checks.committed[0]["items"]
+    assert [item.product_name for item in items] == ["молоко", "пакет"]
+    assert [item.product_type for item in items] == ["молочка", "упаковка"]
+
+
+async def test_delete_works_on_the_categories_stage() -> None:
+    """Убрать позицию можно и на второй стадии, а не только на первой.
+
+    Заметить лишнюю строку можно в любой момент разбора, и отправлять за этим
+    в начало значило бы просить пройти его заново.
+    """
+    harness = Harness(
+        checks=[_check(1, ("молоко", 8990), ("пакет", 700))],
+        cached={"молоко": "молочка", "пакет": "упаковка"},
+        ai=FakeAi(categories={1: "Еда", 2: "Еда"}),
+    )
+
+    await harness.send("/check")
+    await harness.press_done()
+    await harness.send("!2")
+    await harness.press_done()
+
+    assert [item.product_name for item in harness.checks.committed[0]["items"]] == ["молоко"]
+
+
+async def test_deleted_item_teaches_nothing() -> None:
+    """Удалённая позиция не заводит тип и не попадает в «Запомнил».
+
+    Закрепить за категорией тип ради строки, которой не будет, значило бы
+    притянуть по нему следующие чеки.
+    """
+    harness = Harness(
+        checks=[_check(1, ("молоко", 8990), ("конфеты", 4000))],
+        cached={"молоко": "молочка"},
+        ai=FakeAi(types={1: "сладости"}, categories={1: "Еда"}),
+    )
+
+    await harness.send("/check")
+    await harness.send("!2")
+    await harness.press_done()
+    await harness.press_done()
+
+    assert harness.checks.committed[0]["new_product_types"] == []
+    assert not harness.aiogram.said("Запомнил: конфеты")
+
+
+async def test_check_without_a_single_item_is_not_recorded_nor_deleted() -> None:
+    """Чек, из которого убрали всё, остаётся в очереди.
+
+    Записывать нечего, а удалить — значило бы освободить ключ среди живых
+    строк и разрешить той же бумажке отсканироваться заново.
+    """
+    harness = Harness(
+        checks=[_check(1, ("молоко", 8990))],
+        cached={"молоко": "молочка"},
+        ai=FakeAi(categories={1: "Еда"}),
+    )
+
+    await harness.send("/check")
+    await harness.send("!1")
+    await harness.press_done()
+    await harness.press_done()
+
+    assert harness.checks.committed == []
+    assert harness.checks.deleted == []
+    assert harness.aiogram.said("записывать нечего")
+    assert await harness.current_state() == States.CHECK_CATEGORIES.state
+    # Кнопка «Удалить» рядом: убрать чек целиком по-прежнему можно.
+    assert DELETE_BUTTON in harness.aiogram.labels()
+
+
+async def test_back_to_types_does_not_ask_the_model_again() -> None:
+    """Возврат к типам ничего не пересчитывает и никуда не ходит.
+
+    Типы у всех позиций уже есть, и звать модель заново значило бы платить за
+    то, что и так известно.
+    """
+    harness = Harness(
+        checks=[_check(1, ("конфеты", 4000))],
+        ai=FakeAi(types={1: "сладости"}, categories={1: "Еда"}),
+    )
+
+    await harness.send("/check")
+    await harness.press_done()
+    await harness.press(_BACK_BUTTON)
+
+    assert await harness.current_state() == States.CHECK_TYPES.state
+    assert harness.ai.type_calls == [["конфеты"]]
+    assert harness.ai.category_calls == [["сладости"]]
+
+
+async def test_round_trip_recomputes_only_the_changed_type() -> None:
+    """Возврат к типам не затирает ручные правки категорий.
+
+    Пересчитывается только позиция, чей тип изменился: остальным категория уже
+    выведена из их нынешнего типа, и спрашивать о них модель заново значило бы
+    отменить ручной выбор пользователя его же кнопкой «назад».
+    """
+    harness = Harness(
+        checks=[_check(1, ("молоко", 8990), ("конфеты", 4000))],
+        cached={"молоко": "молочка"},
+        ai=FakeAi(types={1: "сладости"}, categories={1: "Еда"}),
+    )
+
+    await harness.send("/check")
+    await harness.press_done()
+    await harness.send("1 - прочее")  # руками: молоко в корзину
+
+    await harness.press(_BACK_BUTTON)
+    await harness.send("2 - шоколад")
+    await harness.press_done()
+
+    # Про «молочку» модель не спрашивали ни разу: тип закреплён за «Едой».
+    assert harness.ai.category_calls == [["сладости"], ["шоколад"]]
+
+    await harness.press_done()
+    items = harness.checks.committed[0]["items"]
+    assert [item.category_id for item in items] == [_BASKET.id, _FOOD.id]
+    # Корзина типов не получает никогда — даже выбранная руками.
+    assert [item.product_type for item in items] == [None, "шоколад"]
+
+
+async def test_delete_survives_a_failed_category_edit() -> None:
+    """Неизвестная категория в одной строке не отменяет удаление в другой.
+
+    Правки применяются только после разбора всех строк: иначе отказ на
+    последней оставлял бы первые применёнными и не сохранёнными.
+    """
+    harness = Harness(
+        checks=[_check(1, ("молоко", 8990), ("пакет", 700))],
+        cached={"молоко": "молочка", "пакет": "упаковка"},
+        ai=FakeAi(categories={1: "Еда", 2: "Еда"}),
+    )
+
+    await harness.send("/check")
+    await harness.press_done()
+    await harness.send("!2\n1 - несуществующая")
+
+    assert harness.aiogram.said("Есть такие:")
+
+    await harness.press_done()
+    # Удаление не применилось: сообщение отвергнуто целиком, обе позиции живы.
+    assert [item.product_name for item in harness.checks.committed[0]["items"]] == [
+        "молоко",
+        "пакет",
+    ]
 
 
 @pytest.mark.parametrize("text", ["", "мусор"])

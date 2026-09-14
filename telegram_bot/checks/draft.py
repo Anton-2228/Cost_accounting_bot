@@ -38,6 +38,14 @@ class DraftItem(BaseModel):
     #: Категория выведена из закреплённого типа, а не подсказана моделью.
     #: Различие видно в списке: проверять глазами стоит только второе.
     category_confirmed: bool = False
+    #: Позиция исключена из записи: операции по ней не будет. Тип и категория
+    #: при этом сохраняются — повторное «!1» обязано вернуть позицию готовой,
+    #: а не отправить её выясняться к модели заново.
+    deleted: bool = False
+    #: Тип, из которого выведена текущая категория. По нему возврат к типам
+    #: отличает позицию, чей тип изменился, от той, что уже разложена: вторую
+    #: пересчитывать нельзя — ручная правка категории иначе затирается.
+    category_for_type: str | None = None
 
 
 class CheckDraft(BaseModel):
@@ -84,8 +92,25 @@ class CheckDraft(BaseModel):
             return self.items[number - 1]
         return None
 
+    def alive(self) -> list[DraftItem]:
+        """Позиции, которые станут операциями.
+
+        Удалённая позиция остаётся в `items` и остаётся на своём номере: её
+        показывают зачёркнутой, и повторное «!1» обязано вернуть ту же самую.
+        Из записи она уходит только здесь.
+        """
+        return [item for item in self.items if not item.deleted]
+
+    def excluded(self) -> list[DraftItem]:
+        """Удалённые позиции — для строки-сводки под списком."""
+        return [item for item in self.items if item.deleted]
+
     def untyped(self) -> list[int]:
-        """Номера позиций без типа."""
+        """Номера позиций без типа.
+
+        Удалённые считаются наравне с остальными: тип им всё равно нужен —
+        вернуть позицию можно в любой момент, и она обязана вернуться готовой.
+        """
         return [number for number, item in enumerate(self.items, 1) if not item.product_type]
 
     def types(self) -> list[str]:
@@ -96,10 +121,11 @@ class CheckDraft(BaseModel):
         """Пары «товар → тип», которые кэш увидит впервые или иначе.
 
         Позиция, чей тип совпал с кэшем, сюда не попадает: сообщать «запомнил»
-        о том, что и так было известно, — шум.
+        о том, что и так было известно, — шум. Удалённая не попадает тем более:
+        её никто не записывал, и кэш на стороне api о ней не узнает.
         """
         return [
             (item.name, item.product_type)
-            for item in self.items
+            for item in self.alive()
             if item.product_type and item.product_type != item.cached_type
         ]

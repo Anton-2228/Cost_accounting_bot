@@ -1,0 +1,2 @@
+Se han eliminado todos los artículos: no hay nada que registrar.
+Recupera uno con «!1» o descarta el recibo con «Eliminar».

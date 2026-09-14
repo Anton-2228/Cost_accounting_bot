@@ -1,0 +1,2 @@
+Every item is removed — there is nothing to record.
+Bring one back with “!1”, or drop the receipt with “Delete”.

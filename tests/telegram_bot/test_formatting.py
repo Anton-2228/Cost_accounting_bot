@@ -274,6 +274,93 @@ class TestCheckFormatter:
         assert known == "1) молоко\n    <b>Еда</b>"
         assert suggested == "2) конфеты\n    <b>Еда</b>"
 
+    def test_deleted_item_stays_in_place_and_is_struck_through(self) -> None:
+        """Удалённая позиция зачёркнута, но не убрана и не сдвинута.
+
+        Номер — единственный способ её вернуть: список, перестраивающийся на
+        каждом «!N», превратил бы возврат в угадывание.
+        """
+        text = CheckFormatter.types(
+            _draft(
+                DraftItem(
+                    name="молоко",
+                    amount=Decimal("89.90"),
+                    product_type="молочка",
+                    cached_type="молочка",
+                ),
+                DraftItem(
+                    name="пакет",
+                    amount=Decimal("7.00"),
+                    product_type="упаковка",
+                    cached_type="упаковка",
+                    deleted=True,
+                ),
+            ),
+            {"молочка", "упаковка"},
+        )
+
+        known = text.split("\n\n")[0]
+        assert known == (
+            "1) молоко\n    <b>молочка</b>\n2) <s>пакет</s>\n    <b><s>упаковка</s></b>"
+        )
+
+    def test_deleted_summary_names_count_and_amount(self) -> None:
+        """Под списком сказано, сколько убрано и на сколько.
+
+        Шапка чека печатается один раз и обновиться не может: без этой строки
+        «Итого» над списком продолжало бы обещать сумму, на которую чек уже не
+        запишется.
+        """
+        text = CheckFormatter.categories(
+            _draft(
+                DraftItem(
+                    name="молоко",
+                    amount=Decimal("89.90"),
+                    category_title="Еда",
+                    category_confirmed=True,
+                ),
+                DraftItem(
+                    name="пакет",
+                    amount=Decimal("7.00"),
+                    category_title="Еда",
+                    category_confirmed=True,
+                    deleted=True,
+                ),
+                DraftItem(
+                    name="чек-лента",
+                    amount=Decimal("3.00"),
+                    category_title="Еда",
+                    category_confirmed=True,
+                    deleted=True,
+                ),
+            )
+        )
+
+        assert text.endswith(
+            t_in(
+                Language.RU,
+                "format.check.excluded",
+                count=2,
+                amount=MoneyFormatter.format(Decimal("10.00"), Currency.RUB),
+            )
+        )
+
+    def test_deleted_new_type_is_not_shouted(self) -> None:
+        """Новый тип удалённой позиции не кричит капсом: заведён он не будет."""
+        text = CheckFormatter.types(
+            _draft(
+                DraftItem(
+                    name="конфеты",
+                    amount=Decimal("40.00"),
+                    product_type="сладости",
+                    deleted=True,
+                )
+            ),
+            {"молочка"},
+        )
+        assert "СЛАДОСТИ" not in text
+        assert "<b><s>сладости</s></b>" in text
+
     def test_single_block_has_no_trailing_gap(self) -> None:
         """Чек, где все товары знакомы, не печатается с пустым хвостом."""
         text = CheckFormatter.categories(

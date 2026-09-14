@@ -12,6 +12,15 @@ Mini App остаётся тем, чем был, — входом.
    (`UNIQUE (spreadsheet_id, product_type)`), модель зовётся только для новых
    типов. «Готово» на этой стадии и записывает чек: `POST /checks/commit`.
 
+Стадии проходимы в обе стороны: «К типам» возвращает на первую, ничего не
+пересчитывая, а обратный переход трогает только позиции, чья категория не
+выведена из нынешнего типа.
+
+Лишнюю позицию убирает строка «!1,3» — на любой стадии, повторная возвращает.
+Удаление не трогает ни тип, ни категорию и не удаляет чек: операции по такой
+позиции просто не будет, а сам чек записывается целиком и помечается
+разобранным. Иначе тот же QR отсканировался бы заново.
+
 Валюта у чека своя и не спрашивается: её задаёт формат чека, и api проставляет
 операциям ровно ту же. Счёт не спрашивается тоже — его в системе нет.
 
@@ -57,7 +66,7 @@ from telegram_bot.formatting import CheckFormatter
 from telegram_bot.i18n import current_language, t
 from telegram_bot.logging import get_logger
 from telegram_bot.notifications import NotificationCatchUp
-from telegram_bot.parsers import AssociationMatcher, CheckParser, ParseError
+from telegram_bot.parsers import AssociationMatcher, CheckParser, ParsedCheckEdit, ParseError
 from telegram_bot.states import States
 
 logger = get_logger(__name__)
@@ -65,6 +74,11 @@ logger = get_logger(__name__)
 #: Префикс `callback_data`. Дальше — стадия и `check_id`: без него кнопка от
 #: предыдущего чека применилась бы к текущему, ровно как в старой версии.
 _DONE_PREFIX = "check_done"
+
+#: Префикс кнопки «Вернуться к типам». Свой, а не ещё одна метка стадии у
+#: «Готово»: стадия в `callback_data` говорит, *откуда* нажали, и «готово, чтобы
+#: вернуться назад» читалось бы задом наперёд.
+_BACK_PREFIX = "check_back"
 
 #: Метки стадий в `callback_data`. Короткие и свои, а не строка состояния:
 #: `States.CHECK_TYPES.state` — это «States:CHECK_TYPES», и двоеточие внутри
@@ -121,7 +135,7 @@ class CheckCommand(BaseCommand):
         state: FSMContext,
         **kwargs: Any,
     ) -> None:
-        """Кнопка «Готово»: переход к следующей стадии."""
+        """Кнопки «Готово» и «Вернуться к типам»: переход между стадиями."""
         await self.aiogram.answer_callback(callback)
         if callback.message is None or callback.from_user is None:
             return
@@ -139,6 +153,12 @@ class CheckCommand(BaseCommand):
 
         spreadsheet = await self.spreadsheet_for(user_id=callback.from_user.id, chat_id=chat_id)
         if spreadsheet is None:
+            return
+
+        # Возврат разбирается до стадии: он ведёт в одно и то же место откуда
+        # угодно, и спрашивать о текущей стадии тут нечего.
+        if (callback.data or "").startswith(f"{_BACK_PREFIX}:"):
+            await self._back_to_types(chat_id, state, draft, spreadsheet)
             return
 
         current = await self.aiogram.get_state(state)
@@ -407,6 +427,9 @@ class CheckCommand(BaseCommand):
             return
 
         for edit in edits:
+            if edit.delete:
+                _toggle_deleted(draft, edit.numbers)
+                continue
             for number in edit.numbers:
                 item = draft.item(number)
                 if item is not None:
@@ -429,7 +452,17 @@ class CheckCommand(BaseCommand):
         draft: CheckDraft,
         spreadsheet: Spreadsheet,
     ) -> None:
-        """Раскладывает позиции по категориям и переходит ко второй стадии."""
+        """Раскладывает позиции по категориям и переходит ко второй стадии.
+
+        Раскладываются не все позиции, а только те, чья категория ещё не
+        выведена из нынешнего типа. Сюда приходят дважды — второй раз после
+        «Вернуться к типам», — и пересчёт целиком затирал бы ручные правки
+        категорий и слал бы модели весь чек заново ради одного изменённого
+        типа.
+
+        Удалённые позиции раскладываются наравне со всеми: вернуть позицию
+        можно в любой момент, и она обязана вернуться с категорией.
+        """
         if not draft.items:
             await self._show_broken(chat_id, state, draft)
             return
@@ -440,8 +473,15 @@ class CheckCommand(BaseCommand):
             for category in categories
             for product_type in category.product_types
         }
+        stale = [
+            item
+            for item in draft.items
+            if item.category_id is None or item.category_for_type != item.product_type
+        ]
         unknown_types = [
-            product_type for product_type in draft.types() if product_type not in by_type
+            product_type
+            for product_type in dict.fromkeys(item.product_type for item in stale)
+            if product_type and product_type not in by_type
         ]
 
         default = _default_expense(categories)
@@ -471,7 +511,7 @@ class CheckCommand(BaseCommand):
                 if title:
                     suggested[product_type] = title
 
-        for item in draft.items:
+        for item in stale:
             resolved = self._category_for(item, by_type, suggested, categories)
             category = resolved or default
             item.category_id = category.id if category is not None else None
@@ -482,10 +522,39 @@ class CheckCommand(BaseCommand):
             item.category_confirmed = (
                 resolved is not None and item.product_type in by_type
             )
+            item.category_for_type = item.product_type
 
         await self._save_draft(state, draft)
         await self.aiogram.set_state(state, States.CHECK_CATEGORIES)
         await self._show_categories(chat_id, state, draft)
+
+    async def _back_to_types(
+        self,
+        chat_id: int,
+        state: FSMContext,
+        draft: CheckDraft,
+        spreadsheet: Spreadsheet,
+    ) -> None:
+        """Возвращает на стадию типов, ничего не пересчитывая.
+
+        Черновик не трогается вовсе: и типы, и уже разложенные категории —
+        работа пользователя, и возврат «посмотреть и поправить одну строку» не
+        повод её отменять. Что делать с изменившимся типом, решит `_to_categories`
+        на обратном пути.
+
+        Модель не зовётся: типы у всех позиций уже есть — либо из кэша, либо из
+        первого вызова, либо из правки.
+        """
+        if not draft.items:
+            await self._show_broken(chat_id, state, draft)
+            return
+        await self.aiogram.set_state(state, States.CHECK_TYPES)
+        await self._show_types(
+            chat_id,
+            state,
+            draft,
+            await self.api.catalog.categories(spreadsheet.id),
+        )
 
     @staticmethod
     def _category_for(
@@ -551,7 +620,15 @@ class CheckCommand(BaseCommand):
             )
             return
 
+        # Сперва разбираются все правки и только потом применяются. Иначе
+        # неизвестный псевдоним в последней строке оставлял бы применёнными
+        # первые — и не сохранёнными: `_save_draft` стоит за `return`. С
+        # появлением «!N» это значило бы «удаление молча не сработало».
+        resolved: list[tuple[ParsedCheckEdit, Category | None]] = []
         for edit in edits:
+            if edit.delete:
+                resolved.append((edit, None))
+                continue
             category = AssociationMatcher.category(edit.value, categories)
             if category is None:
                 hint = AssociationMatcher.hint([item.title for item in categories])
@@ -562,12 +639,22 @@ class CheckCommand(BaseCommand):
                     rows=self.stage_rows(draft, stage=_STAGE_CATEGORIES),
                 )
                 return
+            resolved.append((edit, category))
+
+        for edit, category in resolved:
+            if category is None:
+                _toggle_deleted(draft, edit.numbers)
+                continue
             for number in edit.numbers:
                 item = draft.item(number)
                 if item is not None:
                     item.category_id = category.id
                     item.category_title = category.title
                     item.category_confirmed = True
+                    # Ручной выбор привязывается к нынешнему типу: без этого
+                    # поход «Вернуться к типам» и обратно пересчитал бы его
+                    # заново и затёр.
+                    item.category_for_type = item.product_type
 
         await self._save_draft(state, draft)
         await self._show_categories(chat_id, state, draft)
@@ -592,7 +679,22 @@ class CheckCommand(BaseCommand):
         Валюта не спрашивается и здесь: её знает формат чека, и api проставляет
         операциям ровно ту же — см. `telegram_bot.checks.models`.
         """
-        if any(item.category_id is None for item in draft.items):
+        # Чек, из которого убрали всё, не записывается и не удаляется: записать
+        # нечего, а удалить — значило бы освободить ключ среди живых строк и
+        # разрешить тому же QR отсканироваться заново. Чек остаётся в очереди,
+        # и кнопка «Удалить» рядом — на случай, если убрать его и правда хотели.
+        if not draft.alive():
+            await self.ask(
+                chat_id=chat_id,
+                state=state,
+                text=t("text.check_all_deleted"),
+                rows=self.stage_rows(draft, stage=_STAGE_CATEGORIES),
+            )
+            return
+
+        # Категория удалённой позиции не проверяется: операции по ней не будет,
+        # и требовать её значило бы просить разложить то, что не записывается.
+        if any(item.category_id is None for item in draft.alive()):
             await self.ask(
                 chat_id=chat_id,
                 state=state,
@@ -641,6 +743,10 @@ class CheckCommand(BaseCommand):
         не получает никогда, и запоминать по ней «молоко → нечто» значило бы
         притянуть туда же следующие чеки.
 
+        Удалённых позиций здесь нет вовсе: `alive()` — единственное место, где
+        они отсекаются от записи. Кэш «товар → тип» api наполняет из этого же
+        списка, так что удалённая позиция заодно ничему и не учит.
+
         Вызывается только после проверки «у всех позиций есть категория»,
         поэтому `category_id` здесь уже не пуст.
         """
@@ -651,7 +757,7 @@ class CheckCommand(BaseCommand):
                 category_id=item.category_id,
                 amount=item.amount,
             )
-            for item in draft.items
+            for item in draft.alive()
             if item.category_id is not None
         ]
 
@@ -661,14 +767,19 @@ class CheckCommand(BaseCommand):
         categories: list[Category],
         default_id: int | None,
     ) -> list[NewProductType]:
-        """Типы, которых у категории ещё нет, без повторов."""
+        """Типы, которых у категории ещё нет, без повторов.
+
+        Удалённая позиция типов не заводит: чек её не записывает, и закреплять
+        за категорией тип ради строки, которой не будет, значило бы притянуть
+        по нему следующие чеки.
+        """
         owned = {
             (category.id, product_type)
             for category in categories
             for product_type in category.product_types
         }
         new: dict[tuple[int, str], NewProductType] = {}
-        for item in draft.items:
+        for item in draft.alive():
             if not item.product_type or item.category_id is None:
                 continue
             key = (item.category_id, item.product_type)
@@ -779,7 +890,14 @@ class CheckCommand(BaseCommand):
         """
         rows: list[tuple[tuple[str, str], ...]] = []
         if stage is not None:
-            rows.append(((t("buttons.check.done"), f"{_DONE_PREFIX}:{stage}:{draft.check_id}"),))
+            first = [(t("buttons.check.done"), f"{_DONE_PREFIX}:{stage}:{draft.check_id}")]
+            # «Вернуться к типам» — только со второй стадии: с первой возвращаться
+            # некуда, а у неразобранного чека нет и самих стадий.
+            if stage == _STAGE_CATEGORIES:
+                first.append(
+                    (t("buttons.check.back_to_types"), f"{_BACK_PREFIX}:{draft.check_id}")
+                )
+            rows.append(tuple(first))
         rows.append(
             (
                 (t("buttons.check.skip"), f"{CommandName.CHECK_SKIP}:{draft.check_id}"),
@@ -800,6 +918,22 @@ class CheckCommand(BaseCommand):
         """
         parts = (data or "").split(":")
         return len(parts) >= 2 and parts[-1] == str(draft.check_id)
+
+
+def _toggle_deleted(draft: CheckDraft, numbers: tuple[int, ...]) -> None:
+    """Переключает «удалена» у перечисленных позиций.
+
+    Переключатель, а не флаг: «!1» дважды — это «убрал» и «передумал», и
+    отдельного синтаксиса для возврата нет намеренно. Тип и категория позиции
+    при этом не трогаются — вернуться она обязана готовой.
+
+    Один на обе стадии: заметить лишнюю позицию можно на любой из них, и
+    удаление, работающее только на первой, отправляло бы за этим в начало.
+    """
+    for number in numbers:
+        item = draft.item(number)
+        if item is not None:
+            item.deleted = not item.deleted
 
 
 def _product_types(categories: list[Category]) -> set[str]:

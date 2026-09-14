@@ -1,0 +1,2 @@
+Tous les articles ont été supprimés — il n'y a rien à enregistrer.
+Restaurez-en un avec « !1 » ou retirez le ticket avec « Supprimer ».
