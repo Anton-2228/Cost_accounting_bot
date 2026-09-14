@@ -10,6 +10,7 @@
 from __future__ import annotations
 
 from decimal import Decimal
+from enum import StrEnum
 
 from pydantic import BaseModel, ConfigDict
 
@@ -29,24 +30,48 @@ class ParsedRecord(BaseModel):
     notes: str
 
 
+class CheckEditKind(StrEnum):
+    """Вид правки чека.
+
+    Нужен ровно для одного: проверки «позиция указана дважды». Она считается по
+    видам, а не по номерам вообще, потому что «1 - молочка» и «1-500» в одном
+    сообщении друг другу не противоречат — это тип и цена одной позиции.
+    """
+
+    VALUE = "value"
+    PRICE = "price"
+    DELETE = "delete"
+
+
 class ParsedCheckEdit(BaseModel):
-    """Одна правка разбора чека: «1,3 - молочка» или «!1,3».
+    """Одна правка разбора чека: «1,3 - молочка», «1,3-500» или «!1,3».
 
     `numbers` — номера позиций так, как их видит пользователь: с единицы и в
     том же порядке, в каком напечатан список. Перевод в индексы делает команда,
     и делает его в одном месте.
 
-    `delete` отделяет удаление от правки значения. Одна модель на оба вида, а
-    не две: в сообщении они перемешаны построчно, и общая проверка «позиция
-    указана дважды» обязана видеть их в одном списке.
+    Одна модель на все три вида, а не три: в сообщении они перемешаны
+    построчно, и проверка «позиция указана дважды» обязана видеть их в одном
+    списке.
     """
 
     model_config = ConfigDict(frozen=True)
 
     numbers: tuple[int, ...]
-    #: Пусто у строки удаления: удалять «во что-то» нечего.
+    #: Пусто у строки удаления и у строки цены: назначается не текст.
     value: str = ""
+    #: Новая цена позиции. Каждой из `numbers` — она же целиком, а не доля.
+    amount: Decimal | None = None
     delete: bool = False
+
+    @property
+    def kind(self) -> CheckEditKind:
+        """Вид правки — то, по чему считается конфликт в одном сообщении."""
+        if self.delete:
+            return CheckEditKind.DELETE
+        if self.amount is not None:
+            return CheckEditKind.PRICE
+        return CheckEditKind.VALUE
 
 
 class ParseError(Exception):

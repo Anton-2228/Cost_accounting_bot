@@ -202,8 +202,8 @@ class TestCheckFormatter:
         )
 
         known, suggested = text.split("\n\n")
-        assert known == "1) молоко\n    <b>молочка</b>"
-        assert suggested == "2) конфеты\n    <b>сладости</b>"
+        assert known == "1) молоко\n    <b>молочка</b> · 89,90 ₽"
+        assert suggested == "2) конфеты\n    <b>сладости</b> · 40,00 ₽"
 
     def test_new_type_is_shouted(self) -> None:
         """Тип, которого нет ни у одной категории, печатается капсом.
@@ -271,8 +271,8 @@ class TestCheckFormatter:
             )
         )
         known, suggested = text.split("\n\n")
-        assert known == "1) молоко\n    <b>Еда</b>"
-        assert suggested == "2) конфеты\n    <b>Еда</b>"
+        assert known == "1) молоко\n    <b>Еда</b> · 89,90 ₽"
+        assert suggested == "2) конфеты\n    <b>Еда</b> · 40,00 ₽"
 
     def test_deleted_item_stays_in_place_and_is_struck_through(self) -> None:
         """Удалённая позиция зачёркнута, но не убрана и не сдвинута.
@@ -301,15 +301,15 @@ class TestCheckFormatter:
 
         known = text.split("\n\n")[0]
         assert known == (
-            "1) молоко\n    <b>молочка</b>\n2) <s>пакет</s>\n    <b><s>упаковка</s></b>"
+            "1) молоко\n    <b>молочка</b> · 89,90 ₽\n"
+            "2) <s>пакет</s>\n    <b><s>упаковка</s></b> · <s>7,00 ₽</s>"
         )
 
-    def test_deleted_summary_names_count_and_amount(self) -> None:
-        """Под списком сказано, сколько убрано и на сколько.
+    def test_price_is_shown_for_every_item(self) -> None:
+        """Цена стоит у каждой позиции: править вслепую было бы нечего.
 
-        Шапка чека печатается один раз и обновиться не может: без этой строки
-        «Итого» над списком продолжало бы обещать сумму, на которую чек уже не
-        запишется.
+        Со знаком валюты у каждой, а не один раз в шапке: каждая сумма в боте
+        печатается одним и тем же `MoneyFormatter`.
         """
         text = CheckFormatter.categories(
             _draft(
@@ -318,32 +318,50 @@ class TestCheckFormatter:
                     amount=Decimal("89.90"),
                     category_title="Еда",
                     category_confirmed=True,
-                ),
-                DraftItem(
-                    name="пакет",
-                    amount=Decimal("7.00"),
-                    category_title="Еда",
-                    category_confirmed=True,
-                    deleted=True,
-                ),
-                DraftItem(
-                    name="чек-лента",
-                    amount=Decimal("3.00"),
-                    category_title="Еда",
-                    category_confirmed=True,
-                    deleted=True,
-                ),
+                )
             )
         )
 
-        assert text.endswith(
-            t_in(
-                Language.RU,
-                "format.check.excluded",
-                count=2,
-                amount=MoneyFormatter.format(Decimal("10.00"), Currency.RUB),
+        assert text == "1) молоко\n    <b>Еда</b> · " + MoneyFormatter.format(
+            Decimal("89.90"), Currency.RUB
+        )
+
+    def test_edited_price_keeps_the_receipt_one_struck_through(self) -> None:
+        """Правленая цена показана вместе с зачёркнутой ценой из чека.
+
+        Зачёркивание значит здесь ровно то же, что у удалённой позиции: эта
+        сумма в запись не пойдёт.
+        """
+        text = CheckFormatter.categories(
+            _draft(
+                DraftItem(
+                    name="молоко",
+                    amount=Decimal("75.00"),
+                    original_amount=Decimal("89.90"),
+                    category_title="Еда",
+                    category_confirmed=True,
+                )
             )
         )
+
+        assert text == "1) молоко\n    <b>Еда</b> · <s>89,90 ₽</s> 75,00 ₽"
+
+    def test_deleted_item_with_edited_price_is_struck_through_whole(self) -> None:
+        """Удалённая позиция зачёркнута целиком, правленая цена — вместе с ней."""
+        text = CheckFormatter.categories(
+            _draft(
+                DraftItem(
+                    name="пакет",
+                    amount=Decimal("5.00"),
+                    original_amount=Decimal("7.00"),
+                    category_title="Еда",
+                    category_confirmed=True,
+                    deleted=True,
+                )
+            )
+        )
+
+        assert text == "1) <s>пакет</s>\n    <b><s>Еда</s></b> · <s><s>7,00 ₽</s> 5,00 ₽</s>"
 
     def test_deleted_new_type_is_not_shouted(self) -> None:
         """Новый тип удалённой позиции не кричит капсом: заведён он не будет."""

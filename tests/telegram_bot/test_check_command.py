@@ -1128,3 +1128,98 @@ async def test_bad_edit_keeps_stage(text: str) -> None:
 
     assert await harness.current_state() == States.CHECK_TYPES.state
     assert harness.checks.committed == []
+
+
+async def test_price_edit_changes_the_recorded_amount() -> None:
+    """«1-75» ставит позиции цену, и в запись уходит она, а не цена из чека."""
+    harness = Harness(
+        checks=[_check(1, ("молоко", 8990), ("пакет", 700))],
+        cached={"молоко": "молочка", "пакет": "упаковка"},
+        ai=FakeAi(categories={1: "Еда", 2: "Еда"}),
+    )
+
+    await harness.send("/check")
+    await harness.send("1-75")
+    await harness.press_done()
+    await harness.press_done()
+
+    items = harness.checks.committed[0]["items"]
+    assert [item.amount for item in items] == [Decimal("75"), Decimal("7.00")]
+
+
+async def test_price_edit_works_on_the_categories_stage() -> None:
+    """Цену можно поправить и на второй стадии, а не только на первой.
+
+    Увидеть неверную сумму можно в любой момент разбора, и отправлять за этим
+    в начало значило бы просить пройти его заново.
+    """
+    harness = Harness(
+        checks=[_check(1, ("молоко", 8990))],
+        cached={"молоко": "молочка"},
+        ai=FakeAi(categories={1: "Еда"}),
+    )
+
+    await harness.send("/check")
+    await harness.press_done()
+    await harness.send("1-60")
+    await harness.press_done()
+
+    assert [item.amount for item in harness.checks.committed[0]["items"]] == [Decimal("60")]
+
+
+async def test_price_edit_shows_the_receipt_price_struck_through() -> None:
+    """Правленая цена печатается вместе с зачёркнутой ценой из чека.
+
+    Вторая правка подряд не объявляет «исходной» ту, которую ввёл сам
+    пользователь: зачёркнутой остаётся цена из чека.
+    """
+    harness = Harness(
+        checks=[_check(1, ("молоко", 8990))],
+        cached={"молоко": "молочка"},
+        ai=FakeAi(categories={1: "Еда"}),
+    )
+
+    await harness.send("/check")
+    await harness.send("1-75")
+    assert harness.aiogram.said("<s>89,90 ₽</s> 75,00 ₽")
+
+    await harness.send("1-60")
+    assert harness.aiogram.said("<s>89,90 ₽</s> 60,00 ₽")
+
+
+async def test_typing_the_receipt_price_back_removes_the_mark() -> None:
+    """Набранная обратно цена из чека снимает пометку о правке.
+
+    Отдельного синтаксиса «вернуть как было» нет, и набранное обратно число
+    обязано значить именно это.
+    """
+    harness = Harness(
+        checks=[_check(1, ("молоко", 8990))],
+        cached={"молоко": "молочка"},
+        ai=FakeAi(categories={1: "Еда"}),
+    )
+
+    await harness.send("/check")
+    await harness.send("1-75")
+    await harness.send("1-89,90")
+
+    assert harness.aiogram.said("<b>молочка</b> · 89,90 ₽")
+    # Именно в последнем списке: зачёркнутая цена была в предыдущем.
+    assert not any("<s>" in text for text in harness.aiogram.sent[-2:])
+
+
+async def test_price_and_type_are_edited_in_one_message() -> None:
+    """«1 - молочка» и «1-75» рядом — обе правки одной позиции применяются."""
+    harness = Harness(
+        checks=[_check(1, ("молоко", 8990))],
+        ai=FakeAi(types={1: "прочее"}, categories={1: "Еда"}),
+    )
+
+    await harness.send("/check")
+    await harness.send("1 - молочка\n1-75")
+    await harness.press_done()
+    await harness.press_done()
+
+    item = harness.checks.committed[0]["items"][0]
+    assert item.product_type == "молочка"
+    assert item.amount == Decimal("75")

@@ -14,8 +14,12 @@
   существует ни у одной категории и будет заведён. В письме без регистра
   (хинди) капс ничего не меняет, и там вместо него пометка из каталога;
 * **значение жирным.** Список из полусотни позиций иначе сливается в стену;
+* **цена рядом со значением, а не с названием.** Названия из чека длинные и
+  переносятся, и цена, приклеенная к ним, вставала бы на разной высоте от
+  строки к строке. Вторая строка короткая, и цена на ней всегда на месте;
 * **удалённая позиция зачёркнута на своём месте.** Не убрана из списка и не
-  сдвинута в конец: вернуть её можно только по номеру.
+  сдвинута в конец: вернуть её можно только по номеру. Тем же зачёркиванием
+  помечена цена из чека у позиции, которой цену поправили.
 
 Жирный требует HTML, а названия товаров приезжают из чека — то есть из внешнего
 источника. Поэтому всё подставляемое проходит через `html.escape`: товар
@@ -27,9 +31,9 @@ from __future__ import annotations
 
 from collections.abc import Callable, Collection, Sequence
 from datetime import datetime
-from decimal import Decimal
 from html import escape
 
+from telegram_bot.api_client.models import Currency
 from telegram_bot.checks.draft import CheckDraft, DraftItem
 from telegram_bot.formatting.money_formatter import MoneyFormatter
 from telegram_bot.i18n import LocaleFormat, t
@@ -39,6 +43,9 @@ _EMPTY = "—"
 
 #: Отступ под названием товара.
 _INDENT = "    "
+
+#: Между присвоенным значением и ценой позиции.
+_PRICE_SEPARATOR = " · "
 
 
 class CheckFormatter:
@@ -111,50 +118,47 @@ class CheckFormatter:
         known: list[str] = []
         rest: list[str] = []
         for number, item in enumerate(draft.items, 1):
-            entry = cls._entry(number, item, value(item), shout=shout(item))
+            entry = cls._entry(
+                number,
+                item,
+                value(item),
+                shout=shout(item),
+                currency=draft.currency,
+            )
             (known if confirmed(item) else rest).append(entry)
-        blocks = ["\n".join(known), "\n".join(rest), cls._excluded(draft)]
+        blocks = ["\n".join(known), "\n".join(rest)]
         return "\n\n".join(block for block in blocks if block)
 
     @staticmethod
-    def _excluded(draft: CheckDraft) -> str:
-        """Сводка по удалённым позициям или пустая строка, если их нет.
-
-        Нужна затем, что шапка чека печатается один раз и обновиться не может:
-        без этой строки «Итого» над списком продолжало бы обещать сумму, на
-        которую чек уже не запишется.
-        """
-        excluded = draft.excluded()
-        if not excluded:
-            return ""
-        amount = sum((item.amount for item in excluded), Decimal("0"))
-        return t(
-            "format.check.excluded",
-            count=len(excluded),
-            amount=MoneyFormatter.format(amount, draft.currency),
-        )
-
-    @staticmethod
-    def _entry(number: int, item: DraftItem, value: str | None, *, shout: bool) -> str:
-        """Две строки одной позиции: номер с названием и значение под ним.
+    def _entry(
+        number: int,
+        item: DraftItem,
+        value: str | None,
+        *,
+        shout: bool,
+        currency: Currency,
+    ) -> str:
+        """Две строки одной позиции: номер с названием, значение и цена под ним.
 
         Номер стоит и у позиций из кэша, хотя в старой версии его там не было.
         Без номера их нельзя было поправить — и правка типа у уже знакомого
         товара молча терялась.
 
-        Удалённая позиция зачёркнута целиком, вместе со значением: значение у
-        неё остаётся живым — она вернётся с ним же, — но обещать по нему
-        операцию нельзя.
+        Удалённая позиция зачёркнута целиком, вместе со значением и ценой:
+        значение у неё остаётся живым — она вернётся с ним же, — но обещать по
+        нему операцию нельзя.
         """
         shown = value or _EMPTY
         if shout and value:
             shown = _emphasize_new(value)
         name = escape(item.name)
         shown = escape(shown)
+        price = _price(item, currency)
         if item.deleted:
             name = f"<s>{name}</s>"
             shown = f"<s>{shown}</s>"
-        return f"{number}) {name}\n{_INDENT}<b>{shown}</b>"
+            price = f"<s>{price}</s>"
+        return f"{number}) {name}\n{_INDENT}<b>{shown}</b>{_PRICE_SEPARATOR}{price}"
 
     @staticmethod
     def saved(draft: CheckDraft, *, count: int) -> str:
@@ -182,6 +186,20 @@ class CheckFormatter:
     def hint(titles: Sequence[str]) -> str:
         """Строка «из чего выбирать» для правок категории."""
         return ", ".join(titles)
+
+
+def _price(item: DraftItem, currency: Currency) -> str:
+    """Цена позиции, а у правленой — зачёркнутая цена из чека перед ней.
+
+    Зачёркивание то же самое, что у удалённой позиции, и значит оно то же:
+    «эта сумма в запись не пойдёт». Отдельного знака правки нет — исходная
+    цифра рядом говорит о правке точнее любого значка.
+    """
+    shown = MoneyFormatter.format(item.amount, currency)
+    if item.original_amount is None:
+        return shown
+    was = MoneyFormatter.format(item.original_amount, currency)
+    return f"<s>{was}</s> {shown}"
 
 
 def _emphasize_new(value: str) -> str:

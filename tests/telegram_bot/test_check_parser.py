@@ -1,6 +1,8 @@
-"""Тесты разбора правок «1,3 - молочка» и удалений «!1,3»."""
+"""Тесты разбора правок «1,3 - молочка», цен «1,3-1999» и удалений «!1,3»."""
 
 from __future__ import annotations
+
+from decimal import Decimal
 
 import pytest
 
@@ -105,7 +107,70 @@ def test_delete_refuses_a_value() -> None:
             CheckParser.parse(text, count=3)
 
 
-def test_delete_and_edit_of_one_position_is_refused() -> None:
-    """«!1» и «1 - молочка» рядом — отказ: непонятно, чего хотели."""
+def test_delete_and_edit_of_one_position_live_together() -> None:
+    """«!1» и «1 - молочка» рядом — обе правки: они про разное.
+
+    У удалённой позиции тип остаётся живым — она вернётся с ним же, — и
+    назначить его заодно с удалением ничему не противоречит.
+    """
+    edits = CheckParser.parse("!1\n1 - молочка", count=3)
+    assert [(edit.numbers, edit.delete, edit.value) for edit in edits] == [
+        ((1,), True, ""),
+        ((1,), False, "молочка"),
+    ]
+
+
+def test_two_values_for_one_position_are_refused() -> None:
+    """Два типа одной позиции — отказ: применился бы молча последний."""
     with pytest.raises(ParseError):
-        CheckParser.parse("!1\n1 - молочка", count=3)
+        CheckParser.parse("1 - молочка\n1 - бытовая химия", count=3)
+
+
+def test_numeric_tail_is_a_price() -> None:
+    """«1,2,13-1999» ставит цену, а не тип с названием «1999»."""
+    edits = CheckParser.parse("1,2,13-1999", count=13)
+    assert len(edits) == 1
+    assert edits[0].numbers == (1, 2, 13)
+    assert edits[0].amount == Decimal("1999")
+    assert edits[0].value == ""
+    assert not edits[0].delete
+
+
+def test_price_takes_a_dot_and_a_comma_alike() -> None:
+    """Копейки набирают и точкой, и запятой: на телефоне под рукой запятая."""
+    dot = CheckParser.parse("1-1999.50", count=1)[0]
+    comma = CheckParser.parse("1-1999,50", count=1)[0]
+    assert dot.amount == comma.amount == Decimal("1999.50")
+
+
+def test_price_may_be_zero() -> None:
+    """«1-0» — рабочий случай: позиция по акции досталась бесплатно."""
+    assert CheckParser.parse("1-0", count=1)[0].amount == Decimal("0")
+
+
+def test_price_finer_than_kopecks_is_refused() -> None:
+    """Третий знак после запятой api отверг бы 422 без внятного текста."""
+    with pytest.raises(ParseError):
+        CheckParser.parse("1-1999,555", count=1)
+
+
+def test_value_with_digits_inside_stays_a_value() -> None:
+    """Ценой считается только хвост целиком из цифр — «3,2%» остаётся типом."""
+    edits = CheckParser.parse("1 - молоко 3.2%", count=1)
+    assert edits[0].amount is None
+    assert edits[0].value == "молоко 3.2%"
+
+
+def test_price_and_value_of_one_position_live_together() -> None:
+    """«1 - молочка» и «1-500» рядом — правки о разном, обе применяются."""
+    edits = CheckParser.parse("1 - молочка\n1-500", count=3)
+    assert [(edit.value, edit.amount) for edit in edits] == [
+        ("молочка", None),
+        ("", Decimal("500")),
+    ]
+
+
+def test_two_prices_for_one_position_are_refused() -> None:
+    """Две цены одной позиции — отказ: применилась бы молча последняя."""
+    with pytest.raises(ParseError):
+        CheckParser.parse("1-500\n1-700", count=3)

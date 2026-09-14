@@ -5,13 +5,25 @@
     1,3 - молочка
     2 - бытовая химия
 
-Строка, начатая с «!», не назначает значение, а убирает позиции из записи:
+Хвост из одних цифр читается не как значение, а как цена: каждой перечисленной
+позиции — она целиком, а не доля от неё.
+
+    1,2,13-1999
+
+Строка, начатая с «!», не назначает ничего, а убирает позиции из записи:
 
     !4,5
 
-Обе формы живут в одном сообщении вперемешку и разбираются одним проходом:
-проверка «позиция указана дважды» обязана видеть их вместе, иначе «!1» и
-«1 - молочка» рядом означали бы неизвестно что.
+Все три формы живут в одном сообщении вперемешку и разбираются одним проходом:
+проверка «позиция указана дважды» обязана видеть их вместе, иначе два разных
+типа одной позиции в соседних строках применились бы молча и по порядку.
+Считается она по видам правок: «1 - молочка», «1-500» и «!1» одной позиции
+друг другу не противоречат — у удалённой позиции и тип, и цена остаются
+живыми, она вернётся с ними же.
+
+Цена, распознанная по числовому хвосту, стоит ровно того, что тип или категорию
+с чисто числовым названием строкой назначить больше нельзя. Признак выбран
+такой, потому что заявленный синтаксис правки цены — «1,2,13-1999», без сигила.
 
 Разбор возвращает модель либо бросает :class:`ParseError` с готовым текстом.
 Протокол `{"status": "success"|"error"}`, которым старая версия
@@ -21,9 +33,17 @@
 
 from __future__ import annotations
 
+import re
+
 from telegram_bot import constants
 from telegram_bot.i18n import t
-from telegram_bot.parsers.results import ParsedCheckEdit, ParseError
+from telegram_bot.parsers.amount_parser import AmountParser
+from telegram_bot.parsers.results import CheckEditKind, ParsedCheckEdit, ParseError
+
+#: Хвост правки, который читается как цена. Проверка явным шаблоном, а не
+#: попыткой разобрать число: `Decimal` принимает и «5e2», и «Infinity», и такой
+#: хвост молча перестал бы быть названием типа.
+_PRICE = re.compile(r"^\d+(?:[.,]\d+)?$")
 
 
 def _usage() -> ParseError:
@@ -54,14 +74,15 @@ class CheckParser:
             raise _usage()
 
         edits: list[ParsedCheckEdit] = []
-        seen: set[int] = set()
+        seen: dict[CheckEditKind, set[int]] = {}
         for line in lines:
             edit = cls._parse_line(line, count=count, max_value_length=max_value_length)
-            repeated = seen.intersection(edit.numbers)
+            kind = seen.setdefault(edit.kind, set())
+            repeated = kind.intersection(edit.numbers)
             if repeated:
                 numbers = ", ".join(str(number) for number in sorted(repeated))
                 raise ParseError(t("parse.check.repeated", numbers=numbers))
-            seen.update(edit.numbers)
+            kind.update(edit.numbers)
             edits.append(edit)
         return edits
 
@@ -84,10 +105,18 @@ class CheckParser:
         value = tail.strip()
         if not value:
             raise _usage()
+
+        numbers = cls._numbers(head, count=count)
+        if _PRICE.match(value):
+            return ParsedCheckEdit(
+                numbers=numbers,
+                amount=AmountParser.parse(value, allow_zero=True),
+            )
+
         if max_value_length is not None and len(value) > max_value_length:
             raise ParseError(t("parse.check.value_too_long", limit=max_value_length))
 
-        return ParsedCheckEdit(numbers=cls._numbers(head, count=count), value=value)
+        return ParsedCheckEdit(numbers=numbers, value=value)
 
     @classmethod
     def _parse_delete(cls, line: str, *, count: int) -> ParsedCheckEdit:

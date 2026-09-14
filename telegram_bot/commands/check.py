@@ -36,6 +36,7 @@ Mini App остаётся тем, чем был, — входом.
 
 from __future__ import annotations
 
+from decimal import Decimal
 from typing import Any
 
 from aiogram.fsm.context import FSMContext
@@ -461,6 +462,9 @@ class CheckCommand(BaseCommand):
             if edit.delete:
                 _toggle_deleted(draft, edit.numbers)
                 continue
+            if edit.amount is not None:
+                _set_amount(draft, edit.numbers, edit.amount)
+                continue
             for number in edit.numbers:
                 item = draft.item(number)
                 if item is not None:
@@ -657,7 +661,7 @@ class CheckCommand(BaseCommand):
         # появлением «!N» это значило бы «удаление молча не сработало».
         resolved: list[tuple[ParsedCheckEdit, Category | None]] = []
         for edit in edits:
-            if edit.delete:
+            if edit.delete or edit.amount is not None:
                 resolved.append((edit, None))
                 continue
             category = AssociationMatcher.category(edit.value, categories)
@@ -673,8 +677,13 @@ class CheckCommand(BaseCommand):
             resolved.append((edit, category))
 
         for edit, category in resolved:
-            if category is None:
+            if edit.delete:
                 _toggle_deleted(draft, edit.numbers)
+                continue
+            if edit.amount is not None:
+                _set_amount(draft, edit.numbers, edit.amount)
+                continue
+            if category is None:
                 continue
             for number in edit.numbers:
                 item = draft.item(number)
@@ -966,6 +975,29 @@ def _toggle_deleted(draft: CheckDraft, numbers: tuple[int, ...]) -> None:
         item = draft.item(number)
         if item is not None:
             item.deleted = not item.deleted
+
+
+def _set_amount(draft: CheckDraft, numbers: tuple[int, ...], amount: Decimal) -> None:
+    """Ставит цену перечисленным позициям, запоминая цену из чека.
+
+    Исходная цена запоминается один раз и только при первой правке: вторая
+    правка подряд не должна объявить «исходной» ту, которую пользователь уже
+    ввёл сам. Совпадение с исходной снимает пометку — отдельного синтаксиса
+    «вернуть как было» нет, и набранное обратно число обязано значить именно
+    это.
+
+    Один на обе стадии: цена видна на любой из них, и правка, работающая
+    только на первой, отправляла бы за этим в начало.
+    """
+    for number in numbers:
+        item = draft.item(number)
+        if item is None:
+            continue
+        if item.original_amount is None:
+            item.original_amount = item.amount
+        item.amount = amount
+        if item.original_amount == item.amount:
+            item.original_amount = None
 
 
 def _product_types(categories: list[Category]) -> set[str]:

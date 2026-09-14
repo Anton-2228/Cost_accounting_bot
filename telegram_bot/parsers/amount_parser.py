@@ -25,8 +25,13 @@ class AmountParser:
     """
 
     @classmethod
-    def parse(cls, raw: str) -> Decimal:
-        """Разбирает сумму или бросает :class:`ParseError` с готовым текстом."""
+    def parse(cls, raw: str, *, allow_zero: bool = False) -> Decimal:
+        """Разбирает сумму или бросает :class:`ParseError` с готовым текстом.
+
+        `allow_zero` нужен правке цены позиции чека: бесплатная позиция по акции
+        — рабочий случай, и api принимает `amount >= 0`. Операции же на ноль не
+        бывает, поэтому по умолчанию ноль отвергается.
+        """
         normalized = raw.strip()
         for separator in constants.DECIMAL_SEPARATORS:
             normalized = normalized.replace(separator, ".")
@@ -38,7 +43,7 @@ class AmountParser:
 
         if not amount.is_finite():
             raise ParseError(t("parse.amount.invalid", raw=raw))
-        if amount <= 0:
+        if amount < 0 or (amount == 0 and not allow_zero):
             raise ParseError(t("parse.amount.not_positive"))
         if amount > _MAX_AMOUNT:
             raise ParseError(t("parse.amount.too_big"))
