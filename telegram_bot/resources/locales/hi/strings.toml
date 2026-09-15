@@ -43,6 +43,7 @@ period_closed = "{start_date} से शुरू होने वाली अ�
 amount_not_positive = "राशि शून्य से अधिक होनी चाहिए"
 filters_incompatible = "ऐसा नहीं किया जा सकता: अनुरोध की शर्तें आपस में टकराती हैं"
 period_target_mismatch = "यह अवधि इस शीट से मेल नहीं खाती"
+day_outside_period = "चुना गया दिन अब मौजूदा अवधि में नहीं है — अवधि बदल चुकी है"
 
 [notification]
 table_ready = "आपकी स्प्रेडशीट तैयार है: {url}"
@@ -92,6 +93,7 @@ done = "हो गया"
 skip = "बाद में"
 delete = "हटाएँ"
 back_to_types = "प्रकार पर वापस"
+back_to_categories = "श्रेणियों पर वापस"
 
 [buttons.check_delete]
 confirm = "हाँ, हटाएँ"
@@ -139,6 +141,11 @@ usage = "सुधार समझ नहीं आया। ऐसे लिख
 repeated = "आइटम {numbers} दो बार लिखा गया है — एक ही सुधार रखें"
 value_too_long = "मान {limit} अक्षरों से लंबा है"
 no_position = "रसीद में आइटम नंबर {number} नहीं है। कुल आइटम: {count}"
+
+[parse.day]
+usage = "एक संख्या भेजें — महीने का वह दिन जिसमें खरीद दर्ज करनी है। उदाहरण: 3"
+not_a_number = "«{value}» महीने का दिन नहीं लगता। कोई संख्या भेजें, उदाहरण: 3"
+out_of_period = "मौजूदा अवधि में ऐसा कोई दिन नहीं है: वह {start} से {end} तक चलती है"
 
 [parse.onboarding]
 title_empty = "नाम खाली नहीं हो सकता"

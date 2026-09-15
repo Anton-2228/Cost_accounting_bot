@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from collections.abc import Sequence
+from datetime import date
 from decimal import Decimal
 
 from pydantic import BaseModel, ConfigDict
@@ -68,17 +69,24 @@ class ChecksClient:
         check_id: int,
         items: Sequence[CommitItem],
         new_product_types: Sequence[NewProductType] = (),
+        added_at: date | None = None,
     ) -> list[Record]:
         """Записывает разобранный чек целиком одним запросом.
 
         Одним, а не по позиции: новые типы, кэш, N операций и отметка о разборе
         — одна транзакция на стороне api, и ни одна её часть не может уцелеть
         без остальных.
+
+        `added_at` — день, выбранный на третьей стадии разбора. Пустое значение
+        отправляется как есть: api понимает его как «сегодня», то есть ровно как
+        до появления стадии, и черновик, начатый до выката, так дописывается без
+        отдельной ветки.
         """
         data = await self._http.post_items(
             f"/spreadsheets/{spreadsheet_id}/checks/commit",
             body={
                 "check_id": check_id,
+                "added_at": added_at.isoformat() if added_at is not None else None,
                 "items": [
                     {
                         "product_name": item.product_name,

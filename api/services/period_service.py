@@ -11,7 +11,7 @@ from api.exceptions.base import NotFoundError
 from api.repositories.period_repository import PeriodRepository
 from api.repositories.record_repository import RecordRepository
 from api.repositories.spreadsheet_repository import SpreadsheetRepository
-from api.services._periods import resolve_period, today_for
+from api.services._periods import ensure_current_period, resolve_period, today_for
 from api.services.base import BaseSpreadsheetService
 from api.services.exchange_rate_service import ExchangeRateService
 
@@ -19,9 +19,9 @@ from api.services.exchange_rate_service import ExchangeRateService
 class PeriodService(BaseSpreadsheetService):
     """Периоды документа и статистика по ним.
 
-    Только чтение: период создают операция (лениво, под сегодняшнюю дату) и
-    ролловер. Запрос на чтение ничего не создаёт — иначе `GET` менял бы данные, а
-    открытый период мог бы появиться от одного лишь просмотра архива.
+    Чтение архива ничего не создаёт: прошлые периоды заводят ролловер и сама
+    история, и появляться от просмотра они не должны. Исключение одно и
+    намеренное — :meth:`current`, см. её докстринг.
     """
 
     def __init__(
@@ -57,11 +57,33 @@ class PeriodService(BaseSpreadsheetService):
         return await self._periods.list_by_spreadsheet(spreadsheet_id)
 
     async def current(self, spreadsheet_id: int) -> Period:
-        """Период, которому принадлежит сегодняшний день документа."""
+        """Период, которому принадлежит сегодняшний день документа.
+
+        Единственное чтение, которое пишет, и это осознанная плата. Строку
+        текущего периода заводят только три места: создание документа, ролловер
+        раз в минуту и ленивое создание на записи операции. Отсюда окно, которое
+        повторяется каждый месяц: в день `reset_day`, от местной полуночи до
+        ближайшего тика ролловера, `get_containing` не находит ничего —
+        предыдущий период кончается ровно сегодня, а `end_date` исключительна,
+        новой же строки ещё нет. Запись это чинила сама, чтение — нет, и диалог,
+        которому границы периода нужны, чтобы задать вопрос, упирался бы в 404
+        там, где ответ вычислим.
+
+        Данными пользователя период при этом не является: он однозначно
+        определён `reset_day` и сегодняшней датой, а `ensure` идемпотентен
+        (`ON CONFLICT DO NOTHING`), так что параллельные запросы безопасны.
+
+        Коммит здесь обязателен: сессия сама не коммитит, а репозиторий только
+        делает `flush()` — без него вставка пропала бы на закрытии сессии, а
+        наружу уехал бы период с `id` несуществующей строки.
+
+        `ensure_current_period` проверяет период на закрытость, так что метод
+        может отдать 422 `period_closed` там, где раньше отдавал 200. На деле
+        недостижимо: ролловер закрывает только периоды, которые уже кончились.
+        """
         spreadsheet = await self._get_ready(spreadsheet_id)
-        period = await self._periods.get_containing(spreadsheet_id, today_for(spreadsheet))
-        if period is None:
-            raise NotFoundError("period")
+        period = await ensure_current_period(self._periods, spreadsheet, today_for(spreadsheet))
+        await self._commit()
         return period
 
     async def daily_totals(

@@ -21,23 +21,26 @@ from tests.fakes import FakeRateProvider
 _TIMEZONE = "Europe/Moscow"
 
 
-async def test_current_period_is_not_created_by_reading(
+async def test_current_period_is_created_by_reading(
     session: AsyncSession,
     period_service: PeriodService,
 ) -> None:
-    """Чтение не создаёт период: 404 вместо молчаливой записи.
+    """Чтение текущего периода создаёт его, если строки ещё нет.
 
-    Период создают операция (лениво) и ролловер. Иначе GET менял бы данные, а
-    открытый период появлялся бы от одного лишь просмотра архива.
+    Единственное чтение, которое пишет. Иначе в день смены периода, пока
+    ролловер не дошёл до документа, границы текущего периода были бы
+    недоступны — а они вычислимы, и диалогу разбора чека нужны, чтобы задать
+    вопрос о дне.
     """
     spreadsheet = await factories.create_spreadsheet(session, ready=True, timezone=_TIMEZONE)
     await session.commit()
     assert spreadsheet.id is not None
 
-    with pytest.raises(NotFoundError):
-        await period_service.current(spreadsheet.id)
+    period = await period_service.current(spreadsheet.id)
+    assert period.contains(today_in_timezone(_TIMEZONE))
 
-    assert await PeriodRepository(session).list_by_spreadsheet(spreadsheet.id) == []
+    stored = await PeriodRepository(session).list_by_spreadsheet(spreadsheet.id)
+    assert [item.id for item in stored] == [period.id]
 
 
 async def test_periods_are_listed_in_order(

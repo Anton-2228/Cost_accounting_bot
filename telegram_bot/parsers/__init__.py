@@ -9,6 +9,7 @@ from __future__ import annotations
 from telegram_bot.parsers.amount_parser import AmountParser
 from telegram_bot.parsers.association_matcher import AssociationMatcher
 from telegram_bot.parsers.check_parser import CheckParser
+from telegram_bot.parsers.day_parser import DayParser
 from telegram_bot.parsers.onboarding_parser import OnboardingParser
 from telegram_bot.parsers.record_parser import RecordParser
 from telegram_bot.parsers.results import (
@@ -21,6 +22,7 @@ __all__ = [
     "AmountParser",
     "AssociationMatcher",
     "CheckParser",
+    "DayParser",
     "OnboardingParser",
     "ParseError",
     "ParsedCheckEdit",

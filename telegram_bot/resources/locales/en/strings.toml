@@ -40,6 +40,7 @@ period_closed = "The period starting {start_date} is closed"
 amount_not_positive = "The amount must be greater than zero"
 filters_incompatible = "That's not allowed: the request conditions contradict each other"
 period_target_mismatch = "The period doesn't match this sheet"
+day_outside_period = "The chosen day is no longer in the current period — the period has rolled over"
 
 [notification]
 table_ready = "Your spreadsheet is ready: {url}"
@@ -89,6 +90,7 @@ done = "Done"
 skip = "Postpone"
 delete = "Delete"
 back_to_types = "Back to types"
+back_to_categories = "Back to categories"
 
 [buttons.check_delete]
 confirm = "Yes, delete"
@@ -136,6 +138,11 @@ usage = "I didn't understand the correction. Like this: “1,3 - dairy”, one c
 repeated = "Item {numbers} is listed twice — keep one correction"
 value_too_long = "The value is longer than {limit} characters"
 no_position = "There is no item #{number} in the receipt. Total items: {count}"
+
+[parse.day]
+usage = "Send a number — the day of the month to record the purchases on. For example: 3"
+not_a_number = "«{value}» doesn't look like a day of the month. Send a number, for example: 3"
+out_of_period = "There is no such day in the current period: it runs from {start} to {end}"
 
 [parse.onboarding]
 title_empty = "The name can't be empty"

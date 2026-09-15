@@ -4,17 +4,26 @@
 псевдонимам и русские тексты, а Mini App пришлось бы заводить всё это заново.
 Mini App остаётся тем, чем был, — входом.
 
-Две стадии на один чек:
+Три стадии на один чек:
 
 1. **типы** — товар из кэша получает тип без модели, остальные уходят в первый
    вызов; правки строками «1,3 - молочка»;
 2. **категории** — тип определяет категорию детерминированно
    (`UNIQUE (spreadsheet_id, product_type)`), модель зовётся только для новых
-   типов. «Готово» на этой стадии и записывает чек: `POST /checks/commit`.
+   типов;
+3. **день** — число месяца внутри текущего периода, которым датировать
+   операции. «Готово» на этой стадии и записывает чек: `POST /checks/commit`.
 
-Стадии проходимы в обе стороны: «К типам» возвращает на первую, ничего не
-пересчитывая, а обратный переход трогает только позиции, чья категория не
-выведена из нынешнего типа.
+Третья стадия — не вернувшийся вопрос «на какой счёт»: тот спрашивал, откуда
+деньги, и ушёл вместе со счетами. Эта спрашивает, в какую колонку листа
+статистики лечь, и нужна потому, что чек разбирают не обязательно в день
+покупки, а раньше все операции датировались днём разбора.
+
+Стадии проходимы в обе стороны: «К типам» и «К категориям» возвращают на
+предыдущую, ничего не пересчитывая, а переход к категориям трогает только
+позиции, чья категория не выведена из нынешнего типа. Выбранный день переживает
+такой поход туда-обратно; из периода он выпасть не может — при каждом показе
+стадии он сверяется со свежими границами.
 
 Лишнюю позицию убирает строка «!1,3» — на любой стадии, повторная возвращает.
 Удаление не трогает ни тип, ни категорию и не удаляет чек: операции по такой
@@ -36,8 +45,10 @@ Mini App остаётся тем, чем был, — входом.
 
 from __future__ import annotations
 
+from datetime import date, datetime, timedelta
 from decimal import Decimal
 from typing import Any
+from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from aiogram.fsm.context import FSMContext
 from aiogram.types import CallbackQuery, Message
@@ -47,13 +58,14 @@ from telegram_bot.ai import AiClient, AiError, LlmUsage
 from telegram_bot.aiogram_wrapper import AiogramWrapper
 from telegram_bot.api_client import ApiGateway
 from telegram_bot.api_client.checks import CommitItem, NewProductType
-from telegram_bot.api_client.errors import ApiConflictError, ApiError
+from telegram_bot.api_client.errors import ApiConflictError, ApiError, ApiValidationError
 from telegram_bot.api_client.models import (
     Category,
     CategoryKind,
     Check,
     LlmEntityKind,
     LlmOperation,
+    Period,
     Spreadsheet,
 )
 from telegram_bot.checks import ReceiptError, ReceiptExtractor
@@ -62,12 +74,18 @@ from telegram_bot.commands.base_command import BaseCommand
 from telegram_bot.commands.cancel import BRANCH_CHECK, cancel_row
 from telegram_bot.commands.manager import Manager
 from telegram_bot.enums import CommandName, FsmDataKeys
-from telegram_bot.errors import TYPE_TAKEN_REASON, ApiErrorPresenter
+from telegram_bot.errors import DAY_OUTSIDE_PERIOD_REASON, TYPE_TAKEN_REASON, ApiErrorPresenter
 from telegram_bot.formatting import CheckFormatter
-from telegram_bot.i18n import current_language, t
+from telegram_bot.i18n import LocaleFormat, current_language, t
 from telegram_bot.logging import get_logger
 from telegram_bot.notifications import NotificationCatchUp
-from telegram_bot.parsers import AssociationMatcher, CheckParser, ParsedCheckEdit, ParseError
+from telegram_bot.parsers import (
+    AssociationMatcher,
+    CheckParser,
+    DayParser,
+    ParsedCheckEdit,
+    ParseError,
+)
 from telegram_bot.states import States
 
 logger = get_logger(__name__)
@@ -86,6 +104,7 @@ _BACK_PREFIX = "check_back"
 #: развалило бы разбор `callback_data`, который сам разделён двоеточиями.
 _STAGE_TYPES = "types"
 _STAGE_CATEGORIES = "categories"
+_STAGE_DAY = "day"
 
 #: Разметка списков сопоставления. Включается на месте вызова, а не глобально:
 #: остальные сообщения несут данные пользователя, и HTML на всех превратил бы
@@ -119,6 +138,9 @@ class CheckCommand(BaseCommand):
             return
         if current == States.CHECK_CATEGORIES.state:
             await self._edit_categories(message, state)
+            return
+        if current == States.CHECK_DAY.state:
+            await self._edit_day(message, state)
             return
 
         spreadsheet = await self.spreadsheet(message)
@@ -184,16 +206,26 @@ class CheckCommand(BaseCommand):
         if spreadsheet is None:
             return
 
-        # Возврат разбирается до стадии: он ведёт в одно и то же место откуда
-        # угодно, и спрашивать о текущей стадии тут нечего.
+        current = await self.aiogram.get_state(state)
+
+        # Возврат разбирается по состоянию, а не до него: мест, куда он ведёт,
+        # стало два — с категорий к типам, со дня к категориям. Метка стадии в
+        # `callback_data` при этом не заводится нарочно: кнопка живёт в
+        # переписке дольше своей стадии, и нажатая на третьей кнопка второй
+        # перепрыгнула бы стадию целиком. Где пользователь сейчас, знает FSM, а
+        # не кнопка недельной давности.
         if (callback.data or "").startswith(f"{_BACK_PREFIX}:"):
-            await self._back_to_types(chat_id, state, draft, spreadsheet)
+            if current == States.CHECK_DAY.state:
+                await self._back_to_categories(chat_id, state, draft, spreadsheet)
+            else:
+                await self._back_to_types(chat_id, state, draft, spreadsheet)
             return
 
-        current = await self.aiogram.get_state(state)
         if current == States.CHECK_TYPES.state:
             await self._to_categories(chat_id, state, draft, spreadsheet)
         elif current == States.CHECK_CATEGORIES.state:
+            await self._to_day(chat_id, state, draft, spreadsheet)
+        elif current == States.CHECK_DAY.state:
             await self._commit(chat_id, state, draft, spreadsheet)
 
     # --- Очередь ---------------------------------------------------------
@@ -699,26 +731,30 @@ class CheckCommand(BaseCommand):
         await self._save_draft(state, draft)
         await self._show_categories(chat_id, state, draft)
 
-    # --- Запись чека -----------------------------------------------------
+    # --- Стадия 3: день --------------------------------------------------
 
-    async def _commit(
+    async def _to_day(
         self,
         chat_id: int,
         state: FSMContext,
         draft: CheckDraft,
         spreadsheet: Spreadsheet,
     ) -> None:
-        """Записывает разобранный чек и переходит к следующему.
+        """Проверяет готовность чека и переходит к третьей стадии.
 
-        Отдельной стадии подтверждения нет: «Готово» на категориях и есть
-        подтверждение. Прежде здесь спрашивался счёт, и запись была побочным
-        следствием ответа на этот вопрос; со счётом ушёл и вопрос, а проверка
-        «у всех позиций есть категория» осталась — она про сам чек, а не про
-        то, о чём спрашивали.
+        Обе проверки — «осталась хоть одна позиция» и «у всех живых есть
+        категория» — стоят здесь, а не перед записью, хотя относятся именно к
+        ней. Чинить и то и другое надо на категориях, и отказ на стадии дня
+        уводил бы пользователя оттуда, куда он только что пришёл. Состояние при
+        отказе не меняется: он остаётся там, где правит.
 
-        Валюта не спрашивается и здесь: её знает формат чека, и api проставляет
-        операциям ровно ту же — см. `telegram_bot.checks.models`.
+        Период читается до первого `ask`. Недоступное api тогда не гасит живую
+        клавиатуру второй стадии — пользователь просто нажмёт «Готово» ещё раз.
         """
+        if not draft.items:
+            await self._show_broken(chat_id, state, draft)
+            return
+
         # Чек, из которого убрали всё, не записывается и не удаляется: записать
         # нечего, а удалить — значило бы освободить ключ среди живых строк и
         # разрешить тому же QR отсканироваться заново. Чек остаётся в очереди,
@@ -743,6 +779,125 @@ class CheckCommand(BaseCommand):
             )
             return
 
+        period = await self.api.periods.current(spreadsheet.id)
+        _ensure_day(draft, period, spreadsheet.timezone)
+        await self._save_draft(state, draft)
+        await self.aiogram.set_state(state, States.CHECK_DAY)
+        await self._show_day(chat_id, state, draft, period)
+
+    async def _show_day(
+        self,
+        chat_id: int,
+        state: FSMContext,
+        draft: CheckDraft,
+        period: Period,
+    ) -> None:
+        """Печатает вопрос о дне с границами периода и клавиатурой стадии.
+
+        Одним блоком и без списка позиций: на этой стадии не правят ни типы, ни
+        категории, и повторять весь чек ради одного числа значило бы утопить в
+        нём вопрос. Список остался выше в переписке, со второй стадии.
+
+        Конец периода печатается на день раньше `end_date`: та исключительна, и
+        напечатанная как есть рекламировала бы день, который api отвергнет.
+        """
+        await self.ask(
+            chat_id=chat_id,
+            state=state,
+            text=t(
+                "text.check_ask_day",
+                start=LocaleFormat.day(period.start_date),
+                end=LocaleFormat.day(period.end_date - timedelta(days=1)),
+                day=LocaleFormat.day(draft.added_at) if draft.added_at else "",
+            ),
+            rows=self.stage_rows(draft, stage=_STAGE_DAY),
+        )
+
+    async def _back_to_categories(
+        self,
+        chat_id: int,
+        state: FSMContext,
+        draft: CheckDraft,
+        spreadsheet: Spreadsheet,
+    ) -> None:
+        """Возвращает на стадию категорий, ничего не пересчитывая.
+
+        Не через `_to_categories`: тот заново раскладывает позиции и может
+        позвать модель, а со стадии дня возвращаться не к чему — ни один тип с
+        тех пор не менялся.
+
+        День не сбрасывается: возврат «посмотреть категории» не повод отменять
+        уже сделанный выбор. За тем, чтобы он не пережил смену периода, следит
+        `_ensure_day` на обратном пути.
+        """
+        if not draft.items:
+            await self._show_broken(chat_id, state, draft)
+            return
+        await self.aiogram.set_state(state, States.CHECK_CATEGORIES)
+        await self._show_categories(chat_id, state, draft)
+
+    async def _edit_day(self, message: Message, state: FSMContext) -> None:
+        """Применяет присланное число как день записи.
+
+        Правки позиций здесь не разбираются вовсе: `CheckParser` не зовётся, и
+        «1,3 - молочка» на этой стадии — просто не число. Это намеренно —
+        стадия задаёт один вопрос, и принимать на нём правки значило бы
+        позволить уехать типу или категории уже после того, как чек показан
+        готовым.
+        """
+        chat_id = message.chat.id
+        draft = await self._require_draft(message, state)
+        if draft is None:
+            return
+
+        spreadsheet = await self.spreadsheet(message)
+        if spreadsheet is None:
+            return
+
+        period = await self.api.periods.current(spreadsheet.id)
+        _ensure_day(draft, period, spreadsheet.timezone)
+        try:
+            day = DayParser.parse(
+                self.text_of(message),
+                start_date=period.start_date,
+                end_date=period.end_date,
+            )
+        except ParseError as error:
+            await self.ask(
+                chat_id=chat_id,
+                state=state,
+                text=error.message,
+                rows=self.stage_rows(draft, stage=_STAGE_DAY),
+            )
+            return
+
+        draft.added_at = day
+        await self._save_draft(state, draft)
+        await self._show_day(chat_id, state, draft, period)
+
+    # --- Запись чека -----------------------------------------------------
+
+    async def _commit(
+        self,
+        chat_id: int,
+        state: FSMContext,
+        draft: CheckDraft,
+        spreadsheet: Spreadsheet,
+    ) -> None:
+        """Записывает разобранный чек и переходит к следующему.
+
+        Достижим только со стадии дня: «Готово» на ней и есть подтверждение,
+        отдельной стадии подтверждения нет. Проверки готовности чека — что
+        осталась хоть одна позиция и что у всех живых есть категория — стоят не
+        здесь, а на переходе к этой стадии: чинить их надо на категориях.
+
+        Валюта не спрашивается: её знает формат чека, и api проставляет
+        операциям ровно ту же — см. `telegram_bot.checks.models`.
+
+        Пустой `draft.added_at` возможен ровно у черновика, начатого до
+        появления стадии дня: он уходит как есть, и api датирует такой чек
+        сегодняшним днём — то есть ровно так, как датировал до неё.
+        """
         categories = await self.api.catalog.categories(spreadsheet.id)
         default = _default_expense(categories)
         default_id = default.id if default is not None else None
@@ -753,7 +908,21 @@ class CheckCommand(BaseCommand):
                 check_id=draft.check_id,
                 items=self._commit_items(draft, default_id),
                 new_product_types=self._new_product_types(draft, categories, default_id),
+                added_at=draft.added_at,
             )
+        except ApiValidationError as error:
+            if error.reason != DAY_OUTSIDE_PERIOD_REASON:
+                raise
+            # Период сменился, пока пользователь выбирал день. Чек не записан.
+            # Состояние менять не нужно — он уже на нужной стадии; достаточно
+            # перечитать границы и сбросить день, иначе следующее «Готово»
+            # упёрлось бы в тот же отказ.
+            await self.aiogram.send_message(chat_id, ApiErrorPresenter.present(error))
+            period = await self.api.periods.current(spreadsheet.id)
+            draft.added_at = _default_day(period, spreadsheet.timezone)
+            await self._save_draft(state, draft)
+            await self._show_day(chat_id, state, draft, period)
+            return
         except ApiConflictError as error:
             if error.reason != TYPE_TAKEN_REASON:
                 raise
@@ -903,6 +1072,14 @@ class CheckCommand(BaseCommand):
             await self._show_types(chat_id, state, draft, categories)
         elif current == States.CHECK_CATEGORIES.state:
             await self._show_categories(chat_id, state, draft)
+        elif current == States.CHECK_DAY.state:
+            # Границы перечитываются, а не берутся из черновика: между показом
+            # стадии и отказом от удаления период мог смениться, и перерисовка
+            # по памяти вернула бы день, которого в периоде уже нет.
+            period = await self.api.periods.current(spreadsheet.id)
+            _ensure_day(draft, period, spreadsheet.timezone)
+            await self._save_draft(state, draft)
+            await self._show_day(chat_id, state, draft, period)
 
     # --- Кнопки ----------------------------------------------------------
 
@@ -931,13 +1108,21 @@ class CheckCommand(BaseCommand):
         rows: list[tuple[tuple[str, str], ...]] = []
         if stage is not None:
             rows.append(((t("buttons.check.done"), f"{_DONE_PREFIX}:{stage}:{draft.check_id}"),))
-            # «К типам» — только со второй стадии: с первой возвращаться некуда,
-            # а у неразобранного чека нет и самих стадий. Своим рядом, а не
-            # рядом с «Готово»: это движение в обратную сторону, и стоять
-            # вплотную к кнопке, которая ведёт вперёд, ему незачем.
+            # Кнопка возврата есть на всех стадиях, кроме первой: с неё
+            # возвращаться некуда, а у неразобранного чека нет и самих стадий.
+            # Своим рядом, а не рядом с «Готово»: это движение в обратную
+            # сторону, и стоять вплотную к кнопке, ведущей вперёд, ему незачем.
+            #
+            # Надпись зависит от стадии, а `callback_data` — нет: куда ведёт
+            # возврат, решает состояние FSM в `handle_callback`, см. тамошний
+            # комментарий.
             if stage == _STAGE_CATEGORIES:
                 rows.append(
                     ((t("buttons.check.back_to_types"), f"{_BACK_PREFIX}:{draft.check_id}"),)
+                )
+            elif stage == _STAGE_DAY:
+                rows.append(
+                    ((t("buttons.check.back_to_categories"), f"{_BACK_PREFIX}:{draft.check_id}"),)
                 )
         rows.append(
             (
@@ -1003,6 +1188,35 @@ def _set_amount(draft: CheckDraft, numbers: tuple[int, ...], amount: Decimal) ->
 def _product_types(categories: list[Category]) -> set[str]:
     """Все типы товаров, закреплённые за категориями документа."""
     return {product_type for item in categories for product_type in item.product_types}
+
+
+def _default_day(period: Period, timezone: str) -> date:
+    """День по умолчанию для стадии дня: сегодня, прижатое к границам периода.
+
+    Прижатое, потому что «сегодня» бот и api вычисляют в разные мгновения из
+    одного пояса: в местную полночь они расходятся на сутки, и невыровненное
+    умолчание уехало бы в отказ по дню на первом же «Готово».
+
+    Испорченный пояс не роняет диалог: разбор чека не то место, где выяснять
+    настройки документа, и первый день периода — ответ не хуже отказа.
+    """
+    try:
+        today = datetime.now(ZoneInfo(timezone)).date()
+    except (ZoneInfoNotFoundError, ValueError):
+        return period.start_date
+    return today if period.contains(today) else period.start_date
+
+
+def _ensure_day(draft: CheckDraft, period: Period, timezone: str) -> None:
+    """Проставляет день, если его ещё нет или он уже не в периоде.
+
+    Именно здесь уживаются два правила: выбранный день переживает поход к
+    категориям и обратно, но днём вне периода не становится никогда. Период
+    может смениться посреди разбора, и сохранённый до этого день иначе дожил бы
+    до записи и получил отказ.
+    """
+    if draft.added_at is None or not period.contains(draft.added_at):
+        draft.added_at = _default_day(period, timezone)
 
 
 def _default_expense(categories: list[Category]) -> Category | None:

@@ -13,6 +13,7 @@
 from __future__ import annotations
 
 from collections.abc import Sequence
+from datetime import date
 from decimal import Decimal
 from typing import Any
 
@@ -69,6 +70,15 @@ class CheckDraft(BaseModel):
     #: правки `dump`/`load`. Рубль по умолчанию — для черновика сломанного
     #: чека, где формат прочитать не удалось и показывать всё равно нечего.
     currency: Currency = Currency.RUB
+    #: День текущего периода, которым датировать операции чека. Настоящая
+    #: `date`, а не строка, как `purchased_at` выше: ту бот получает из чека и
+    #: только показывает, а эту он сам вычисляет и сам же отправляет в api, и
+    #: хранение строкой заставило бы разбирать её дважды. `mode="json"` пишет её
+    #: ISO-строкой, `model_validate` читает обратно — `dump`/`load` не в курсе.
+    #:
+    #: `None` значит «стадия дня ещё не проходилась»; черновик, записанный до
+    #: появления стадии, читается с этим значением и без миграции.
+    added_at: date | None = None
     items: list[DraftItem] = []
 
     def dump(self) -> dict[str, Any]:

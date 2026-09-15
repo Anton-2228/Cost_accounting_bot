@@ -38,11 +38,22 @@ CONFLICT_KEYS: dict[str, str] = {
     "check_already_processed": "errors.conflict.check_already_processed",
 }
 
+#: Признак 422: выбранный день не принадлежит текущему периоду. Назван
+#: константой, а не литералом, потому что на него смотрит и разбор чека: там по
+#: нему решают, что чек не записан и надо переспросить день, а не падать.
+DAY_OUTSIDE_PERIOD_REASON = "day_outside_period"
+
 #: Признаки 422 со своей формулировкой: `errors.validation.<признак>`.
 #: Остальные — и нарушение схемы запроса (`validation_error`), у которого
 #: признака нет вовсе, — получают общую, `errors.validation.generic`.
 VALIDATION_REASONS = frozenset(
-    {"period_closed", "amount_not_positive", "filters_incompatible", "period_target_mismatch"}
+    {
+        "period_closed",
+        "amount_not_positive",
+        "filters_incompatible",
+        "period_target_mismatch",
+        DAY_OUTSIDE_PERIOD_REASON,
+    }
 )
 
 #: Признак конфликта, текст которого собирается из данных документа: назвать

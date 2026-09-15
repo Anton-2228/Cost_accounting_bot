@@ -44,6 +44,7 @@ _CREATE_TABLE_STATES = (
 _CHECK_STATES = (
     States.CHECK_TYPES,
     States.CHECK_CATEGORIES,
+    States.CHECK_DAY,
 )
 
 #: Все состояния диалогов разом. Список нужен трижды — `/start` как выходу,

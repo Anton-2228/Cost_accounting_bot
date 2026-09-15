@@ -40,6 +40,7 @@ period_closed = "El periodo que empieza el {start_date} está cerrado"
 amount_not_positive = "El importe debe ser mayor que cero"
 filters_incompatible = "No se puede hacer eso: las condiciones de la solicitud se contradicen"
 period_target_mismatch = "El periodo no corresponde a esta hoja"
+day_outside_period = "El día elegido ya no pertenece al periodo actual: el periodo ha cambiado"
 
 [notification]
 table_ready = "Tu hoja de cálculo está lista: {url}"
@@ -89,6 +90,7 @@ done = "Listo"
 skip = "Aplazar"
 delete = "Eliminar"
 back_to_types = "Volver a los tipos"
+back_to_categories = "Volver a las categorías"
 
 [buttons.check_delete]
 confirm = "Sí, eliminar"
@@ -136,6 +138,11 @@ usage = "No entendí la corrección. Así: «1,3 - lácteos», una corrección p
 repeated = "El artículo {numbers} aparece dos veces: deja una sola corrección"
 value_too_long = "El valor supera los {limit} caracteres"
 no_position = "No hay ningún artículo n.º {number} en el recibo. Total de artículos: {count}"
+
+[parse.day]
+usage = "Envíe un número: el día del mes en el que registrar las compras. Por ejemplo: 3"
+not_a_number = "«{value}» no parece un día del mes. Envíe un número, por ejemplo: 3"
+out_of_period = "Ese día no existe en el periodo actual: va del {start} al {end}"
 
 [parse.onboarding]
 title_empty = "El nombre no puede estar vacío"

@@ -40,6 +40,7 @@ period_closed = "La période commençant le {start_date} est clôturée"
 amount_not_positive = "Le montant doit être supérieur à zéro"
 filters_incompatible = "Ce n'est pas possible : les conditions de la requête se contredisent"
 period_target_mismatch = "La période ne correspond pas à cette feuille"
+day_outside_period = "Le jour choisi n'appartient plus à la période actuelle : la période a changé"
 
 [notification]
 table_ready = "Votre tableur est prêt : {url}"
@@ -89,6 +90,7 @@ done = "Terminé"
 skip = "Reporter"
 delete = "Supprimer"
 back_to_types = "Retour aux types"
+back_to_categories = "Retour aux catégories"
 
 [buttons.check_delete]
 confirm = "Oui, supprimer"
@@ -136,6 +138,11 @@ usage = "Je n'ai pas compris la correction. Comme ceci : « 1,3 - laitages », u
 repeated = "L'article {numbers} est indiqué deux fois — gardez une seule correction"
 value_too_long = "La valeur dépasse {limit} caractères"
 no_position = "Il n'y a pas d'article n° {number} dans le ticket. Nombre d'articles : {count}"
+
+[parse.day]
+usage = "Envoyez un nombre : le jour du mois auquel enregistrer les achats. Par exemple : 3"
+not_a_number = "« {value} » ne ressemble pas à un jour du mois. Envoyez un nombre, par exemple : 3"
+out_of_period = "Ce jour n'existe pas dans la période actuelle : elle va du {start} au {end}"
 
 [parse.onboarding]
 title_empty = "Le nom ne peut pas être vide"

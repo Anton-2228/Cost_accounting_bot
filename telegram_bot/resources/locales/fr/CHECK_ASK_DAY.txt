@@ -1,0 +1,6 @@
+À quel jour enregistrer les achats ?
+
+Période : du {start} au {end}
+Choisi : {day}
+
+Envoyez un autre nombre — un jour du mois — ou appuyez sur « Terminé ».

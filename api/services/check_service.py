@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from collections.abc import Mapping, Sequence
-from datetime import UTC, datetime
+from datetime import UTC, date, datetime
 from typing import Any
 
 from sqlalchemy.exc import IntegrityError
@@ -44,6 +44,16 @@ ALREADY_PROCESSED_REASON = "check_already_processed"
 #: молчаливое переназначение было бы хуже отказа: раскладка позиций чека стала
 #: бы зависеть от порядка обработки.
 TYPE_TAKEN_REASON = "product_type_taken"
+
+#: Причина отказа: присланный день не принадлежит текущему периоду. Отдельная
+#: причина, а не общее «неверный запрос»: день приходит из диалога, где его
+#: набрал человек, и единственный осмысленный ответ на такой отказ — показать
+#: границы периода и спросить снова.
+#:
+#: Сюда попадает и гонка: пользователь выбрал день, задумался, а период за это
+#: время сменился. Отличить её от опечатки на стороне api нельзя и не нужно —
+#: чек в обоих случаях не записан, а разбираться с этим клиенту.
+DAY_OUTSIDE_PERIOD_REASON = "day_outside_period"
 
 #: Валюта чека по его формату. Не спрашивается у пользователя и не извлекается
 #: из расшифровки: каждый из форматов привязан к своей стране и своей валюте, и
@@ -212,6 +222,7 @@ class CheckService(BaseSpreadsheetService):
         check_id: int,
         items: Sequence[CheckItem],
         new_product_types: Sequence[ProductTypeAssignment] = (),
+        added_at: date | None = None,
     ) -> list[Record]:
         """Записывает разобранный чек: типы товаров, кэш, операции, отметку.
 
@@ -222,6 +233,12 @@ class CheckService(BaseSpreadsheetService):
 
         Валюта операций берётся из формата чека, а не из его расшифровки и не у
         пользователя: см. :data:`_CHECK_CURRENCY`.
+
+        `added_at` — день, которым датировать операции; пустое значение означает
+        сегодняшний день документа. Он обязан лежать в **текущем** периоде:
+        период под него не подбирается. Подбор пустил бы запись в прошлый —
+        возможно, уже закрытый — период, и правило «чек ложится в текущий месяц»
+        не жило бы больше нигде.
         """
         spreadsheet = await self._get_ready(spreadsheet_id)
         check = await self._checks.get_for_spreadsheet(check_id, spreadsheet_id)
@@ -231,6 +248,25 @@ class CheckService(BaseSpreadsheetService):
             raise ConflictError(
                 "Чек уже разобран",
                 details={"reason": ALREADY_PROCESSED_REASON},
+            )
+
+        # Период и день проверяются до первой записи, а не рядом с созданием
+        # операций. Транзакция откатилась бы и оттуда, но отказ по дню — самый
+        # ожидаемый из отказов этого метода, и платить за него разбором типов и
+        # походами в кэш незачем.
+        today = today_for(spreadsheet)
+        period = await ensure_current_period(self._periods, spreadsheet, today)
+        assert period.id is not None
+
+        day = today if added_at is None else added_at
+        if not period.contains(day):
+            raise BusinessRuleError(
+                f"День {day} не входит в текущий период",
+                details={
+                    "reason": DAY_OUTSIDE_PERIOD_REASON,
+                    "start_date": period.start_date.isoformat(),
+                    "end_date": period.end_date.isoformat(),
+                },
             )
 
         # Все категории документа, а не только активные: неактивная категория
@@ -243,10 +279,6 @@ class CheckService(BaseSpreadsheetService):
             if category.id is not None
         }
         await self._assign_product_types(spreadsheet_id, new_product_types, categories)
-
-        today = today_for(spreadsheet)
-        period = await ensure_current_period(self._periods, spreadsheet, today)
-        assert period.id is not None
 
         currency = _CHECK_CURRENCY[check.kind]
 
@@ -265,7 +297,7 @@ class CheckService(BaseSpreadsheetService):
                         category_id=item.category_id,
                         amount=signed,
                         currency=currency,
-                        added_at=today,
+                        added_at=day,
                         product_name=item.product_name,
                         product_type=item.product_type,
                         check_id=check_id,

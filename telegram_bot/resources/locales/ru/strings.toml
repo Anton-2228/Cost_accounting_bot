@@ -44,6 +44,7 @@ period_closed = "Период с {start_date} закрыт"
 amount_not_positive = "Сумма должна быть больше нуля"
 filters_incompatible = "Так нельзя: условия запроса противоречат друг другу"
 period_target_mismatch = "Период указан не для того листа"
+day_outside_period = "Выбранный день больше не входит в текущий период — период успел смениться"
 
 [notification]
 table_ready = "Таблица готова: {url}"
@@ -93,6 +94,7 @@ done = "Готово"
 skip = "Отложить"
 delete = "Удалить"
 back_to_types = "К типам"
+back_to_categories = "К категориям"
 
 [buttons.check_delete]
 confirm = "Да, удалить"
@@ -142,6 +144,11 @@ usage = "Не понял правку. Нужно так: «1,3 - молочка
 repeated = "Позиция {numbers} указана дважды — оставьте одну правку"
 value_too_long = "Значение длиннее {limit} символов"
 no_position = "Позиции №{number} в чеке нет. Всего позиций: {count}"
+
+[parse.day]
+usage = "Пришлите число — день месяца, на который записать покупки. Например: 3"
+not_a_number = "«{value}» не похоже на день месяца. Нужно число, например: 3"
+out_of_period = "Такого дня в текущем периоде нет: он идёт с {start} по {end}"
 
 [parse.onboarding]
 title_empty = "Название не может быть пустым"

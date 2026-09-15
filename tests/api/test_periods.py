@@ -25,17 +25,29 @@ async def test_current_route_is_not_shadowed(client: AsyncClient, session: Async
     assert response.json()["data"]["status"] == "OPEN"
 
 
-async def test_current_period_is_404_until_something_creates_it(
+async def test_current_period_is_created_on_read(
     client: AsyncClient,
     session: AsyncSession,
 ) -> None:
-    """Чтение периода его не создаёт."""
+    """Чтение текущего периода заводит его, если строки ещё нет.
+
+    Второй запрос здесь не украшение: он ходит в базу отдельной сессией и
+    поэтому ловит незакоммиченную вставку. Без коммита в сервисе первый ответ
+    выглядел бы верным, а период не существовал бы.
+    """
     spreadsheet = await factories.create_spreadsheet(session, ready=True, timezone=_TIMEZONE)
     await session.commit()
 
     response = await client.get(f"/api/v1/spreadsheets/{spreadsheet.id}/periods/current")
-    assert response.status_code == 404
-    assert response.json()["details"] == {"resource": "period"}
+    assert response.status_code == 200
+
+    period = response.json()["data"]
+    assert period["status"] == "OPEN"
+    today = today_in_timezone(_TIMEZONE).isoformat()
+    assert period["start_date"] <= today < period["end_date"]
+
+    listed = await client.get(f"/api/v1/spreadsheets/{spreadsheet.id}/periods")
+    assert [item["id"] for item in listed.json()["items"]] == [period["id"]]
 
 
 async def test_statistics_are_daily_and_signed(

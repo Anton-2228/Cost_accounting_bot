@@ -11,9 +11,10 @@
 
 from __future__ import annotations
 
-from datetime import UTC, datetime
+from datetime import UTC, date, datetime, timedelta
 from decimal import Decimal
 from typing import Any, cast
+from zoneinfo import ZoneInfo
 
 import pytest
 from aiogram import Bot, Dispatcher, Router
@@ -22,13 +23,14 @@ from aiogram.fsm.storage.base import StorageKey
 from aiogram.fsm.storage.memory import MemoryStorage
 from aiogram.types import CallbackQuery, Chat, InlineKeyboardMarkup, Message
 from aiogram.types import User as TelegramUser
+from dateutil.relativedelta import relativedelta
 
 from telegram_bot.access import AccessGuard
 from telegram_bot.ai import AiClient, AiUnavailableError, LlmUsage
 from telegram_bot.aiogram_wrapper import AiogramWrapper
 from telegram_bot.api_client import ApiGateway
 from telegram_bot.api_client.checks import CommitItem, NewProductType
-from telegram_bot.api_client.errors import ApiUnavailableError
+from telegram_bot.api_client.errors import ApiUnavailableError, ApiValidationError
 from telegram_bot.api_client.models import (
     CashedRecord,
     Category,
@@ -37,6 +39,8 @@ from telegram_bot.api_client.models import (
     LlmEntityKind,
     LlmOperation,
     NotificationKind,
+    Period,
+    PeriodStatus,
     Record,
 )
 from telegram_bot.checks.models import currency_of
@@ -47,7 +51,8 @@ from telegram_bot.commands.check_skip import CheckSkipCommand
 from telegram_bot.commands.manager import Manager
 from telegram_bot.commands.menu import MenuCommand
 from telegram_bot.enums import CommandName
-from telegram_bot.i18n import Language, t
+from telegram_bot.errors import DAY_OUTSIDE_PERIOD_REASON
+from telegram_bot.i18n import Language, LocaleFormat, t
 from telegram_bot.notifications import NotificationCatchUp
 from telegram_bot.states import States
 from tests.telegram_bot.conftest import FakeLanguages, make_category
@@ -60,6 +65,7 @@ _CHAT_ID = 7
 CANCEL_BUTTON_TEXT = t("buttons.cancel")
 _DONE_BUTTON = t("buttons.check.done")
 _BACK_BUTTON = t("buttons.check.back_to_types")
+_BACK_TO_CATEGORIES_BUTTON = t("buttons.check.back_to_categories")
 SKIP_BUTTON = t("buttons.check.skip")
 DELETE_BUTTON = t("buttons.check.delete")
 _CONFIRM_BUTTON = t("buttons.check_delete.confirm")
@@ -213,6 +219,10 @@ class FakeChecks:
         self.cached = cached
         self.committed: list[dict[str, Any]] = []
         self.deleted: list[int] = []
+        #: Отказ, который `commit` бросит один раз вместо записи. Одноразовый
+        #: намеренно: проверять восстановление после отказа имеет смысл только
+        #: тогда, когда следующая попытка проходит.
+        self.commit_error: Exception | None = None
         #: Обращения к очереди. Нужны одному тесту: api отдаёт её и неготовому
         #: документу, и не дойти до неё должен сам бот.
         self.listed: list[int] = []
@@ -238,12 +248,17 @@ class FakeChecks:
         check_id: int,
         items: Any,
         new_product_types: Any = (),
+        added_at: date | None = None,
     ) -> list[Record]:
+        if self.commit_error is not None:
+            error, self.commit_error = self.commit_error, None
+            raise error
         self.committed.append(
             {
                 "check_id": check_id,
                 "items": list(items),
                 "new_product_types": list(new_product_types),
+                "added_at": added_at,
             }
         )
         self.checks = [check for check in self.checks if check.id != check_id]
@@ -291,6 +306,47 @@ class FakeLlmUsages:
         )
 
 
+class FakePeriods:
+    """Текущий период документа.
+
+    Окно строится от **настоящего** сегодня, а не от даты, которой харнесс
+    подписывает сообщения. Иначе умолчание стадии дня — сегодня, прижатое к
+    границам, — упиралось бы в край зашитого окна, и проверки начинали бы
+    врать в зависимости от дня прогона.
+
+    Границы считаются по тому же `reset_day=15`, что отдаёт `FakeSpreadsheets`,
+    так что окно всегда содержит сегодня и всегда длиной ровно месяц.
+    """
+
+    def __init__(self) -> None:
+        today = datetime.now(ZoneInfo("Europe/Moscow")).date()
+        start = today.replace(day=15)
+        if today.day < 15:
+            start -= relativedelta(months=1)
+        self.start_date = start
+        self.end_date = start + relativedelta(months=1)
+        #: Обращения за периодом. Нужны тестам восстановления после отказа: там
+        #: важно, что границы перечитаны, а не взяты из черновика.
+        self.asked: list[int] = []
+
+    async def current(self, spreadsheet_id: int) -> Period:
+        self.asked.append(spreadsheet_id)
+        return Period(
+            id=1,
+            start_date=self.start_date,
+            end_date=self.end_date,
+            status=PeriodStatus.OPEN,
+        )
+
+    def day_of(self, number: int) -> date:
+        """Дата внутри окна по числу месяца — то же, что считает бот."""
+        for shift in range((self.end_date - self.start_date).days):
+            day = self.start_date + timedelta(days=shift)
+            if day.day == number:
+                return day
+        raise AssertionError(f"дня {number} нет в окне периода")
+
+
 class FakeApi:
     """Шлюз api целиком."""
 
@@ -304,6 +360,7 @@ class FakeApi:
         self.spreadsheets = FakeSpreadsheets(google_id)
         self.catalog = catalog
         self.checks = checks
+        self.periods = FakePeriods()
         self.llm_usages = llm_usages or FakeLlmUsages()
 
 
@@ -425,9 +482,11 @@ class Harness:
         self.catalog = FakeCatalog(categories or [_FOOD, _BASKET])
         self.ai = ai or FakeAi()
         self.llm_usages = llm_usages or FakeLlmUsages()
-        api = cast(
-            "ApiGateway", FakeApi(self.checks, self.catalog, self.llm_usages, google_id)
-        )
+        fake_api = FakeApi(self.checks, self.catalog, self.llm_usages, google_id)
+        #: Периоды нужны тестам стадии дня: по ним считается ожидаемая дата и
+        #: проверяется, что границы перечитаны, а не взяты из черновика.
+        self.periods = fake_api.periods
+        api = cast("ApiGateway", fake_api)
         catch_up = cast("NotificationCatchUp", FakeCatchUp())
 
         self.manager = Manager(AccessGuard(frozenset({_USER_ID})), self.aiogram, FakeLanguages())
@@ -485,8 +544,13 @@ class Harness:
 
 
 async def _walk_to_commit(harness: Harness) -> None:
-    """Проходит обе стадии без правок: второе «Готово» и записывает чек."""
+    """Проходит все три стадии без правок: третье «Готово» и записывает чек.
+
+    День не вводится: на стадии дня уже стоит умолчание, и «Готово» принимает
+    его, — так проходит и живой пользователь, которого день разбора устраивает.
+    """
     await harness.send("/check")
+    await harness.press_done()
     await harness.press_done()
     await harness.press_done()
 
@@ -646,6 +710,7 @@ async def test_edited_cached_type_reaches_commit() -> None:
     await harness.send("1 - сыры")
     await harness.press_done()
     await harness.press_done()
+    await harness.press_done()
     await harness.send("карта")
 
     items = harness.checks.committed[0]["items"]
@@ -768,8 +833,19 @@ async def test_every_stage_can_drop_the_check() -> None:
     ]
 
     await harness.press_done()
-    # Стадий всего две, и «Готово» второй из них уже записывает чек: дальше
-    # спрашивать нечего, и ветка кончается вместе с очередью.
+    # На третьей — тот же набор, но возврат ведёт к категориям и называется
+    # иначе. «Отложить» и «Удалить» на месте и здесь.
+    assert await harness.current_state() == States.CHECK_DAY.state
+    assert harness.aiogram.rows() == [
+        [_DONE_BUTTON],
+        [_BACK_TO_CATEGORIES_BUTTON],
+        [SKIP_BUTTON, DELETE_BUTTON],
+        [CANCEL_BUTTON_TEXT],
+    ]
+
+    await harness.press_done()
+    # Стадий три, и «Готово» третьей записывает чек: дальше спрашивать нечего,
+    # и ветка кончается вместе с очередью.
     assert harness.checks.committed != []
     assert await harness.current_state() is None
 
@@ -944,6 +1020,7 @@ async def test_deleted_item_does_not_become_a_record() -> None:
     await harness.send("!2")
     await harness.press_done()
     await harness.press_done()
+    await harness.press_done()
 
     committed = harness.checks.committed
     assert len(committed) == 1
@@ -969,6 +1046,7 @@ async def test_repeated_bang_returns_the_item() -> None:
     await harness.send("!2")
     await harness.press_done()
     await harness.press_done()
+    await harness.press_done()
 
     items = harness.checks.committed[0]["items"]
     assert [item.product_name for item in items] == ["молоко", "пакет"]
@@ -991,6 +1069,7 @@ async def test_delete_works_on_the_categories_stage() -> None:
     await harness.press_done()
     await harness.send("!2")
     await harness.press_done()
+    await harness.press_done()
 
     assert [item.product_name for item in harness.checks.committed[0]["items"]] == ["молоко"]
 
@@ -1009,6 +1088,7 @@ async def test_deleted_item_teaches_nothing() -> None:
 
     await harness.send("/check")
     await harness.send("!2")
+    await harness.press_done()
     await harness.press_done()
     await harness.press_done()
 
@@ -1086,6 +1166,7 @@ async def test_round_trip_recomputes_only_the_changed_type() -> None:
     assert harness.ai.category_calls == [["сладости"], ["шоколад"]]
 
     await harness.press_done()
+    await harness.press_done()
     items = harness.checks.committed[0]["items"]
     assert [item.category_id for item in items] == [_BASKET.id, _FOOD.id]
     # Корзина типов не получает никогда — даже выбранная руками.
@@ -1110,6 +1191,7 @@ async def test_delete_survives_a_failed_category_edit() -> None:
 
     assert harness.aiogram.said("Есть такие:")
 
+    await harness.press_done()
     await harness.press_done()
     # Удаление не применилось: сообщение отвергнуто целиком, обе позиции живы.
     assert [item.product_name for item in harness.checks.committed[0]["items"]] == [
@@ -1142,6 +1224,7 @@ async def test_price_edit_changes_the_recorded_amount() -> None:
     await harness.send("1-75")
     await harness.press_done()
     await harness.press_done()
+    await harness.press_done()
 
     items = harness.checks.committed[0]["items"]
     assert [item.amount for item in items] == [Decimal("75"), Decimal("7.00")]
@@ -1162,6 +1245,7 @@ async def test_price_edit_works_on_the_categories_stage() -> None:
     await harness.send("/check")
     await harness.press_done()
     await harness.send("1-60")
+    await harness.press_done()
     await harness.press_done()
 
     assert [item.amount for item in harness.checks.committed[0]["items"]] == [Decimal("60")]
@@ -1219,7 +1303,220 @@ async def test_price_and_type_are_edited_in_one_message() -> None:
     await harness.send("1 - молочка\n1-75")
     await harness.press_done()
     await harness.press_done()
+    await harness.press_done()
 
     item = harness.checks.committed[0]["items"][0]
     assert item.product_type == "молочка"
     assert item.amount == Decimal("75")
+
+
+# --- Стадия дня ----------------------------------------------------------
+
+
+def _at_day_stage(**kwargs: Any) -> Harness:
+    """Харнесс с одним знакомым чеком; модель не нужна ни разу."""
+    return Harness(
+        checks=[_check(1, ("молоко", 8990))],
+        cached={"молоко": "молочка"},
+        ai=FakeAi(categories={1: "Еда"}),
+        **kwargs,
+    )
+
+
+async def test_day_stage_opens_after_categories() -> None:
+    """Второе «Готово» не записывает чек, а спрашивает день."""
+    harness = _at_day_stage()
+
+    await harness.send("/check")
+    await harness.press_done()
+    await harness.press_done()
+
+    assert await harness.current_state() == States.CHECK_DAY.state
+    assert harness.checks.committed == []
+
+
+async def test_day_stage_shows_the_inclusive_end_of_the_period() -> None:
+    """Границы печатаются включительно: `end_date` исключительна.
+
+    Напечатанная как есть, она рекламировала бы день, который api отвергнет, —
+    самая правдоподобная ошибка этой стадии.
+    """
+    harness = _at_day_stage()
+    periods = harness.periods
+
+    await harness.send("/check")
+    await harness.press_done()
+    await harness.press_done()
+
+    last_day = periods.end_date - timedelta(days=1)
+    assert harness.aiogram.said(LocaleFormat.day(last_day))
+    assert not harness.aiogram.said(LocaleFormat.day(periods.end_date))
+
+
+async def test_day_defaults_to_today() -> None:
+    """Умолчание стадии — сегодня: чаще всего его и подтверждают."""
+    harness = _at_day_stage()
+    today = datetime.now(ZoneInfo("Europe/Moscow")).date()
+
+    await harness.send("/check")
+    await harness.press_done()
+    await harness.press_done()
+    await harness.press_done()
+
+    assert harness.checks.committed[0]["added_at"] == today
+
+
+async def test_typed_day_reaches_commit() -> None:
+    """Присланное число уезжает в api датой, а не числом."""
+    harness = _at_day_stage()
+    expected = harness.periods.day_of(3)
+
+    await harness.send("/check")
+    await harness.press_done()
+    await harness.press_done()
+    await harness.send("3")
+    await harness.press_done()
+
+    assert harness.checks.committed[0]["added_at"] == expected
+
+
+async def test_day_outside_the_period_is_refused() -> None:
+    """Число вне периода не записывает чек и не уводит со стадии."""
+    harness = _at_day_stage()
+
+    await harness.send("/check")
+    await harness.press_done()
+    await harness.press_done()
+    await harness.send("99")
+
+    assert harness.checks.committed == []
+    assert await harness.current_state() == States.CHECK_DAY.state
+    # Клавиатура жива: иначе отказ оставлял бы чек без единой кнопки.
+    assert harness.aiogram.rows()[0] == [_DONE_BUTTON]
+
+
+async def test_category_edit_is_refused_on_the_day_stage() -> None:
+    """Правка категорий на стадии дня отвергается и ничего не меняет.
+
+    Стадия задаёт один вопрос: принять правку здесь значило бы позволить
+    категории уехать после того, как чек показан готовым.
+    """
+    harness = _at_day_stage()
+
+    await harness.send("/check")
+    await harness.press_done()
+    await harness.press_done()
+    await harness.send("1 - прочее")
+
+    assert harness.checks.committed == []
+    assert await harness.current_state() == States.CHECK_DAY.state
+
+    await harness.press_done()
+    assert harness.checks.committed[0]["items"][0].category_id == _FOOD.id
+
+
+async def test_chosen_day_survives_a_trip_back_to_categories() -> None:
+    """Возврат к категориям не сбрасывает выбранный день и не зовёт модель."""
+    harness = _at_day_stage()
+    expected = harness.periods.day_of(3)
+
+    await harness.send("/check")
+    await harness.press_done()
+    await harness.press_done()
+    await harness.send("3")
+
+    calls_before = len(harness.ai.category_calls)
+    await harness.press(_BACK_TO_CATEGORIES_BUTTON)
+    assert await harness.current_state() == States.CHECK_CATEGORIES.state
+    assert len(harness.ai.category_calls) == calls_before
+
+    await harness.press_done()
+    await harness.press_done()
+    assert harness.checks.committed[0]["added_at"] == expected
+
+
+async def test_rolled_over_period_resets_the_day_and_keeps_the_check() -> None:
+    """Отказ «день вне периода» переспрашивает, а не роняет разбор.
+
+    Так выглядит смена периода посреди разбора: чек не записан, границы
+    перечитываются, день сбрасывается на сегодня — иначе следующее «Готово»
+    упёрлось бы в тот же отказ.
+    """
+    harness = _at_day_stage()
+    today = datetime.now(ZoneInfo("Europe/Moscow")).date()
+    harness.checks.commit_error = ApiValidationError(
+        422,
+        code="business_rule",
+        details={"reason": DAY_OUTSIDE_PERIOD_REASON},
+    )
+
+    await harness.send("/check")
+    await harness.press_done()
+    await harness.press_done()
+    await harness.send("3")
+
+    asked_before = len(harness.periods.asked)
+    await harness.press_done()
+
+    assert harness.checks.committed == []
+    assert await harness.current_state() == States.CHECK_DAY.state
+    # Границы именно перечитаны, а не взяты из черновика.
+    assert len(harness.periods.asked) > asked_before
+
+    await harness.press_done()
+    assert harness.checks.committed[0]["added_at"] == today
+
+
+async def test_cancel_leaves_the_day_stage() -> None:
+    """«Отмена» выпускает и с третьей стадии.
+
+    Ветка отмены перечисляет свои состояния руками, и забытое в ней состояние
+    превращает стадию в ловушку без выхода по кнопке.
+    """
+    harness = _at_day_stage()
+
+    await harness.send("/check")
+    await harness.press_done()
+    await harness.press_done()
+    await harness.press(CANCEL_BUTTON_TEXT)
+
+    assert await harness.current_state() is None
+    assert harness.checks.committed == []
+    assert harness.checks.deleted == []
+
+
+async def test_declined_deletion_redraws_the_day_stage() -> None:
+    """Отказ от удаления на стадии дня возвращает её же клавиатуру."""
+    harness = _at_day_stage()
+
+    await harness.send("/check")
+    await harness.press_done()
+    await harness.press_done()
+    await harness.press(DELETE_BUTTON)
+    await harness.press(t("buttons.check_delete.decline"))
+
+    assert await harness.current_state() == States.CHECK_DAY.state
+    assert harness.aiogram.rows() == [
+        [_DONE_BUTTON],
+        [_BACK_TO_CATEGORIES_BUTTON],
+        [SKIP_BUTTON, DELETE_BUTTON],
+        [CANCEL_BUTTON_TEXT],
+    ]
+
+
+async def test_readiness_is_checked_before_the_day_is_asked() -> None:
+    """Чек без единой позиции упирается в отказ на категориях, а не на дне.
+
+    Проверка стоит на переходе намеренно: чинить её надо на категориях, и
+    отказ со стадии дня уводил бы оттуда, куда пользователь только что пришёл.
+    """
+    harness = _at_day_stage()
+
+    await harness.send("/check")
+    await harness.send("!1")
+    await harness.press_done()
+    await harness.press_done()
+
+    assert await harness.current_state() == States.CHECK_CATEGORIES.state
+    assert harness.checks.committed == []
+    assert harness.checks.deleted == []

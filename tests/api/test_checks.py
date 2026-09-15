@@ -5,6 +5,8 @@ from __future__ import annotations
 from httpx import AsyncClient
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from api.core.period import today_in_timezone
+from api.domain.period import Period
 from tests import factories
 
 _SAVE_BODY = {
@@ -331,3 +333,78 @@ async def test_processed_check_is_not_deleted(
     refused = await client.delete(f"{base}/checks/{check.id}")
     assert refused.status_code == 409
     assert refused.json()["details"]["reason"] == "check_already_processed"
+
+
+async def _ready_check(session: AsyncSession) -> tuple[str, dict[str, object], Period]:
+    """База урла, тело записи одной позиции и текущий период документа."""
+    spreadsheet = await factories.create_spreadsheet(session, ready=True)
+    period = await factories.create_period(
+        session, spreadsheet, day=today_in_timezone("Europe/Moscow")
+    )
+    food = await factories.create_category(session, spreadsheet, title="Еда")
+    check = await factories.create_check(session, spreadsheet)
+    await session.commit()
+
+    body: dict[str, object] = {
+        "check_id": check.id,
+        "items": [
+            {
+                "product_name": "молоко",
+                "product_type": "продукты",
+                "category_id": food.id,
+                "amount": "89.90",
+            }
+        ],
+    }
+    return f"/api/v1/spreadsheets/{spreadsheet.id}", body, period
+
+
+async def test_commit_dates_records_with_the_given_day(
+    client: AsyncClient,
+    session: AsyncSession,
+) -> None:
+    """Присланный день доезжает до операций через весь слой."""
+    base, body, period = await _ready_check(session)
+    body["added_at"] = period.start_date.isoformat()
+
+    response = await client.post(f"{base}/checks/commit", json=body)
+
+    assert response.status_code == 201
+    assert response.json()["items"][0]["added_at"] == period.start_date.isoformat()
+
+
+async def test_commit_without_a_day_is_accepted(
+    client: AsyncClient,
+    session: AsyncSession,
+) -> None:
+    """Тело без `added_at` законно: поле необязательное, и день тогда сегодняшний.
+
+    Это и позволяет выкатывать api раньше бота: `extra="forbid"` отверг бы
+    запрос целиком, будь поле обязательным.
+    """
+    base, body, _ = await _ready_check(session)
+
+    response = await client.post(f"{base}/checks/commit", json=body)
+
+    assert response.status_code == 201
+    assert response.json()["items"][0]["added_at"] == today_in_timezone(
+        "Europe/Moscow"
+    ).isoformat()
+
+
+async def test_commit_with_a_day_outside_the_period_is_422(
+    client: AsyncClient,
+    session: AsyncSession,
+) -> None:
+    """День из чужого периода отвергается отдельной причиной, а не общей.
+
+    Причина названа затем, что по ней бот отличает «переспроси день» от всего
+    остального и не роняет разбор.
+    """
+    base, body, period = await _ready_check(session)
+    body["added_at"] = period.end_date.isoformat()
+
+    response = await client.post(f"{base}/checks/commit", json=body)
+
+    assert response.status_code == 422
+    assert response.json()["details"]["reason"] == "day_outside_period"

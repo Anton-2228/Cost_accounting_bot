@@ -2,17 +2,19 @@
 
 from __future__ import annotations
 
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from decimal import Decimal
 
 import pytest
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from api.core.period import today_in_timezone
 from api.domain.check import Check
 from api.domain.check_item import CheckItem, ProductTypeAssignment
+from api.domain.period import Period
 from api.enums import CategoryKind, CheckKind, EntityStatus, SheetTarget
-from api.exceptions.base import ConflictError, NotFoundError
+from api.exceptions.base import BusinessRuleError, ConflictError, NotFoundError
 from api.orm.record import RecordORM
 from api.repositories.cashed_record_repository import CashedRecordRepository
 from api.repositories.category_repository import CategoryRepository
@@ -24,6 +26,10 @@ from tests import factories
 _QR = "t=20260725T1507&s=1214.95&fn=7384440901402798&i=145&fp=698610272&n=1"
 _KEY = "7384440901402798:145:698610272"
 _FETCHED_AT = datetime(2026, 7, 25, 15, 8, tzinfo=UTC)
+
+#: Пояс документа из фабрики: «сегодня» и границы периода считаются по нему, а
+#: не по поясу машины, где идут тесты.
+_TIMEZONE = "Europe/Moscow"
 
 
 async def _save(service: CheckService, spreadsheet_id: int, *, key: str = _KEY) -> Check:
@@ -601,3 +607,118 @@ async def test_same_paper_is_saved_again_after_deletion(
     second = await _save(check_service, spreadsheet.id)
     assert second.id is not None and second.id != first.id
     assert [check.id for check in await check_service.list_checks(spreadsheet.id)] == [second.id]
+
+
+async def _one_item_check(
+    session: AsyncSession,
+) -> tuple[int, int, int, Period]:
+    """Готовый к записи чек из одной позиции вместе с текущим периодом.
+
+    Период заводится явно: фабрика документа его не создаёт, а тестам стадии
+    дня нужны именно границы — они и решают, какой день законен.
+    """
+    spreadsheet = await factories.create_spreadsheet(session, ready=True)
+    period = await factories.create_period(
+        session, spreadsheet, day=today_in_timezone(_TIMEZONE)
+    )
+    food = await factories.create_category(session, spreadsheet, title="Еда")
+    await session.commit()
+    check = await factories.create_check(session, spreadsheet)
+    await session.commit()
+    assert spreadsheet.id is not None and check.id is not None and food.id is not None
+    return spreadsheet.id, check.id, food.id, period
+
+
+def _milk(category_id: int) -> CheckItem:
+    return CheckItem(
+        product_name="молоко",
+        product_type="продукты",
+        category_id=category_id,
+        amount=Decimal("89.90"),
+    )
+
+
+async def test_given_day_dates_the_operations(
+    session: AsyncSession,
+    check_service: CheckService,
+) -> None:
+    """Присланный день внутри периода становится датой всех операций чека."""
+    spreadsheet_id, check_id, category_id, period = await _one_item_check(session)
+
+    records = await check_service.commit_check(
+        spreadsheet_id,
+        check_id=check_id,
+        items=[_milk(category_id)],
+        added_at=period.start_date,
+    )
+
+    assert [record.added_at for record in records] == [period.start_date]
+    # Период остаётся текущим: день выбирают внутри него, а не вместо него.
+    assert [record.period_id for record in records] == [period.id]
+
+
+async def test_missing_day_still_means_today(
+    session: AsyncSession,
+    check_service: CheckService,
+) -> None:
+    """Без дня чек датируется сегодняшним — как до появления стадии дня.
+
+    Поле необязательное намеренно: так api выкатывается раньше бота, а чек,
+    начатый до выката, дописывается без отдельной ветки.
+    """
+    spreadsheet_id, check_id, category_id, _ = await _one_item_check(session)
+
+    records = await check_service.commit_check(
+        spreadsheet_id,
+        check_id=check_id,
+        items=[_milk(category_id)],
+    )
+
+    assert [record.added_at for record in records] == [today_in_timezone(_TIMEZONE)]
+
+
+@pytest.mark.parametrize("shift", [-1, 0])
+async def test_day_outside_current_period_writes_nothing(
+    session: AsyncSession,
+    check_service: CheckService,
+    shift: int,
+) -> None:
+    """Дни по обе стороны периода отвергаются, и чек остаётся неразобранным.
+
+    `shift=-1` — день перед началом, `shift=0` — сам `end_date`, который уже
+    принадлежит следующему периоду: обе границы проверяются, потому что
+    полуинтервал ошибиться позволяет ровно на них.
+
+    Отказ обязан не оставить следов: проверка стоит до первой записи, и
+    уцелевшая половина чека была бы хуже отказа.
+    """
+    spreadsheet_id, check_id, category_id, period = await _one_item_check(session)
+    day = period.start_date - timedelta(days=1) if shift else period.end_date
+
+    with pytest.raises(BusinessRuleError) as error:
+        await check_service.commit_check(
+            spreadsheet_id,
+            check_id=check_id,
+            items=[_milk(category_id)],
+            new_product_types=[
+                ProductTypeAssignment(category_id=category_id, product_type="сыры")
+            ],
+            added_at=day,
+        )
+
+    assert (error.value.details or {})["reason"] == "day_outside_period"
+
+    stored = await CheckRepository(session).get_for_spreadsheet(check_id, spreadsheet_id)
+    assert stored is not None
+    assert stored.processed_at is None
+
+    written = await session.scalar(
+        select(func.count()).select_from(RecordORM).where(RecordORM.check_id == check_id)
+    )
+    assert written == 0
+
+    category = await CategoryRepository(session).get_for_spreadsheet(
+        category_id, spreadsheet_id
+    )
+    assert category is not None
+    assert category.product_types == []

@@ -31,8 +31,9 @@ async def get_current_period(
 ) -> DataResponse[PeriodResponse]:
     """Период, которому принадлежит сегодняшний день документа.
 
-    Объявлен до `/{period_id}`-маршрутов. Период здесь не создаётся: чтение не
-    должно менять данные — этим занимаются операция и ролловер.
+    Объявлен до `/{period_id}`-маршрутов. Единственный `GET`, который пишет:
+    если строки текущего периода ещё нет, она заводится здесь же. Почему так —
+    см. :meth:`api.services.period_service.PeriodService.current`.
     """
     period = await service.current(spreadsheet_id)
     return DataResponse(data=PeriodResponse.model_validate(period))

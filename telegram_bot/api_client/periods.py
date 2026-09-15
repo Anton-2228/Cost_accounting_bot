@@ -22,3 +22,17 @@ class PeriodsClient:
         """
         items = await self._http.get_items(f"/spreadsheets/{spreadsheet_id}/periods")
         return [Period.model_validate(item) for item in items]
+
+    async def current(self, spreadsheet_id: int) -> Period:
+        """Период, которому принадлежит сегодняшний день документа.
+
+        Api заводит строку периода, если её ещё нет, поэтому метод не бывает
+        пустым: границы периода нужны диалогу, чтобы задать вопрос, и отвечать
+        «периода нет» там, где он вычислим, было бы отказом на ровном месте.
+
+        Границы берутся у api, а не считаются по `reset_day`: период — строка в
+        базе, и вторая версия календаря на этой стороне расходилась бы с первой
+        на каждом пропущенном ролловере.
+        """
+        data = await self._http.get_data(f"/spreadsheets/{spreadsheet_id}/periods/current")
+        return Period.model_validate(data)
