@@ -10,10 +10,11 @@
 
 from __future__ import annotations
 
-from datetime import date, datetime
+from datetime import UTC, date, datetime
 from decimal import Decimal
 from enum import StrEnum
 from typing import Any
+from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from pydantic import BaseModel, ConfigDict
 
@@ -95,6 +96,27 @@ class Spreadsheet(BaseModel):
     #: Метка отвязывания. У живой таблицы пуста; заполнена — только в истории
     #: пользователя, единственном месте, где отвязанные вообще показываются.
     deleted_at: datetime | None = None
+
+    def today(self) -> date:
+        """Сегодняшняя дата в часовом поясе документа.
+
+        Методом на модели, а не функцией по месту: «сегодня» спрашивают и
+        `/add`, и стадия дня `/check`, и означать оно обязано одно и то же —
+        день владельца таблицы, а не день процесса. Процесс живёт в UTC, и его
+        дата с вечера расходится с пользовательской ровно там, где трату и
+        вносят.
+
+        Свой ответ, а не спрошенный у api: лишний круг по сети ради даты не
+        нужен, а расхождение на секундах у полуночи и так остаётся — api
+        проверяет день у себя, и последнее слово за ним.
+
+        Испорченный пояс не роняет команду: UTC — ответ не хуже отказа, а
+        настройки документа выясняют не посреди записи траты.
+        """
+        try:
+            return datetime.now(ZoneInfo(self.timezone)).date()
+        except (ZoneInfoNotFoundError, ValueError):
+            return datetime.now(UTC).date()
 
     @property
     def is_unlinked(self) -> bool:

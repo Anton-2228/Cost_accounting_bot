@@ -41,6 +41,7 @@ amount_not_positive = "El importe debe ser mayor que cero"
 filters_incompatible = "No se puede hacer eso: las condiciones de la solicitud se contradicen"
 period_target_mismatch = "El periodo no corresponde a esta hoja"
 day_outside_period = "El día elegido ya no pertenece al periodo actual: el periodo ha cambiado"
+day_in_future = "Ese día aún no ha llegado: una operación no puede fecharse por adelantado"
 
 [notification]
 table_ready = "Tu hoja de cálculo está lista: {url}"
@@ -145,6 +146,7 @@ no_position = "No hay ningún artículo n.º {number} en el recibo. Total de art
 usage = "Envíe un número: el día del mes en el que registrar las compras. Por ejemplo: 3"
 not_a_number = "«{value}» no parece un día del mes. Envíe un número, por ejemplo: 3"
 out_of_period = "Ese día no existe en el periodo actual: va del {start} al {end}"
+in_future = "Ese día aún no ha llegado. Como máximo puede usar el {last}"
 
 [parse.onboarding]
 title_empty = "El nombre no puede estar vacío"

@@ -45,10 +45,9 @@ Mini App остаётся тем, чем был, — входом.
 
 from __future__ import annotations
 
-from datetime import date, datetime, timedelta
+from datetime import date
 from decimal import Decimal
 from typing import Any
-from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State
@@ -544,9 +543,10 @@ class CheckCommand(BaseCommand):
             # период мог смениться, пока блок висел, и день по памяти вернул бы
             # число, которого в периоде уже нет.
             period = await self.api.periods.current(spreadsheet.id)
-            _ensure_day(draft, period, spreadsheet.timezone)
+            today = spreadsheet.today()
+            _ensure_day(draft, period, today)
             await self._save_draft(state, draft)
-            body = _day_body(draft, period)
+            body = _day_body(draft, period, today)
 
         help_shown = not await self._help_shown(state)
         await self.aiogram.set_state_data(state, FsmDataKeys.CHECK_HELP_SHOWN, help_shown)
@@ -925,10 +925,11 @@ class CheckCommand(BaseCommand):
             return
 
         period = await self.api.periods.current(spreadsheet.id)
-        _ensure_day(draft, period, spreadsheet.timezone)
+        today = spreadsheet.today()
+        _ensure_day(draft, period, today)
         await self._save_draft(state, draft)
         await self._enter_stage(state, States.CHECK_DAY)
-        await self._show_day(chat_id, state, draft, period)
+        await self._show_day(chat_id, state, draft, period, today)
 
     async def _show_day(
         self,
@@ -936,8 +937,9 @@ class CheckCommand(BaseCommand):
         state: FSMContext,
         draft: CheckDraft,
         period: Period,
+        today: date,
     ) -> None:
-        """Печатает название этапа, границы периода и выбранный день.
+        """Печатает название этапа, доступные границы и выбранный день.
 
         Без списка позиций: на этой стадии не правят ни типы, ни категории, и
         повторять весь чек ради одного числа значило бы утопить в нём вопрос.
@@ -947,15 +949,17 @@ class CheckCommand(BaseCommand):
         инструкцию к нему показывает справка, а название этапа спрашивает о том
         же короче.
 
-        Конец периода печатается на день раньше `end_date`: та исключительна, и
-        напечатанная как есть рекламировала бы день, который api отвергнет.
+        Конец печатается на день раньше `end_date`: та исключительна, и
+        напечатанная как есть рекламировала бы день, который api отвергнет. По
+        той же причине незакончившийся месяц обрывается на сегодняшнем дне —
+        вперёд датировать нельзя.
         """
         await self._show_stage_block(
             chat_id=chat_id,
             state=state,
             draft=draft,
             stage=_STAGE_DAY,
-            body=_day_body(draft, period),
+            body=_day_body(draft, period, today),
         )
 
     async def _back_to_categories(
@@ -1000,12 +1004,14 @@ class CheckCommand(BaseCommand):
             return
 
         period = await self.api.periods.current(spreadsheet.id)
-        _ensure_day(draft, period, spreadsheet.timezone)
+        today = spreadsheet.today()
+        _ensure_day(draft, period, today)
         try:
             day = DayParser.parse(
                 self.text_of(message),
                 start_date=period.start_date,
                 end_date=period.end_date,
+                today=today,
             )
         except ParseError as error:
             await self.ask(
@@ -1018,7 +1024,7 @@ class CheckCommand(BaseCommand):
 
         draft.added_at = day
         await self._save_draft(state, draft)
-        await self._show_day(chat_id, state, draft, period)
+        await self._show_day(chat_id, state, draft, period, today)
 
     # --- Запись чека -----------------------------------------------------
 
@@ -1064,9 +1070,10 @@ class CheckCommand(BaseCommand):
             # упёрлось бы в тот же отказ.
             await self.aiogram.send_message(chat_id, ApiErrorPresenter.present(error))
             period = await self.api.periods.current(spreadsheet.id)
-            draft.added_at = _default_day(period, spreadsheet.timezone)
+            today = spreadsheet.today()
+            draft.added_at = _default_day(period, today)
             await self._save_draft(state, draft)
-            await self._show_day(chat_id, state, draft, period)
+            await self._show_day(chat_id, state, draft, period, today)
             return
         except ApiConflictError as error:
             if error.reason != TYPE_TAKEN_REASON:
@@ -1242,9 +1249,10 @@ class CheckCommand(BaseCommand):
             # стадии и отказом от удаления период мог смениться, и перерисовка
             # по памяти вернула бы день, которого в периоде уже нет.
             period = await self.api.periods.current(spreadsheet.id)
-            _ensure_day(draft, period, spreadsheet.timezone)
+            today = spreadsheet.today()
+            _ensure_day(draft, period, today)
             await self._save_draft(state, draft)
-            await self._show_day(chat_id, state, draft, period)
+            await self._show_day(chat_id, state, draft, period, today)
 
     # --- Кнопки ----------------------------------------------------------
 
@@ -1370,18 +1378,22 @@ def _set_amount(draft: CheckDraft, numbers: tuple[int, ...], amount: Decimal) ->
             item.original_amount = None
 
 
-def _day_body(draft: CheckDraft, period: Period) -> str:
-    """Тело стадии дня: границы периода и выбранный день.
+def _day_body(draft: CheckDraft, period: Period, today: date) -> str:
+    """Тело стадии дня: доступные границы и выбранный день.
 
     Функцией, а не строкой по месту: собирают его двое — показ стадии и
     переключатель справки, — и конец периода, посчитанный в одном месте
     правильно, а в другом как есть, отличался бы ровно на сутки и ровно там, где
     это заметят только в отказе api.
+
+    Верхняя граница — сегодня, а не конец месяца, когда месяц ещё не кончился:
+    вперёд датировать нельзя, и назвать пользователю недостижимое число значило
+    бы позвать его набрать то, что будет отвергнуто.
     """
     return t(
         "text.check_day",
         start=LocaleFormat.day(period.start_date),
-        end=LocaleFormat.day(period.end_date - timedelta(days=1)),
+        end=LocaleFormat.day(DayParser.last_allowed(period.end_date, today)),
         day=LocaleFormat.day(draft.added_at) if draft.added_at else "",
     )
 
@@ -1391,33 +1403,29 @@ def _product_types(categories: list[Category]) -> set[str]:
     return {product_type for item in categories for product_type in item.product_types}
 
 
-def _default_day(period: Period, timezone: str) -> date:
+def _default_day(period: Period, today: date) -> date:
     """День по умолчанию для стадии дня: сегодня, прижатое к границам периода.
 
     Прижатое, потому что «сегодня» бот и api вычисляют в разные мгновения из
     одного пояса: в местную полночь они расходятся на сутки, и невыровненное
     умолчание уехало бы в отказ по дню на первом же «Готово».
-
-    Испорченный пояс не роняет диалог: разбор чека не то место, где выяснять
-    настройки документа, и первый день периода — ответ не хуже отказа.
     """
-    try:
-        today = datetime.now(ZoneInfo(timezone)).date()
-    except (ZoneInfoNotFoundError, ValueError):
-        return period.start_date
     return today if period.contains(today) else period.start_date
 
 
-def _ensure_day(draft: CheckDraft, period: Period, timezone: str) -> None:
-    """Проставляет день, если его ещё нет или он уже не в периоде.
+def _ensure_day(draft: CheckDraft, period: Period, today: date) -> None:
+    """Проставляет день, если его ещё нет, он вне периода или он в будущем.
 
     Именно здесь уживаются два правила: выбранный день переживает поход к
-    категориям и обратно, но днём вне периода не становится никогда. Период
-    может смениться посреди разбора, и сохранённый до этого день иначе дожил бы
-    до записи и получил отказ.
+    категориям и обратно, но недопустимым не становится никогда. Период может
+    смениться посреди разбора, и сохранённый до этого день иначе дожил бы до
+    записи и получил отказ.
+
+    Будущее проверяется наравне с периодом: чек, отложенный до следующего дня,
+    иначе сохранил бы день, который к моменту «Готово» уже нельзя записать.
     """
-    if draft.added_at is None or not period.contains(draft.added_at):
-        draft.added_at = _default_day(period, timezone)
+    if draft.added_at is None or not period.contains(draft.added_at) or draft.added_at > today:
+        draft.added_at = _default_day(period, today)
 
 
 def _default_expense(categories: list[Category]) -> Category | None:

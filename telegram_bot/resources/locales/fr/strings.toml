@@ -41,6 +41,7 @@ amount_not_positive = "Le montant doit être supérieur à zéro"
 filters_incompatible = "Ce n'est pas possible : les conditions de la requête se contredisent"
 period_target_mismatch = "La période ne correspond pas à cette feuille"
 day_outside_period = "Le jour choisi n'appartient plus à la période actuelle : la période a changé"
+day_in_future = "Ce jour n'est pas encore arrivé : une opération ne peut pas être datée à l'avance"
 
 [notification]
 table_ready = "Votre tableur est prêt : {url}"
@@ -145,6 +146,7 @@ no_position = "Il n'y a pas d'article n° {number} dans le ticket. Nombre d'arti
 usage = "Envoyez un nombre : le jour du mois auquel enregistrer les achats. Par exemple : 3"
 not_a_number = "« {value} » ne ressemble pas à un jour du mois. Envoyez un nombre, par exemple : 3"
 out_of_period = "Ce jour n'existe pas dans la période actuelle : elle va du {start} au {end}"
+in_future = "Ce jour n'est pas encore arrivé. Au plus tard, vous pouvez utiliser le {last}"
 
 [parse.onboarding]
 title_empty = "Le nom ne peut pas être vide"

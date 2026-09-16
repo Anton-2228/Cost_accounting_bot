@@ -12,9 +12,10 @@
 
 from __future__ import annotations
 
-from datetime import UTC, date, datetime
+from datetime import UTC, date, datetime, timedelta
 from decimal import Decimal
 from typing import Any, cast
+from zoneinfo import ZoneInfo
 
 import pytest
 from aiogram.filters import CommandObject
@@ -107,15 +108,31 @@ class FakeRecords:
         )
 
 
+#: Окно вокруг **настоящего** сегодня: нужно там, где проверяется запрет
+#: датировать вперёд. Зашитое окно `_PERIOD` целиком в прошлом, и завтрашнего
+#: дня в нём нет вовсе — отказ пришёл бы не по той причине.
+def _live_period() -> Period:
+    """Период, начавшийся неделю назад: в нём есть и прошлое, и будущее."""
+    today = datetime.now(ZoneInfo("Europe/Moscow")).date()
+    start = today - timedelta(days=7)
+    return Period(
+        id=2,
+        start_date=start,
+        end_date=start + timedelta(days=30),
+        status=PeriodStatus.OPEN,
+    )
+
+
 class FakePeriods:
     """Границы текущего периода и счётчик походов за ними."""
 
-    def __init__(self) -> None:
+    def __init__(self, period: Period | None = None) -> None:
         self.calls = 0
+        self.period = period if period is not None else _PERIOD
 
     async def current(self, spreadsheet_id: int) -> Period:
         self.calls += 1
-        return _PERIOD
+        return self.period
 
 
 class FakeCatalog:
@@ -128,7 +145,7 @@ class FakeCatalog:
 class FakeApi:
     """Шлюз api из клиентов, которые нужны `/add`."""
 
-    def __init__(self, records: FakeRecords, periods: FakePeriods) -> None:
+    def __init__(self, records: FakeRecords, periods: FakePeriods) -> None:  # noqa: D107
         self.spreadsheets = FakeSpreadsheets(_spreadsheet())
         self.records = records
         self.periods = periods
@@ -138,10 +155,10 @@ class FakeApi:
 class Harness:
     """`/add` с подменённым api."""
 
-    def __init__(self) -> None:
+    def __init__(self, period: Period | None = None) -> None:
         self.aiogram = FakeAiogram()
         self.records = FakeRecords()
-        self.periods = FakePeriods()
+        self.periods = FakePeriods(period)
         api = cast("ApiGateway", FakeApi(self.records, self.periods))
         catch_up = cast("NotificationCatchUp", FakeCatchUp())
         access = AccessGuard(frozenset({_USER_ID}), frozenset())
@@ -244,3 +261,41 @@ class TestRefusals:
         await harness.add("3 евро 500 еда")
 
         assert harness.aiogram.said(t("errors.validation.day_outside_period"))
+
+
+class TestFutureDay:
+    """Ненаступивший день.
+
+    Датировать вперёд нельзя не из строгости: лист статистики сводит суммы к
+    одной валюте по курсу на день операции, а курса на будущий день нет ни у
+    одного источника. Такая операция доехала бы до реестра, а перерисовка листа
+    падала бы до самого этого дня — вместе со всеми операциями листа, в том
+    числе записанными верно.
+    """
+
+    async def test_tomorrow_is_not_written(self) -> None:
+        """Завтрашнее число внутри периода отвергается без похода за записью."""
+        harness = Harness(_live_period())
+        tomorrow = datetime.now(ZoneInfo("Europe/Moscow")).date() + timedelta(days=1)
+
+        await harness.add(f"{tomorrow.day} евро 500 еда")
+
+        assert harness.records.created == []
+
+    async def test_today_is_written(self) -> None:
+        """Сегодня — последний допустимый день, а не первый запрещённый."""
+        harness = Harness(_live_period())
+        today = datetime.now(ZoneInfo("Europe/Moscow")).date()
+
+        await harness.add(f"{today.day} евро 500 еда")
+
+        assert harness.records.created[0]["added_at"] == today
+
+    async def test_yesterday_is_written(self) -> None:
+        """Прошлый день периода запрет не трогает — ради него всё и затевалось."""
+        harness = Harness(_live_period())
+        yesterday = datetime.now(ZoneInfo("Europe/Moscow")).date() - timedelta(days=1)
+
+        await harness.add(f"{yesterday.day} евро 500 еда")
+
+        assert harness.records.created[0]["added_at"] == yesterday

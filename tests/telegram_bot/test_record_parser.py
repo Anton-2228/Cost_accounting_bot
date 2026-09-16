@@ -19,6 +19,11 @@ _PERIOD = Period(
     status=PeriodStatus.OPEN,
 )
 
+#: «Сегодня» для `_PERIOD`: период уже закончился, и всё его окно в прошлом.
+#: Так проверяется сам разбор, не спотыкаясь о запрет датировать вперёд; сам
+#: запрет проверяется отдельно, в :class:`TestFutureDay`.
+_TODAY = _PERIOD.end_date
+
 #: Период с первого числа короткого месяца: в нём есть число, которого в окне
 #: нет вовсе. В окне `_PERIOD` таких чисел не бывает — месяц, начатый 25 июля,
 #: перебирает все числа от 1 до 31.
@@ -28,6 +33,9 @@ _SHORT_PERIOD = Period(
     end_date=date(2026, 10, 1),
     status=PeriodStatus.OPEN,
 )
+
+#: «Сегодня» для `_SHORT_PERIOD` — по той же причине, что и `_TODAY`.
+_SHORT_TODAY = _SHORT_PERIOD.end_date
 
 
 def test_full_line(categories: list[Category]) -> None:
@@ -169,7 +177,9 @@ class TestDay:
         self, categories: list[Category]
     ) -> None:
         """Число снимается со строки, остальное разбирается как прежде."""
-        parsed = RecordParser.parse("3 евро 500 еда обед", categories=categories, period=_PERIOD)
+        parsed = RecordParser.parse(
+            "3 евро 500 еда обед", categories=categories, period=_PERIOD, today=_TODAY
+        )
 
         assert parsed.added_at == date(2026, 8, 3)
         assert parsed.currency is Currency.EUR
@@ -182,7 +192,9 @@ class TestDay:
 
         «25» в окне «25 июля — 25 августа» — июльское: `end_date` исключительна.
         """
-        parsed = RecordParser.parse("25 евро 500 еда", categories=categories, period=_PERIOD)
+        parsed = RecordParser.parse(
+            "25 евро 500 еда", categories=categories, period=_PERIOD, today=_TODAY
+        )
         assert parsed.added_at == date(2026, 7, 25)
 
     def test_without_a_day_the_date_is_left_to_api(self, categories: list[Category]) -> None:
@@ -197,7 +209,12 @@ class TestDay:
         как конец периода значило бы обещать день, которого в нём нет.
         """
         with pytest.raises(ParseError) as error:
-            RecordParser.parse("31 евро 500 еда", categories=categories, period=_SHORT_PERIOD)
+            RecordParser.parse(
+                "31 евро 500 еда",
+                categories=categories,
+                period=_SHORT_PERIOD,
+                today=_SHORT_TODAY,
+            )
 
         assert "01.09.2026" in error.value.message
         assert "30.09.2026" in error.value.message
@@ -205,12 +222,14 @@ class TestDay:
     def test_zero_is_refused_by_the_period_too(self, categories: list[Category]) -> None:
         """«0» — такое же число месяца, которого в периоде нет."""
         with pytest.raises(ParseError):
-            RecordParser.parse("0 евро 500 еда", categories=categories, period=_PERIOD)
+            RecordParser.parse(
+                "0 евро 500 еда", categories=categories, period=_PERIOD, today=_TODAY
+            )
 
     def test_notes_start_after_the_day(self, categories: list[Category]) -> None:
         """Пометка берётся из остатка уже без дня, а не со сдвигом на слово."""
         parsed = RecordParser.parse(
-            "3 евро 500 еда обед в столовой", categories=categories, period=_PERIOD
+            "3 евро 500 еда обед в столовой", categories=categories, period=_PERIOD, today=_TODAY
         )
         assert parsed.notes == "обед в столовой"
 
@@ -222,7 +241,7 @@ class TestDay:
         на валюту «3», хотя не хватает как раз категории.
         """
         with pytest.raises(ParseError, match="/add"):
-            RecordParser.parse(raw, categories=categories, period=_PERIOD)
+            RecordParser.parse(raw, categories=categories, period=_PERIOD, today=_TODAY)
 
     def test_three_digits_are_not_a_day(self, categories: list[Category]) -> None:
         """Длинное число днём не становится и уходит в разбор валюты.
@@ -249,3 +268,34 @@ class TestStartsWithDay:
     def test_everything_else_does_not(self, raw: str | None) -> None:
         """В том числе пустая строка: за периодом ради отказа ходить незачем."""
         assert RecordParser.starts_with_day(raw) is False
+
+
+class TestFutureDay:
+    """Ненаступивший день в `/add`.
+
+    Датировать вперёд нельзя: лист статистики сводит суммы к одной валюте по
+    курсу на день операции, а курса на будущий день нет ни у одного источника, и
+    перерисовка листа падала бы до самого этого дня.
+    """
+
+    def test_tomorrow_is_refused(self, categories: list[Category]) -> None:
+        """Завтрашнее число периода отвергается, хотя лежит внутри окна."""
+        with pytest.raises(ParseError) as error:
+            RecordParser.parse(
+                "4 евро 500 еда",
+                categories=categories,
+                period=_PERIOD,
+                today=date(2026, 8, 3),
+            )
+
+        assert "03.08.2026" in error.value.message
+
+    def test_today_is_allowed(self, categories: list[Category]) -> None:
+        """Сегодня — последний допустимый день, а не первый запрещённый."""
+        parsed = RecordParser.parse(
+            "3 евро 500 еда",
+            categories=categories,
+            period=_PERIOD,
+            today=date(2026, 8, 3),
+        )
+        assert parsed.added_at == date(2026, 8, 3)

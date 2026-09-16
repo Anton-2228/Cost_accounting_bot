@@ -308,11 +308,11 @@ backoff перестал бы работать.
 | `GET/POST /spreadsheets/{id}/accesses` · `POST .../accesses/{id}/granted` | доступы; `?pending_only=` |
 | `POST /spreadsheets/{id}/sync` | попросить вчитать листы, 202 |
 | `POST /spreadsheets/{id}/google-id` | привязать созданный документ (для gsheets) |
-| `GET/POST /spreadsheets/{id}/records` · `DELETE .../records/last` · `.../records/{id}` | операции; `?period_id=`; у `POST` необязательный `added_at` датирует операцию другим днём **текущего** периода, чужой день — 422 `day_outside_period` |
+| `GET/POST /spreadsheets/{id}/records` · `DELETE .../records/last` · `.../records/{id}` | операции; `?period_id=`; у `POST` необязательный `added_at` датирует операцию другим днём **текущего** периода, но не позже сегодняшнего: чужой день — 422 `day_outside_period`, завтрашний — 422 `day_in_future` (курса на ненаступивший день нет, и лист статистики не перерисовался бы) |
 | `GET /spreadsheets/{id}/periods` · `.../periods/current` · `.../periods/{id}/statistics` | периоды и дневные итоги; `current` заводит период под сегодня, если его ещё нет — ленивая починка, как у операции |
 | `GET/POST /spreadsheets/{id}/checks` | сохранённые чеки, `?unprocessed=` (очередь разбора) либо `?period_id=` (архив месяца для листа чеков); оба фильтра сразу — 422; повтор — 409 `check_already_saved` |
 | `DELETE /spreadsheets/{id}/checks/{check_id}` | убрать неразобранный чек (204, мягко); разобранный — 409 `check_already_processed`, он уходит вслед за своими операциями |
-| `GET /spreadsheets/{id}/cashed-records` · `POST .../checks/commit` | кэш типов, запись разобранного чека; необязательный `added_at` датирует операции, чужой период — 422 `day_outside_period` |
+| `GET /spreadsheets/{id}/cashed-records` · `POST .../checks/commit` | кэш типов, запись разобранного чека; необязательный `added_at` датирует операции, чужой период — 422 `day_outside_period`, будущий день — 422 `day_in_future` |
 | `POST /spreadsheets/{id}/llm-usages` | записать, во что обошёлся вызов модели (201); по отвязанному документу — 404 |
 | `GET /spreadsheets/{id}/llm-usages` | замеры документа по времени, **включая отвязанный**. Без агрегации: траты раскладываются по учётным периодам, а границы периода — даты в часовом поясе документа, и считает их бот |
 | `GET /spreadsheets/{id}/notifications` · `POST .../notifications/{id}/delivered` | сообщения боту |

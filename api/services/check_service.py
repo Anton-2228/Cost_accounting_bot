@@ -249,7 +249,7 @@ class CheckService(BaseSpreadsheetService):
         assert period.id is not None
 
         day = today if added_at is None else added_at
-        assert_in_period(period, day)
+        assert_in_period(period, day, today=today)
 
         # Все категории документа, а не только активные: неактивная категория
         # скрыта из подсказок, но продолжает существовать, и позиция чека,

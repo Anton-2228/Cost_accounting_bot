@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from datetime import timedelta
+
 from httpx import AsyncClient
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -269,3 +271,37 @@ async def test_day_outside_the_period_is_422(
 
     assert response.status_code == 422
     assert response.json()["details"]["reason"] == "day_outside_period"
+
+
+async def test_tomorrow_is_422(
+    client: AsyncClient,
+    session: AsyncSession,
+) -> None:
+    """Завтрашний день отвергается отдельной причиной, а не как чужой период.
+
+    По ней бот отличает «вперёд датировать нельзя» от «период успел смениться»:
+    ответы пользователю у этих отказов разные.
+    """
+    spreadsheet = await factories.create_spreadsheet(session, ready=True)
+    today = today_in_timezone(spreadsheet.timezone)
+    spreadsheet.reset_day = today.day - 7 if today.day > 7 else today.day + 21
+    await session.commit()
+    category = await factories.create_category(session, spreadsheet)
+    await session.commit()
+
+    tomorrow = today + timedelta(days=1)
+    start_date, end_date = period_bounds(today, spreadsheet.reset_day)
+    assert start_date <= tomorrow < end_date, "завтра должно лежать внутри периода"
+
+    response = await client.post(
+        f"/api/v1/spreadsheets/{spreadsheet.id}/records",
+        json={
+            "category_id": category.id,
+            "amount": "100.50",
+            "currency": "RUB",
+            "added_at": tomorrow.isoformat(),
+        },
+    )
+
+    assert response.status_code == 422
+    assert response.json()["details"]["reason"] == "day_in_future"

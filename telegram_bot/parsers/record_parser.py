@@ -32,6 +32,9 @@ class RecordParser:
     пришлось бы угадывать по содержимому слова, и пометка, начинающаяся со
     слова «евро», молча превращалась бы в валюту, укорачивая саму себя.
 
+    Датировать можно прошедшим днём периода и сегодняшним, но не завтрашним:
+    почему — в :mod:`telegram_bot.parsers.day_parser`.
+
     День необязателен и стоит **перед** валютой — по той же причине, по какой
     валюта стоит перед пометкой: в конце строки его пришлось бы отличать от
     пометки по содержимому, и «/add евро 20 еда 10» датировалось бы десятым
@@ -65,21 +68,26 @@ class RecordParser:
         *,
         categories: list[Category],
         period: Period | None = None,
+        today: date | None = None,
     ) -> ParsedRecord:
         """Разбирает аргументы команды или бросает :class:`ParseError`.
 
-        `period` обязателен ровно тогда, когда :meth:`starts_with_day` сказала
-        «да»: без границ день в дату не превратить.
+        `period` и `today` обязательны ровно тогда, когда
+        :meth:`starts_with_day` сказала «да»: без границ день в дату не
+        превратить, а без сегодняшнего дня документа — не отличить вчерашнюю
+        трату от ненаступившей.
         """
         parts = (raw_args or "").split()
 
         added_at: date | None = None
         if parts and DayParser.looks_like_day(parts[0]):
             assert period is not None, "день в строке есть, а границы периода не привезли"
+            assert today is not None, "день в строке есть, а сегодняшний день не привезли"
             added_at = DayParser.parse(
                 parts[0],
                 start_date=period.start_date,
                 end_date=period.end_date,
+                today=today,
             )
             parts = parts[1:]
 

@@ -9,6 +9,12 @@
 начинается не первого. В окне «25 июля — 25 августа» «25» — это июльское, «3» —
 августовское, и спрашивать месяц незачем.
 
+Днём из будущего датировать нельзя, хотя период почти всегда его захватывает:
+лист статистики сводит суммы к одной валюте по курсу на день операции, а курса
+на ненаступивший день нет ни у одного источника. Такая операция доезжает до
+реестра, а перерисовка статистики падает и повторяется, пока день не наступит,
+унося с собой весь лист — вместе с верно записанными операциями.
+
 Отдельный парсер, а не форма :class:`~telegram_bot.parsers.CheckParser`:
 у того каждая строка — правка позиции, он требует либо «!», либо разделитель, и
 голое «3» уже сейчас падает в нём с текстом целиком про номера позиций. Стадия
@@ -43,13 +49,27 @@ class DayParser:
         return 0 < len(text) <= _MAX_DIGITS and text.isdecimal()
 
     @staticmethod
-    def parse(raw: str | None, *, start_date: date, end_date: date) -> date:
+    def last_allowed(end_date: date, today: date) -> date:
+        """Последний день, которым можно датировать запись, включительно.
+
+        Конец периода или сегодня — что раньше. Одним местом, потому что это
+        число нужно и отказу, и вопросу, который его предупреждает: назови
+        вопрос концом месяца то, чего отказ не примет, — и пользователь честно
+        наберёт отвергнутое число.
+        """
+        return min(end_date - timedelta(days=1), today)
+
+    @staticmethod
+    def parse(raw: str | None, *, start_date: date, end_date: date, today: date) -> date:
         """День периода по его числу; `end_date` исключительна.
 
         Ответ ищется обходом самого окна, а не арифметикой по месяцам: обход
         и есть определение периода, он не может ошибиться на границе и не
         заводит вторую версию календаря рядом с той, что живёт в базе. Шагов
         не больше тридцати одного.
+
+        `today` обязателен, а не подставляется по умолчанию: день процесса —
+        не день пользователя, и умолчание молча датировало бы трату по UTC.
         """
         text = (raw or "").strip()
         if not text:
@@ -61,13 +81,18 @@ class DayParser:
         number = int(text)
         for shift in range((end_date - start_date).days):
             day = start_date + timedelta(days=shift)
-            if day.day == number:
-                return day
+            if day.day != number:
+                continue
+            if day > today:
+                raise ParseError(
+                    t("parse.day.in_future", last=LocaleFormat.day(today))
+                )
+            return day
 
         raise ParseError(
             t(
                 "parse.day.out_of_period",
                 start=LocaleFormat.day(start_date),
-                end=LocaleFormat.day(end_date - timedelta(days=1)),
+                end=LocaleFormat.day(DayParser.last_allowed(end_date, today)),
             )
         )

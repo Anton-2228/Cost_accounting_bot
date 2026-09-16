@@ -499,3 +499,74 @@ async def test_day_outside_current_period_is_refused(
     # Отказ не оставляет следов: операции нет, хотя период под сегодня уже
     # заведён — его создаёт та же ленивая починка, что и у обычной записи.
     assert await record_service.list_by_period(spreadsheet.id) == []
+
+
+def _reset_day_with_room_ahead(today: date) -> int:
+    """`reset_day`, при котором период уже идёт неделю и завтра лежит внутри.
+
+    Зашитое число не годится: у `reset_day`, совпадающего с завтрашним днём,
+    завтра начинает **следующий** период, и тест ловил бы «день вне периода»
+    вместо запрета на будущее.
+    """
+    return today.day - 7 if today.day > 7 else today.day + 21
+
+
+async def test_tomorrow_is_refused(
+    session: AsyncSession,
+    record_service: RecordService,
+) -> None:
+    """Завтрашний день отвергается, хотя и лежит внутри текущего периода.
+
+    Отдельная причина, не `day_outside_period`: период почти всегда захватывает
+    будущее, и «такого дня в периоде нет» было бы про день периода неправдой.
+
+    Запрет не косметический. Лист статистики сводит суммы к одной валюте по
+    курсу на день операции, а курса на ненаступивший день нет ни у одного
+    источника: операция дошла бы до реестра, а перерисовка листа падала бы до
+    самого этого дня — вместе со всеми операциями листа.
+    """
+    spreadsheet = await factories.create_spreadsheet(session, ready=True)
+    today = today_in_timezone(spreadsheet.timezone)
+    spreadsheet.reset_day = _reset_day_with_room_ahead(today)
+    await session.commit()
+    category = await factories.create_category(session, spreadsheet)
+    await session.commit()
+    assert spreadsheet.id is not None and category.id is not None
+
+    tomorrow = today + timedelta(days=1)
+    start_date, end_date = period_bounds(today, spreadsheet.reset_day)
+    assert start_date <= tomorrow < end_date, "завтра должно лежать внутри периода"
+
+    with pytest.raises(BusinessRuleError) as error:
+        await record_service.create(
+            spreadsheet.id,
+            category_id=category.id,
+            amount=Decimal("10.00"),
+            currency=Currency.RUB,
+            added_at=tomorrow,
+        )
+
+    assert (error.value.details or {})["reason"] == "day_in_future"
+    assert await record_service.list_by_period(spreadsheet.id) == []
+
+
+async def test_today_is_allowed(
+    session: AsyncSession,
+    record_service: RecordService,
+) -> None:
+    """Сегодня — последний допустимый день, а не первый запрещённый."""
+    spreadsheet = await factories.create_spreadsheet(session, ready=True)
+    category = await factories.create_category(session, spreadsheet)
+    await session.commit()
+    assert spreadsheet.id is not None and category.id is not None
+
+    today = today_in_timezone(spreadsheet.timezone)
+    record = await record_service.create(
+        spreadsheet.id,
+        category_id=category.id,
+        amount=Decimal("10.00"),
+        currency=Currency.RUB,
+        added_at=today,
+    )
+
+    assert record.added_at == today

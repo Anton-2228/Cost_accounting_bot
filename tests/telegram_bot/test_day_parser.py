@@ -14,8 +14,19 @@ _START = date(2026, 7, 25)
 _END = date(2026, 8, 25)
 
 
-def _parse(raw: str | None, start: date = _START, end: date = _END) -> date:
-    return DayParser.parse(raw, start_date=start, end_date=end)
+def _parse(
+    raw: str | None,
+    start: date = _START,
+    end: date = _END,
+    today: date | None = None,
+) -> date:
+    """Разбор дня; по умолчанию период считается уже закончившимся.
+
+    `today` за концом окна означает «всё окно в прошлом» — так проверяется сам
+    разбор, не спотыкаясь о запрет на будущее. Запрет проверяется отдельно, в
+    :class:`TestFuture`.
+    """
+    return DayParser.parse(raw, start_date=start, end_date=end, today=today or end)
 
 
 def test_number_resolves_inside_the_period() -> None:
@@ -128,3 +139,52 @@ class TestLooksLikeDay:
         «это не день месяца».
         """
         assert DayParser.looks_like_day(word) is False
+
+
+class TestFuture:
+    """Ненаступивший день.
+
+    Датировать вперёд нельзя не из строгости: лист статистики сводит суммы к
+    одной валюте по курсу на день операции, а курса на будущий день нет ни у
+    одного источника. Такая операция доезжает до реестра, а перерисовка листа
+    падает и повторяется, пока день не наступит, — вместе со всеми операциями
+    листа, в том числе записанными верно.
+    """
+
+    def test_tomorrow_is_refused(self) -> None:
+        """Завтрашнее число периода не разбирается, хотя лежит внутри окна."""
+        today = date(2026, 8, 3)
+        with pytest.raises(ParseError) as error:
+            _parse("4", today=today)
+
+        assert "03.08.2026" in error.value.message
+
+    def test_today_is_allowed(self) -> None:
+        """Сегодня — последний допустимый день, а не первый запрещённый."""
+        assert _parse("3", today=date(2026, 8, 3)) == date(2026, 8, 3)
+
+    def test_past_of_the_window_is_untouched(self) -> None:
+        """Прошлые дни окна запрет не трогает."""
+        assert _parse("25", today=date(2026, 8, 3)) == date(2026, 7, 25)
+
+    def test_out_of_period_names_today_as_the_end(self) -> None:
+        """Пока месяц не кончился, отказ называет верхней границей сегодня.
+
+        Иначе он звал бы набрать число, которое сам же и отвергнет: конец
+        периода ещё не наступил.
+        """
+        with pytest.raises(ParseError) as error:
+            _parse("20", start=date(2026, 8, 1), end=date(2026, 9, 1), today=date(2026, 8, 10))
+
+        assert "10.08.2026" in error.value.message
+
+
+class TestLastAllowed:
+    """Верхняя граница — конец периода или сегодня, что раньше."""
+
+    def test_unfinished_period_stops_at_today(self) -> None:
+        assert DayParser.last_allowed(date(2026, 9, 1), date(2026, 8, 10)) == date(2026, 8, 10)
+
+    def test_finished_period_stops_at_its_own_end(self) -> None:
+        """`end_date` исключительна, поэтому последний день — на сутки раньше."""
+        assert DayParser.last_allowed(date(2026, 9, 1), date(2026, 9, 20)) == date(2026, 8, 31)

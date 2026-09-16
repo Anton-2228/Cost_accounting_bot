@@ -43,6 +43,11 @@ CONFLICT_KEYS: dict[str, str] = {
 #: нему решают, что чек не записан и надо переспросить день, а не падать.
 DAY_OUTSIDE_PERIOD_REASON = "day_outside_period"
 
+#: Признак 422: назван день, который ещё не наступил. До api такой день обычно
+#: не доезжает — его отсекает разбор, — но у бота и api «сегодня» вычисляется в
+#: разные мгновения, и у местной полуночи они расходятся на сутки.
+DAY_IN_FUTURE_REASON = "day_in_future"
+
 #: Признаки 422 со своей формулировкой: `errors.validation.<признак>`.
 #: Остальные — и нарушение схемы запроса (`validation_error`), у которого
 #: признака нет вовсе, — получают общую, `errors.validation.generic`.
@@ -53,6 +58,7 @@ VALIDATION_REASONS = frozenset(
         "filters_incompatible",
         "period_target_mismatch",
         DAY_OUTSIDE_PERIOD_REASON,
+        DAY_IN_FUTURE_REASON,
     }
 )
 

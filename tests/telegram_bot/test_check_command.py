@@ -226,9 +226,24 @@ class FakeSpreadsheets:
             id=10,
             google_spreadsheet_id=self._google_id,
             title="Тест",
-            reset_day=15,
+            reset_day=_reset_day(),
             timezone="Europe/Moscow",
         )
+
+
+def _reset_day() -> int:
+    """`reset_day`, при котором сегодня отстоит от начала окна на неделю.
+
+    Зашитое число здесь не годится: окно строится от **настоящего** сегодня, и
+    при `reset_day=15` пятнадцатого числа сегодня оказывалось бы началом окна.
+    Прошлых дней в нём тогда нет вовсе, а стадия дня их и проверяет — датировать
+    вперёд нельзя.
+
+    Всегда попадает в допустимые 1..28: числу больше семёрки вычитание недели
+    оставляет 1..24, меньшему прибавление трёх недель даёт 22..28.
+    """
+    day = datetime.now(ZoneInfo("Europe/Moscow")).date().day
+    return day - 7 if day > 7 else day + 21
 
 
 class FakeCatalog:
@@ -344,14 +359,17 @@ class FakePeriods:
     границам, — упиралось бы в край зашитого окна, и проверки начинали бы
     врать в зависимости от дня прогона.
 
-    Границы считаются по тому же `reset_day=15`, что отдаёт `FakeSpreadsheets`,
-    так что окно всегда содержит сегодня и всегда длиной ровно месяц.
+    Границы считаются по тому же :func:`_reset_day`, что отдаёт
+    `FakeSpreadsheets`, так что окно всегда содержит сегодня, всегда длиной
+    ровно месяц и всегда захватывает неделю прошлого — без неё нечем проверить
+    день, которым датировать можно.
     """
 
     def __init__(self) -> None:
         today = datetime.now(ZoneInfo("Europe/Moscow")).date()
-        start = today.replace(day=15)
-        if today.day < 15:
+        anchor = _reset_day()
+        start = today.replace(day=anchor)
+        if today.day < anchor:
             start -= relativedelta(months=1)
         self.start_date = start
         self.end_date = start + relativedelta(months=1)
@@ -367,6 +385,14 @@ class FakePeriods:
             end_date=self.end_date,
             status=PeriodStatus.OPEN,
         )
+
+    def yesterday(self) -> date:
+        """Вчера — день окна, которым датировать можно и который не умолчание.
+
+        Умолчание стадии — сегодня, и проверять им «присланное число доехало»
+        значило бы проверять совпадение с тем, что стояло бы и без ввода.
+        """
+        return datetime.now(ZoneInfo("Europe/Moscow")).date() - timedelta(days=1)
 
     def day_of(self, number: int) -> date:
         """Дата внутри окна по числу месяца — то же, что считает бот."""
@@ -1379,22 +1405,24 @@ async def test_day_stage_opens_after_categories() -> None:
     assert harness.checks.committed == []
 
 
-async def test_day_stage_shows_the_inclusive_end_of_the_period() -> None:
-    """Границы печатаются включительно: `end_date` исключительна.
+async def test_day_stage_stops_the_period_at_today() -> None:
+    """Верхняя граница — сегодня, пока месяц не кончился.
 
-    Напечатанная как есть, она рекламировала бы день, который api отвергнет, —
-    самая правдоподобная ошибка этой стадии.
+    Датировать вперёд нельзя, и напечатанный конец месяца звал бы набрать
+    число, которое будет отвергнуто. `end_date` не печатается тем более: она
+    исключительна и принадлежит уже следующему периоду.
     """
     harness = _at_day_stage()
     periods = harness.periods
+    today = datetime.now(ZoneInfo("Europe/Moscow")).date()
 
     await harness.send("/check")
     await harness.press_done()
     await harness.press_done()
 
-    last_day = periods.end_date - timedelta(days=1)
-    assert harness.aiogram.said(LocaleFormat.day(last_day))
+    assert harness.aiogram.said(LocaleFormat.day(today))
     assert not harness.aiogram.said(LocaleFormat.day(periods.end_date))
+    assert not harness.aiogram.said(LocaleFormat.day(periods.end_date - timedelta(days=1)))
 
 
 async def test_day_defaults_to_today() -> None:
@@ -1413,12 +1441,12 @@ async def test_day_defaults_to_today() -> None:
 async def test_typed_day_reaches_commit() -> None:
     """Присланное число уезжает в api датой, а не числом."""
     harness = _at_day_stage()
-    expected = harness.periods.day_of(3)
+    expected = harness.periods.yesterday()
 
     await harness.send("/check")
     await harness.press_done()
     await harness.press_done()
-    await harness.send("3")
+    await harness.send(str(expected.day))
     await harness.press_done()
 
     assert harness.checks.committed[0]["added_at"] == expected
@@ -1437,6 +1465,44 @@ async def test_day_outside_the_period_is_refused() -> None:
     assert await harness.current_state() == States.CHECK_DAY.state
     # Клавиатура жива: иначе отказ оставлял бы чек без единой кнопки.
     assert harness.aiogram.rows()[0] == [_DONE_BUTTON]
+
+
+async def test_future_day_is_refused() -> None:
+    """Завтрашнее число не записывает чек и не уводит со стадии.
+
+    Датировать вперёд нельзя не из строгости: лист статистики сводит суммы к
+    одной валюте по курсу на день операции, а курса на ненаступивший день нет ни
+    у одного источника, и перерисовка листа падала бы до самого этого дня.
+    """
+    harness = _at_day_stage()
+    tomorrow = datetime.now(ZoneInfo("Europe/Moscow")).date() + timedelta(days=1)
+
+    await harness.send("/check")
+    await harness.press_done()
+    await harness.press_done()
+    await harness.send(str(tomorrow.day))
+
+    assert harness.checks.committed == []
+    assert await harness.current_state() == States.CHECK_DAY.state
+    assert harness.aiogram.rows()[0] == [_DONE_BUTTON]
+
+
+async def test_day_defaults_stay_in_the_past_near_the_period_end() -> None:
+    """Умолчание не уезжает в будущее даже у самого конца периода.
+
+    Сегодня всегда в окне, и прижимать его не к чему, — но правило проверяется
+    именно здесь: сломайся `_ensure_day`, чек получил бы день, который сам же
+    диалог только что отверг бы у пользователя.
+    """
+    harness = _at_day_stage()
+    today = datetime.now(ZoneInfo("Europe/Moscow")).date()
+
+    await harness.send("/check")
+    await harness.press_done()
+    await harness.press_done()
+    await harness.press_done()
+
+    assert harness.checks.committed[0]["added_at"] <= today
 
 
 async def test_category_edit_is_refused_on_the_day_stage() -> None:
@@ -1462,12 +1528,12 @@ async def test_category_edit_is_refused_on_the_day_stage() -> None:
 async def test_chosen_day_survives_a_trip_back_to_categories() -> None:
     """Возврат к категориям не сбрасывает выбранный день и не зовёт модель."""
     harness = _at_day_stage()
-    expected = harness.periods.day_of(3)
+    expected = harness.periods.yesterday()
 
     await harness.send("/check")
     await harness.press_done()
     await harness.press_done()
-    await harness.send("3")
+    await harness.send(str(expected.day))
 
     calls_before = len(harness.ai.category_calls)
     await harness.press(_BACK_TO_CATEGORIES_BUTTON)

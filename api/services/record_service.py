@@ -119,7 +119,7 @@ class RecordService(BaseSpreadsheetService):
         assert period.id is not None
 
         day = today if added_at is None else added_at
-        assert_in_period(period, day)
+        assert_in_period(period, day, today=today)
 
         signed = amount if category.kind is CategoryKind.INCOME else -amount
         record = await self._records.add(
