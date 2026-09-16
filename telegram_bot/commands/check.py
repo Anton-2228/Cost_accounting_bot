@@ -83,6 +83,7 @@ from telegram_bot.parsers import (
     AssociationMatcher,
     CheckParser,
     DayParser,
+    NotesParser,
     ParsedCheckEdit,
     ParseError,
 )
@@ -104,12 +105,19 @@ _BACK_PREFIX = "check_back"
 #: пролежавшая в переписке с прошлой стадии.
 _HELP_PREFIX = "check_help"
 
+#: Префикс кнопки «Очистить» на стадии пометки. Метки стадии не несёт по той же
+#: причине, что возврат и справка, — но, в отличие от них, обработчик сверяется
+#: с состоянием ещё и потому, что стадия у этой кнопки ровно одна: нажатая
+#: после возврата ко дню, она стёрла бы пометку с чужой стадии.
+_CLEAR_PREFIX = "check_clear"
+
 #: Метки стадий в `callback_data`. Короткие и свои, а не строка состояния:
 #: `States.CHECK_TYPES.state` — это «States:CHECK_TYPES», и двоеточие внутри
 #: развалило бы разбор `callback_data`, который сам разделён двоеточиями.
 _STAGE_TYPES = "types"
 _STAGE_CATEGORIES = "categories"
 _STAGE_DAY = "day"
+_STAGE_NOTES = "notes"
 
 #: Название этапа в основном сообщении стадии. Раньше стадия не называлась
 #: никак: списки отличались друг от друга только тем, что стояло под названием
@@ -118,6 +126,7 @@ _STAGE_TITLES = {
     _STAGE_TYPES: "format.check.stage.types",
     _STAGE_CATEGORIES: "format.check.stage.categories",
     _STAGE_DAY: "format.check.stage.day",
+    _STAGE_NOTES: "format.check.stage.notes",
 }
 
 #: Справка этапа — то, что раньше печаталось на каждом показе стадии.
@@ -125,6 +134,7 @@ _STAGE_HELP = {
     _STAGE_TYPES: "text.check_help_types",
     _STAGE_CATEGORIES: "text.check_help_categories",
     _STAGE_DAY: "text.check_help_day",
+    _STAGE_NOTES: "text.check_help_notes",
 }
 
 #: Метка стадии по состоянию FSM. Нужна кнопке справки: та не несёт метки в
@@ -133,6 +143,7 @@ _STAGE_BY_STATE = {
     States.CHECK_TYPES.state: _STAGE_TYPES,
     States.CHECK_CATEGORIES.state: _STAGE_CATEGORIES,
     States.CHECK_DAY.state: _STAGE_DAY,
+    States.CHECK_NOTES.state: _STAGE_NOTES,
 }
 
 #: Разметка списков сопоставления. Включается на месте вызова, а не глобально:
@@ -170,6 +181,9 @@ class CheckCommand(BaseCommand):
             return
         if current == States.CHECK_DAY.state:
             await self._edit_day(message, state)
+            return
+        if current == States.CHECK_NOTES.state:
+            await self._edit_notes(message, state)
             return
 
         spreadsheet = await self.spreadsheet(message)
@@ -238,7 +252,8 @@ class CheckCommand(BaseCommand):
         current = await self.aiogram.get_state(state)
 
         # Возврат разбирается по состоянию, а не до него: мест, куда он ведёт,
-        # стало два — с категорий к типам, со дня к категориям. Метка стадии в
+        # стало три — с категорий к типам, со дня к категориям, с пометки ко
+        # дню. Метка стадии в
         # `callback_data` при этом не заводится нарочно: кнопка живёт в
         # переписке дольше своей стадии, и нажатая на третьей кнопка второй
         # перепрыгнула бы стадию целиком. Где пользователь сейчас, знает FSM, а
@@ -246,6 +261,20 @@ class CheckCommand(BaseCommand):
         # Справка разбирается до возврата и «Готово» и раньше всего, что двигает
         # разбор: она не шаг диалога, а переключатель вида одного сообщения, и
         # состояние FSM после неё остаётся тем же.
+        # «Очистить» сверяется с состоянием, а не только с `is_current`: номер
+        # чека у кнопки с прошлого показа той же стадии тот же самый, и нажатая
+        # после возврата ко дню она стёрла бы пометку, не показав ни следа
+        # этого, — стадия дня пометки не печатает.
+        #
+        # Не своей стадии кнопка достаётся молча, как и справке у неразобранного
+        # чека: живая клавиатура в боте ровно одна, так что нажать её можно
+        # только на погашенном блоке, а «кнопка от другого чека» солгала бы —
+        # чек тот же самый.
+        if (callback.data or "").startswith(f"{_CLEAR_PREFIX}:"):
+            if current == States.CHECK_NOTES.state:
+                await self._clear_notes(chat_id, state, draft)
+            return
+
         if (callback.data or "").startswith(f"{_HELP_PREFIX}:"):
             await self._toggle_help(
                 chat_id=chat_id,
@@ -257,9 +286,15 @@ class CheckCommand(BaseCommand):
             return
 
         if (callback.data or "").startswith(f"{_BACK_PREFIX}:"):
-            if current == States.CHECK_DAY.state:
+            # Все три стадии названы поимённо, и умолчания у возврата нет:
+            # «иначе — к типам» верно ровно до появления следующей стадии, а
+            # ошибётся молча — забывший про неё возврат перепрыгнул бы разбор
+            # до начала, вместо того чтобы отступить на шаг.
+            if current == States.CHECK_NOTES.state:
+                await self._back_to_day(chat_id, state, draft, spreadsheet)
+            elif current == States.CHECK_DAY.state:
                 await self._back_to_categories(chat_id, state, draft, spreadsheet)
-            else:
+            elif current == States.CHECK_CATEGORIES.state:
                 await self._back_to_types(chat_id, state, draft, spreadsheet)
             return
 
@@ -268,6 +303,8 @@ class CheckCommand(BaseCommand):
         elif current == States.CHECK_CATEGORIES.state:
             await self._to_day(chat_id, state, draft, spreadsheet)
         elif current == States.CHECK_DAY.state:
+            await self._to_notes(chat_id, state, draft)
+        elif current == States.CHECK_NOTES.state:
             await self._commit(chat_id, state, draft, spreadsheet)
 
     # --- Очередь ---------------------------------------------------------
@@ -538,6 +575,8 @@ class CheckCommand(BaseCommand):
             body = CheckFormatter.types(draft, _product_types(categories))
         elif stage == _STAGE_CATEGORIES:
             body = CheckFormatter.categories(draft)
+        elif stage == _STAGE_NOTES:
+            body = CheckFormatter.notes(draft)
         else:
             # Границы перечитываются по той же причине, что в `show_stage`:
             # период мог смениться, пока блок висел, и день по памяти вернул бы
@@ -1026,6 +1065,122 @@ class CheckCommand(BaseCommand):
         await self._save_draft(state, draft)
         await self._show_day(chat_id, state, draft, period, today)
 
+    # --- Стадия 4: пометка -----------------------------------------------
+
+    async def _to_notes(
+        self,
+        chat_id: int,
+        state: FSMContext,
+        draft: CheckDraft,
+    ) -> None:
+        """Переходит к четвёртой стадии.
+
+        Проверок готовности здесь нет, хотя стадия последняя: обе — «осталась
+        хоть одна позиция» и «у всех живых есть категория» — стоят на переходе к
+        стадии дня и остаются там. Чинить их надо на категориях, и отказ, данный
+        на две стадии позже, уводил бы тем дальше, чем позже он случился.
+
+        Документ не нужен вовсе: пометка ничего не читает из api — ни
+        справочника категорий, ни границ периода. Поэтому у метода нет и
+        соответствующего довода: взятый ради единообразия с соседями, он
+        обещал бы поход в сеть, которого здесь нет.
+        """
+        await self._enter_stage(state, States.CHECK_NOTES)
+        await self._show_notes(chat_id, state, draft)
+
+    async def _show_notes(
+        self,
+        chat_id: int,
+        state: FSMContext,
+        draft: CheckDraft,
+    ) -> None:
+        """Печатает название этапа и набранную пометку либо знак её отсутствия.
+
+        Сам вопрос «что написать» в основном сообщении не печатается — его и
+        правила ввода показывает справка, ровно как на стадии дня.
+        """
+        await self._show_stage_block(
+            chat_id=chat_id,
+            state=state,
+            draft=draft,
+            stage=_STAGE_NOTES,
+            body=CheckFormatter.notes(draft),
+        )
+
+    async def _back_to_day(
+        self,
+        chat_id: int,
+        state: FSMContext,
+        draft: CheckDraft,
+        spreadsheet: Spreadsheet,
+    ) -> None:
+        """Возвращает на стадию дня.
+
+        Пометка не сбрасывается: возврат «поправить день» не повод отменять уже
+        набранный текст — ровно по той же причине, по которой поход к
+        категориям не отменяет выбранный день.
+
+        Границы перечитываются, а не берутся из черновика: пока пользователь
+        набирал пометку, период мог смениться, и показанный по памяти день
+        оказался бы тем, которого в периоде уже нет.
+        """
+        period = await self.api.periods.current(spreadsheet.id)
+        today = spreadsheet.today()
+        _ensure_day(draft, period, today)
+        await self._save_draft(state, draft)
+        await self._enter_stage(state, States.CHECK_DAY)
+        await self._show_day(chat_id, state, draft, period, today)
+
+    async def _edit_notes(self, message: Message, state: FSMContext) -> None:
+        """Делает присланный текст пометкой чека.
+
+        Правки позиций здесь не разбираются вовсе — как и на стадии дня, и по
+        той же причине: стадия задаёт один вопрос, и принимать на нём правки
+        значило бы позволить типу или категории уехать после того, как чек
+        показан готовым. Платой за это стало то, что «1,3 - молочка», набранное
+        на четвёртой стадии, станет пометкой, а не правкой; вернуть правки на
+        место — две кнопки возврата, и они на виду.
+
+        Текст заменяет набранный раньше целиком, а не дописывается к нему:
+        дописывание не оставило бы способа исправить опечатку, а «Очистить» —
+        это «убрать», а не «начать сначала».
+        """
+        chat_id = message.chat.id
+        draft = await self._require_draft(message, state)
+        if draft is None:
+            return
+
+        try:
+            notes = NotesParser.parse(self.text_of(message))
+        except ParseError as error:
+            await self.ask(
+                chat_id=chat_id,
+                state=state,
+                text=error.message,
+                rows=self.stage_rows(draft, stage=_STAGE_NOTES),
+            )
+            return
+
+        draft.notes = notes
+        await self._save_draft(state, draft)
+        await self._show_notes(chat_id, state, draft)
+
+    async def _clear_notes(
+        self,
+        chat_id: int,
+        state: FSMContext,
+        draft: CheckDraft,
+    ) -> None:
+        """Убирает пометку, оставляя пользователя на той же стадии.
+
+        Кнопкой, а не условленной строкой вроде «-»: любой такой знак перестал
+        бы быть набираемой пометкой, и объяснять это пришлось бы в справке —
+        ради случая, который кнопка закрывает молча.
+        """
+        draft.notes = ""
+        await self._save_draft(state, draft)
+        await self._show_notes(chat_id, state, draft)
+
     # --- Запись чека -----------------------------------------------------
 
     async def _commit(
@@ -1037,17 +1192,21 @@ class CheckCommand(BaseCommand):
     ) -> None:
         """Записывает разобранный чек и переходит к следующему.
 
-        Достижим только со стадии дня: «Готово» на ней и есть подтверждение,
-        отдельной стадии подтверждения нет. Проверки готовности чека — что
-        осталась хоть одна позиция и что у всех живых есть категория — стоят не
-        здесь, а на переходе к этой стадии: чинить их надо на категориях.
+        Достижим только со стадии пометки: «Готово» на ней и есть
+        подтверждение, отдельной стадии подтверждения нет. Проверки готовности
+        чека — что осталась хоть одна позиция и что у всех живых есть категория
+        — стоят не здесь и даже не на предыдущей стадии, а на переходе к стадии
+        дня: чинить их надо на категориях, и чем позже дан отказ, тем дальше он
+        уводит от места, где его чинят.
 
         Валюта не спрашивается: её знает формат чека, и api проставляет
         операциям ровно ту же — см. `telegram_bot.checks.models`.
 
         Пустой `draft.added_at` возможен ровно у черновика, начатого до
         появления стадии дня: он уходит как есть, и api датирует такой чек
-        сегодняшним днём — то есть ровно так, как датировал до неё.
+        сегодняшним днём — то есть ровно так, как датировал до неё. Пустая
+        `draft.notes` — случай обычный, а не только у старого черновика: пометка
+        необязательна, и пустая строка уезжает в api как есть.
         """
         categories = await self.api.catalog.categories(spreadsheet.id)
         default = _default_expense(categories)
@@ -1060,19 +1219,25 @@ class CheckCommand(BaseCommand):
                 items=self._commit_items(draft, default_id),
                 new_product_types=self._new_product_types(draft, categories, default_id),
                 added_at=draft.added_at,
+                notes=draft.notes,
             )
         except ApiValidationError as error:
             if error.reason != DAY_OUTSIDE_PERIOD_REASON:
                 raise
-            # Период сменился, пока пользователь выбирал день. Чек не записан.
-            # Состояние менять не нужно — он уже на нужной стадии; достаточно
-            # перечитать границы и сбросить день, иначе следующее «Готово»
+            # Период сменился, пока пользователь разбирал чек. Чек не
+            # записан, и день пересчитывается — иначе следующее «Готово»
             # упёрлось бы в тот же отказ.
+            #
+            # Пользователь при этом уводится обратно на стадию дня, хотя жал
+            # «Готово» на пометке: день сменился не по его воле, и оставить его
+            # там, где дня не видно, значило бы сбросить выбор молча. Пометка
+            # переживает этот увод — трогать её отказ по дню не повод.
             await self.aiogram.send_message(chat_id, ApiErrorPresenter.present(error))
             period = await self.api.periods.current(spreadsheet.id)
             today = spreadsheet.today()
             draft.added_at = _default_day(period, today)
             await self._save_draft(state, draft)
+            await self._enter_stage(state, States.CHECK_DAY)
             await self._show_day(chat_id, state, draft, period, today)
             return
         except ApiConflictError as error:
@@ -1253,6 +1418,8 @@ class CheckCommand(BaseCommand):
             _ensure_day(draft, period, today)
             await self._save_draft(state, draft)
             await self._show_day(chat_id, state, draft, period, today)
+        elif current == States.CHECK_NOTES.state:
+            await self._show_notes(chat_id, state, draft)
 
     # --- Кнопки ----------------------------------------------------------
 
@@ -1309,6 +1476,15 @@ class CheckCommand(BaseCommand):
                 rows.append(
                     ((t("buttons.check.back_to_categories"), f"{_BACK_PREFIX}:{draft.check_id}"),)
                 )
+            elif stage == _STAGE_NOTES:
+                rows.append(
+                    ((t("buttons.check.back_to_day"), f"{_BACK_PREFIX}:{draft.check_id}"),)
+                )
+        # «Очистить» есть ровно там, где есть что очищать: на пустой пометке она
+        # ничего не делает, а обещает действие — и нажатая от любопытства
+        # оставила бы пользователя гадать, сработала ли.
+        if stage == _STAGE_NOTES and draft.notes:
+            rows.append(((t("buttons.check.clear"), f"{_CLEAR_PREFIX}:{draft.check_id}"),))
         # Справка — своим рядом между движением по чеку и судьбой чека: она не
         # двигает разбор ни вперёд, ни назад, и прилипать к «Удалить» ей тем
         # более незачем. Надпись говорит, что нажатие сделает, а не что открыто

@@ -722,3 +722,53 @@ async def test_day_outside_current_period_writes_nothing(
     )
     assert category is not None
     assert category.product_types == []
+
+
+async def test_note_reaches_every_record(
+    session: AsyncSession,
+    check_service: CheckService,
+) -> None:
+    """Пометка одна на чек, и достаётся она каждой его операции.
+
+    Отдельного места у чека под неё не заведено: смотрят на пометку в строке
+    листа операций, а строк у чека столько, сколько позиций.
+    """
+    spreadsheet_id, check_id, category_id, _ = await _one_item_check(session)
+
+    records = await check_service.commit_check(
+        spreadsheet_id,
+        check_id=check_id,
+        items=[
+            _milk(category_id),
+            CheckItem(
+                product_name="хлеб",
+                product_type="продукты",
+                category_id=category_id,
+                amount=Decimal("40.00"),
+            ),
+        ],
+        notes="магазин у дома",
+    )
+
+    assert [record.notes for record in records] == ["магазин у дома"] * 2
+
+
+async def test_missing_note_leaves_the_records_bare(
+    session: AsyncSession,
+    check_service: CheckService,
+) -> None:
+    """Без пометки операции чека получают пустую — как до появления стадии.
+
+    Поле необязательное по той же причине, что и `added_at`: так api
+    выкатывается раньше бота, а чек, начатый до выката, дописывается без
+    отдельной ветки.
+    """
+    spreadsheet_id, check_id, category_id, _ = await _one_item_check(session)
+
+    records = await check_service.commit_check(
+        spreadsheet_id,
+        check_id=check_id,
+        items=[_milk(category_id)],
+    )
+
+    assert [record.notes for record in records] == [""]

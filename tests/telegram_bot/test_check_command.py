@@ -25,6 +25,7 @@ from aiogram.types import CallbackQuery, Chat, InlineKeyboardMarkup, Message
 from aiogram.types import User as TelegramUser
 from dateutil.relativedelta import relativedelta
 
+from telegram_bot import constants
 from telegram_bot.access import AccessGuard
 from telegram_bot.ai import AiClient, AiUnavailableError, LlmUsage
 from telegram_bot.aiogram_wrapper import AiogramWrapper
@@ -66,6 +67,8 @@ CANCEL_BUTTON_TEXT = t("buttons.cancel")
 _DONE_BUTTON = t("buttons.check.done")
 _BACK_BUTTON = t("buttons.check.back_to_types")
 _BACK_TO_CATEGORIES_BUTTON = t("buttons.check.back_to_categories")
+_BACK_TO_DAY_BUTTON = t("buttons.check.back_to_day")
+_CLEAR_BUTTON = t("buttons.check.clear")
 _HELP_BUTTON = t("buttons.check.help")
 _HELP_HIDE_BUTTON = t("buttons.check.help_hide")
 SKIP_BUTTON = t("buttons.check.skip")
@@ -294,6 +297,7 @@ class FakeChecks:
         items: Any,
         new_product_types: Any = (),
         added_at: date | None = None,
+        notes: str = "",
     ) -> list[Record]:
         if self.commit_error is not None:
             error, self.commit_error = self.commit_error, None
@@ -304,6 +308,7 @@ class FakeChecks:
                 "items": list(items),
                 "new_product_types": list(new_product_types),
                 "added_at": added_at,
+                "notes": notes,
             }
         )
         self.checks = [check for check in self.checks if check.id != check_id]
@@ -315,7 +320,7 @@ class FakeChecks:
                 amount=-item.amount,
                 currency=currency_of(CheckKind.RU_FNS),
                 added_at=datetime(2026, 7, 26, tzinfo=UTC).date(),
-                notes="",
+                notes=notes,
                 from_check=True,
             )
             for index, item in enumerate(items, 1)
@@ -598,7 +603,7 @@ class Harness:
         # «Справка» обслуживает сам разбор, и `main` разводит их тем же правилом.
         name = (
             CommandName.CHECK
-            if prefix in {"check_done", "check_back", "check_help"}
+            if prefix in {"check_done", "check_back", "check_help", "check_clear"}
             else prefix
         )
         await self.manager.launch_callback(name, _callback(data), self.state)
@@ -609,12 +614,14 @@ class Harness:
 
 
 async def _walk_to_commit(harness: Harness) -> None:
-    """Проходит все три стадии без правок: третье «Готово» и записывает чек.
+    """Проходит все четыре стадии без правок: четвёртое «Готово» записывает чек.
 
-    День не вводится: на стадии дня уже стоит умолчание, и «Готово» принимает
-    его, — так проходит и живой пользователь, которого день разбора устраивает.
+    Ни день, ни пометка не вводятся: на стадии дня уже стоит умолчание, а
+    пометка необязательна, и «Готово» принимает обе как есть, — так проходит и
+    живой пользователь, которому нечего добавить к разобранному чеку.
     """
     await harness.send("/check")
+    await harness.press_done()
     await harness.press_done()
     await harness.press_done()
     await harness.press_done()
@@ -776,6 +783,7 @@ async def test_edited_cached_type_reaches_commit() -> None:
     await harness.press_done()
     await harness.press_done()
     await harness.press_done()
+    await harness.press_done()
     await harness.send("карта")
 
     items = harness.checks.committed[0]["items"]
@@ -913,8 +921,20 @@ async def test_every_stage_can_drop_the_check() -> None:
     ]
 
     await harness.press_done()
-    # Стадий три, и «Готово» третьей записывает чек: дальше спрашивать нечего,
-    # и ветка кончается вместе с очередью.
+    # На четвёртой возврат ведёт ко дню. «Очистить» здесь нет: пометка пуста, и
+    # очищать нечего.
+    assert await harness.current_state() == States.CHECK_NOTES.state
+    assert harness.aiogram.rows() == [
+        [_DONE_BUTTON],
+        [_BACK_TO_DAY_BUTTON],
+        [_HELP_BUTTON],
+        [SKIP_BUTTON, DELETE_BUTTON],
+        [CANCEL_BUTTON_TEXT],
+    ]
+
+    await harness.press_done()
+    # Стадий четыре, и «Готово» четвёртой записывает чек: дальше спрашивать
+    # нечего, и ветка кончается вместе с очередью.
     assert harness.checks.committed != []
     assert await harness.current_state() is None
 
@@ -1090,6 +1110,7 @@ async def test_deleted_item_does_not_become_a_record() -> None:
     await harness.press_done()
     await harness.press_done()
     await harness.press_done()
+    await harness.press_done()
 
     committed = harness.checks.committed
     assert len(committed) == 1
@@ -1116,6 +1137,7 @@ async def test_repeated_bang_returns_the_item() -> None:
     await harness.press_done()
     await harness.press_done()
     await harness.press_done()
+    await harness.press_done()
 
     items = harness.checks.committed[0]["items"]
     assert [item.product_name for item in items] == ["молоко", "пакет"]
@@ -1139,6 +1161,7 @@ async def test_delete_works_on_the_categories_stage() -> None:
     await harness.send("!2")
     await harness.press_done()
     await harness.press_done()
+    await harness.press_done()
 
     assert [item.product_name for item in harness.checks.committed[0]["items"]] == ["молоко"]
 
@@ -1157,6 +1180,7 @@ async def test_deleted_item_teaches_nothing() -> None:
 
     await harness.send("/check")
     await harness.send("!2")
+    await harness.press_done()
     await harness.press_done()
     await harness.press_done()
     await harness.press_done()
@@ -1236,6 +1260,7 @@ async def test_round_trip_recomputes_only_the_changed_type() -> None:
 
     await harness.press_done()
     await harness.press_done()
+    await harness.press_done()
     items = harness.checks.committed[0]["items"]
     assert [item.category_id for item in items] == [_BASKET.id, _FOOD.id]
     # Корзина типов не получает никогда — даже выбранная руками.
@@ -1260,6 +1285,7 @@ async def test_delete_survives_a_failed_category_edit() -> None:
 
     assert harness.aiogram.said("Есть такие:")
 
+    await harness.press_done()
     await harness.press_done()
     await harness.press_done()
     # Удаление не применилось: сообщение отвергнуто целиком, обе позиции живы.
@@ -1294,6 +1320,7 @@ async def test_price_edit_changes_the_recorded_amount() -> None:
     await harness.press_done()
     await harness.press_done()
     await harness.press_done()
+    await harness.press_done()
 
     items = harness.checks.committed[0]["items"]
     assert [item.amount for item in items] == [Decimal("75"), Decimal("7.00")]
@@ -1314,6 +1341,7 @@ async def test_price_edit_works_on_the_categories_stage() -> None:
     await harness.send("/check")
     await harness.press_done()
     await harness.send("1-60")
+    await harness.press_done()
     await harness.press_done()
     await harness.press_done()
 
@@ -1371,6 +1399,7 @@ async def test_price_and_type_are_edited_in_one_message() -> None:
 
     await harness.send("/check")
     await harness.send("1 - молочка\n1-75")
+    await harness.press_done()
     await harness.press_done()
     await harness.press_done()
     await harness.press_done()
@@ -1434,6 +1463,7 @@ async def test_day_defaults_to_today() -> None:
     await harness.press_done()
     await harness.press_done()
     await harness.press_done()
+    await harness.press_done()
 
     assert harness.checks.committed[0]["added_at"] == today
 
@@ -1447,6 +1477,7 @@ async def test_typed_day_reaches_commit() -> None:
     await harness.press_done()
     await harness.press_done()
     await harness.send(str(expected.day))
+    await harness.press_done()
     await harness.press_done()
 
     assert harness.checks.committed[0]["added_at"] == expected
@@ -1501,6 +1532,7 @@ async def test_day_defaults_stay_in_the_past_near_the_period_end() -> None:
     await harness.press_done()
     await harness.press_done()
     await harness.press_done()
+    await harness.press_done()
 
     assert harness.checks.committed[0]["added_at"] <= today
 
@@ -1522,6 +1554,7 @@ async def test_category_edit_is_refused_on_the_day_stage() -> None:
     assert await harness.current_state() == States.CHECK_DAY.state
 
     await harness.press_done()
+    await harness.press_done()
     assert harness.checks.committed[0]["items"][0].category_id == _FOOD.id
 
 
@@ -1542,6 +1575,7 @@ async def test_chosen_day_survives_a_trip_back_to_categories() -> None:
 
     await harness.press_done()
     await harness.press_done()
+    await harness.press_done()
     assert harness.checks.committed[0]["added_at"] == expected
 
 
@@ -1551,6 +1585,10 @@ async def test_rolled_over_period_resets_the_day_and_keeps_the_check() -> None:
     Так выглядит смена периода посреди разбора: чек не записан, границы
     перечитываются, день сбрасывается на сегодня — иначе следующее «Готово»
     упёрлось бы в тот же отказ.
+
+    Пользователь при этом возвращается на стадию дня, хотя жал «Готово» на
+    пометке: день сменился не по его воле, и оставить его там, где дня не
+    видно, значило бы сбросить выбор молча.
     """
     harness = _at_day_stage()
     today = datetime.now(ZoneInfo("Europe/Moscow")).date()
@@ -1564,6 +1602,7 @@ async def test_rolled_over_period_resets_the_day_and_keeps_the_check() -> None:
     await harness.press_done()
     await harness.press_done()
     await harness.send("3")
+    await harness.press_done()
 
     asked_before = len(harness.periods.asked)
     await harness.press_done()
@@ -1573,6 +1612,7 @@ async def test_rolled_over_period_resets_the_day_and_keeps_the_check() -> None:
     # Границы именно перечитаны, а не взяты из черновика.
     assert len(harness.periods.asked) > asked_before
 
+    await harness.press_done()
     await harness.press_done()
     assert harness.checks.committed[0]["added_at"] == today
 
@@ -1631,6 +1671,294 @@ async def test_readiness_is_checked_before_the_day_is_asked() -> None:
     assert await harness.current_state() == States.CHECK_CATEGORIES.state
     assert harness.checks.committed == []
     assert harness.checks.deleted == []
+
+
+# --- Стадия пометки ------------------------------------------------------
+
+
+async def _at_notes_stage(**kwargs: Any) -> Harness:
+    """Харнесс, доведённый до четвёртой стадии: три «Готово» без правок."""
+    harness = _at_day_stage(**kwargs)
+    await harness.send("/check")
+    await harness.press_done()
+    await harness.press_done()
+    await harness.press_done()
+    return harness
+
+
+async def test_notes_stage_opens_after_the_day() -> None:
+    """Третье «Готово» не записывает чек, а спрашивает пометку."""
+    harness = await _at_notes_stage()
+
+    assert await harness.current_state() == States.CHECK_NOTES.state
+    assert harness.checks.committed == []
+
+
+async def test_empty_note_is_shown_as_a_dash() -> None:
+    """Пустая пометка печатается знаком, а не пустотой.
+
+    Пустое место после двоеточия читалось бы как сломанное сообщение, а не как
+    «пометки нет».
+    """
+    harness = await _at_notes_stage()
+
+    assert harness.aiogram.said(t("text.check_notes", notes="—"))
+
+
+async def test_note_is_optional() -> None:
+    """«Готово» без единого слова записывает чек с пустой пометкой."""
+    harness = await _at_notes_stage()
+
+    await harness.press_done()
+
+    assert harness.checks.committed[0]["notes"] == ""
+    assert await harness.current_state() is None
+
+
+async def test_typed_note_reaches_commit() -> None:
+    """Присланный текст уезжает в api пометкой чека."""
+    harness = await _at_notes_stage()
+
+    await harness.send("магазин у дома")
+    assert harness.aiogram.said(t("text.check_notes", notes="магазин у дома"))
+
+    await harness.press_done()
+
+    assert harness.checks.committed[0]["notes"] == "магазин у дома"
+
+
+async def test_note_reaches_every_record() -> None:
+    """Пометка одна на чек, и достаётся она каждой его операции.
+
+    Отдельного места у чека под неё нет: смотрят на пометку в строке листа
+    операций, а строк у чека столько, сколько позиций.
+    """
+    harness = Harness(
+        checks=[_check(1, ("молоко", 8990), ("пакет", 700))],
+        cached={"молоко": "молочка", "пакет": "упаковка"},
+        ai=FakeAi(categories={1: "Еда", 2: "Еда"}),
+    )
+
+    await harness.send("/check")
+    await harness.press_done()
+    await harness.press_done()
+    await harness.press_done()
+    await harness.send("магазин у дома")
+    await harness.press_done()
+
+    assert harness.checks.committed[0]["notes"] == "магазин у дома"
+
+
+async def test_second_message_replaces_the_note() -> None:
+    """Текст заменяет набранный раньше целиком, а не дописывается к нему.
+
+    Дописывание не оставило бы способа исправить опечатку.
+    """
+    harness = await _at_notes_stage()
+
+    await harness.send("магазин у дома")
+    await harness.send("заправка")
+    await harness.press_done()
+
+    assert harness.checks.committed[0]["notes"] == "заправка"
+
+
+async def test_multiline_note_is_refused() -> None:
+    """Многострочная пометка не записывается и не уводит со стадии."""
+    harness = await _at_notes_stage()
+
+    await harness.send("магазин\nу дома")
+
+    assert harness.checks.committed == []
+    assert await harness.current_state() == States.CHECK_NOTES.state
+    # Клавиатура жива: иначе отказ оставлял бы чек без единой кнопки.
+    assert harness.aiogram.rows()[0] == [_DONE_BUTTON]
+
+    await harness.press_done()
+    assert harness.checks.committed[0]["notes"] == ""
+
+
+async def test_too_long_note_is_refused() -> None:
+    """Пометка длиннее колонки `records.notes` отвергается до похода в api."""
+    harness = await _at_notes_stage()
+
+    await harness.send("я" * (constants.NOTES_MAX_LENGTH + 1))
+
+    assert harness.checks.committed == []
+    assert await harness.current_state() == States.CHECK_NOTES.state
+
+
+async def test_note_with_a_tag_does_not_break_the_block() -> None:
+    """Угловая скобка в пометке печатается, а не ломает разметку.
+
+    Тело стадии приезжает к сборщику готовым, и он его не экранирует: пометка —
+    единственный текст пользователя, попадающий туда напрямую.
+    """
+    harness = await _at_notes_stage()
+
+    await harness.send("<b>распродажа</b>")
+
+    assert harness.aiogram.said("&lt;b&gt;распродажа&lt;/b&gt;")
+
+    await harness.press_done()
+    assert harness.checks.committed[0]["notes"] == "<b>распродажа</b>"
+
+
+class TestClear:
+    """Кнопка «Очистить»: она есть ровно там, где есть что очищать."""
+
+    async def test_absent_while_the_note_is_empty(self) -> None:
+        harness = await _at_notes_stage()
+
+        assert _CLEAR_BUTTON not in harness.aiogram.labels()
+
+    async def test_appears_with_the_note(self) -> None:
+        harness = await _at_notes_stage()
+
+        await harness.send("магазин у дома")
+
+        assert harness.aiogram.rows() == [
+            [_DONE_BUTTON],
+            [_BACK_TO_DAY_BUTTON],
+            [_CLEAR_BUTTON],
+            [_HELP_BUTTON],
+            [SKIP_BUTTON, DELETE_BUTTON],
+            [CANCEL_BUTTON_TEXT],
+        ]
+
+    async def test_removes_the_note_and_stays(self) -> None:
+        harness = await _at_notes_stage()
+
+        await harness.send("магазин у дома")
+        await harness.press(_CLEAR_BUTTON)
+
+        assert await harness.current_state() == States.CHECK_NOTES.state
+        assert harness.aiogram.said(t("text.check_notes", notes="—"))
+        assert _CLEAR_BUTTON not in harness.aiogram.labels()
+
+        await harness.press_done()
+        assert harness.checks.committed[0]["notes"] == ""
+
+    async def test_does_not_fire_from_the_day_stage(self) -> None:
+        """Кнопка с прошлого показа не стирает пометку после возврата ко дню.
+
+        Номер чека у неё тот же самый, и `is_current` её пропускает; стадия дня
+        пометки не печатает, так что сработавшая там она не оставила бы следа.
+        """
+        harness = await _at_notes_stage()
+
+        await harness.send("магазин у дома")
+        stale = harness.aiogram.button_data(_CLEAR_BUTTON)
+        await harness.press(_BACK_TO_DAY_BUTTON)
+
+        await harness.press_data(stale)
+
+        assert await harness.current_state() == States.CHECK_DAY.state
+
+        await harness.press_done()
+        await harness.press_done()
+        assert harness.checks.committed[0]["notes"] == "магазин у дома"
+
+
+class TestBackToDay:
+    """Возврат «Ко дню» — четвёртое место, куда ведёт одна и та же кнопка."""
+
+    async def test_returns_to_the_day_stage(self) -> None:
+        harness = await _at_notes_stage()
+
+        await harness.press(_BACK_TO_DAY_BUTTON)
+
+        assert await harness.current_state() == States.CHECK_DAY.state
+
+    async def test_keeps_the_note(self) -> None:
+        """Возврат «поправить день» не повод отменять уже набранный текст."""
+        harness = await _at_notes_stage()
+        expected = harness.periods.yesterday()
+
+        await harness.send("магазин у дома")
+        await harness.press(_BACK_TO_DAY_BUTTON)
+        await harness.send(str(expected.day))
+        await harness.press_done()
+
+        assert harness.aiogram.said(t("text.check_notes", notes="магазин у дома"))
+
+        await harness.press_done()
+        assert harness.checks.committed[0]["notes"] == "магазин у дома"
+        assert harness.checks.committed[0]["added_at"] == expected
+
+    async def test_rereads_the_period(self) -> None:
+        """Границы перечитываются: период мог смениться, пока набирали пометку."""
+        harness = await _at_notes_stage()
+
+        asked_before = len(harness.periods.asked)
+        await harness.press(_BACK_TO_DAY_BUTTON)
+
+        assert len(harness.periods.asked) > asked_before
+
+
+async def test_rolled_over_period_keeps_the_note() -> None:
+    """Отказ по дню уводит на стадию дня, но пометку не трогает.
+
+    Отказ про день, а набранный текст к нему отношения не имеет: стереть его
+    заодно значило бы наказать за то, что период сменился сам.
+    """
+    harness = _at_day_stage()
+    harness.checks.commit_error = ApiValidationError(
+        422,
+        code="business_rule",
+        details={"reason": DAY_OUTSIDE_PERIOD_REASON},
+    )
+
+    await harness.send("/check")
+    await harness.press_done()
+    await harness.press_done()
+    await harness.press_done()
+    await harness.send("магазин у дома")
+    await harness.press_done()
+
+    assert harness.checks.committed == []
+    assert await harness.current_state() == States.CHECK_DAY.state
+
+    await harness.press_done()
+    assert harness.aiogram.said(t("text.check_notes", notes="магазин у дома"))
+
+    await harness.press_done()
+    assert harness.checks.committed[0]["notes"] == "магазин у дома"
+
+
+async def test_cancel_leaves_the_notes_stage() -> None:
+    """«Отмена» выпускает и с четвёртой стадии.
+
+    Ветка отмены перечисляет свои состояния руками, и забытое в ней состояние
+    превращает стадию в ловушку без выхода по кнопке.
+    """
+    harness = await _at_notes_stage()
+
+    await harness.press(CANCEL_BUTTON_TEXT)
+
+    assert await harness.current_state() is None
+    assert harness.checks.committed == []
+    assert harness.checks.deleted == []
+
+
+async def test_declined_deletion_redraws_the_notes_stage() -> None:
+    """Отказ от удаления на стадии пометки возвращает её же клавиатуру."""
+    harness = await _at_notes_stage()
+
+    await harness.send("магазин у дома")
+    await harness.press(DELETE_BUTTON)
+    await harness.press(t("buttons.check_delete.decline"))
+
+    assert await harness.current_state() == States.CHECK_NOTES.state
+    assert harness.aiogram.said(t("text.check_notes", notes="магазин у дома"))
+    assert harness.aiogram.rows() == [
+        [_DONE_BUTTON],
+        [_BACK_TO_DAY_BUTTON],
+        [_CLEAR_BUTTON],
+        [_HELP_BUTTON],
+        [SKIP_BUTTON, DELETE_BUTTON],
+        [CANCEL_BUTTON_TEXT],
+    ]
 
 
 # --- Справка и названия этапов -------------------------------------------

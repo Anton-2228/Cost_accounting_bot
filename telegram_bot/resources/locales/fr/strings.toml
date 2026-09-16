@@ -92,6 +92,8 @@ skip = "Reporter"
 delete = "Supprimer"
 back_to_types = "Retour aux types"
 back_to_categories = "Retour aux catégories"
+back_to_day = "Retour au jour"
+clear = "Effacer"
 help = "Aide"
 help_hide = "Masquer l'aide"
 
@@ -131,7 +133,6 @@ too_precise = "Le montant a plus de deux décimales"
 [parse.record]
 usage = "Comme ceci : /add devise montant catégorie note\nLe jour du mois peut venir en premier : /add 3 euros 20 repas"
 bad_currency = "« {word} » ne ressemble pas à une devise.\nVous pouvez l'écrire ainsi : {hint}\n{usage}"
-notes_too_long = "La note dépasse {limit} caractères"
 
 [parse.currency]
 hint = "roubles, dollars, euros, dinars"
@@ -147,6 +148,11 @@ usage = "Envoyez un nombre : le jour du mois auquel enregistrer les achats. Par 
 not_a_number = "« {value} » ne ressemble pas à un jour du mois. Envoyez un nombre, par exemple : 3"
 out_of_period = "Ce jour n'existe pas dans la période actuelle : elle va du {start} au {end}"
 in_future = "Ce jour n'est pas encore arrivé. Au plus tard, vous pouvez utiliser le {last}"
+
+[parse.notes]
+too_long = "La note dépasse {limit} caractères"
+multiline = "La note doit tenir sur une seule ligne"
+empty = "Envoyez le texte de la note. Pour la retirer, utilisez le bouton « Effacer »"
 
 [parse.onboarding]
 title_empty = "Le nom ne peut pas être vide"
@@ -216,6 +222,7 @@ new_suffix = " (nouveau)"
 types = "Choix du type"
 categories = "Choix de la catégorie"
 day = "Choix du jour"
+notes = "Note"
 
 [format.llm]
 title = "Coûts LLM, utilisateur {telegram_id}"

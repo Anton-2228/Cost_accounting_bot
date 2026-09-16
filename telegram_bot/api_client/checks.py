@@ -70,6 +70,7 @@ class ChecksClient:
         items: Sequence[CommitItem],
         new_product_types: Sequence[NewProductType] = (),
         added_at: date | None = None,
+        notes: str = "",
     ) -> list[Record]:
         """Записывает разобранный чек целиком одним запросом.
 
@@ -81,12 +82,17 @@ class ChecksClient:
         отправляется как есть: api понимает его как «сегодня», то есть ровно как
         до появления стадии, и черновик, начатый до выката, так дописывается без
         отдельной ветки.
+
+        `notes` — пометка с четвёртой стадии, одна на весь чек. Api кладёт её в
+        каждую операцию: пометка описывает покупку целиком, а операцией стала
+        каждая её позиция.
         """
         data = await self._http.post_items(
             f"/spreadsheets/{spreadsheet_id}/checks/commit",
             body={
                 "check_id": check_id,
                 "added_at": added_at.isoformat() if added_at is not None else None,
+                "notes": notes,
                 "items": [
                     {
                         "product_name": item.product_name,

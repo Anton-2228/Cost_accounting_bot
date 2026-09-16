@@ -6,6 +6,7 @@ from datetime import date
 
 from pydantic import BaseModel, ConfigDict, Field
 
+from api.core import constants
 from api.requests.checks.check_item_request import CheckItemRequest
 from api.requests.checks.product_type_assignment_request import ProductTypeAssignmentRequest
 
@@ -36,5 +37,10 @@ class CommitCheckRequest(BaseModel):
     #: период документа, а не календарь, и проверяется в
     #: :meth:`api.services.check_service.CheckService.commit_check`.
     added_at: date | None = None
+    #: Пометка, общая на весь чек: она достаётся `notes` каждой созданной
+    #: операции. Необязательна ровно по той же причине, что и `added_at` выше, —
+    #: `extra="forbid"` делает обязательное поле двусторонней связкой выкатов, —
+    #: и пустая строка значит «пометки нет», как и у обычной операции.
+    notes: str = Field(default="", max_length=constants.NOTES_MAX_LENGTH)
     items: list[CheckItemRequest] = Field(min_length=1)
     new_product_types: list[ProductTypeAssignmentRequest] = []

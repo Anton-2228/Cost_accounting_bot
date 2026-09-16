@@ -121,6 +121,7 @@ async def commit_check(
         spreadsheet_id,
         check_id=payload.check_id,
         added_at=payload.added_at,
+        notes=payload.notes,
         items=[
             CheckItem(
                 product_name=item.product_name,

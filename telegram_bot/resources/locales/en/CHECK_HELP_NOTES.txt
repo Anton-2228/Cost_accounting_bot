@@ -1,0 +1,2 @@
+A note for the receipt — it goes into every operation of it.
+Send the text as a single line, remove it with the “Clear” button, or just press “Done”: the note is optional.

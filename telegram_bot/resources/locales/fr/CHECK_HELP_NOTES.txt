@@ -1,0 +1,2 @@
+Une note pour le ticket — elle ira dans chacune de ses opérations.
+Envoyez le texte sur une seule ligne, retirez-le avec le bouton « Effacer », ou appuyez directement sur « Terminé » : la note est facultative.

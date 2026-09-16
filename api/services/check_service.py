@@ -213,6 +213,7 @@ class CheckService(BaseSpreadsheetService):
         items: Sequence[CheckItem],
         new_product_types: Sequence[ProductTypeAssignment] = (),
         added_at: date | None = None,
+        notes: str = "",
     ) -> list[Record]:
         """Записывает разобранный чек: типы товаров, кэш, операции, отметку.
 
@@ -229,6 +230,12 @@ class CheckService(BaseSpreadsheetService):
         период под него не подбирается. Подбор пустил бы запись в прошлый —
         возможно, уже закрытый — период, и правило «чек ложится в текущий месяц»
         не жило бы больше нигде.
+
+        `notes` — пометка, одна на весь чек, и достаётся она **каждой** позиции.
+        Отдельного места у чека под неё не заводится: пометка нужна там, где на
+        неё смотрят, — в строке листа операций, — а строк у чека столько,
+        сколько позиций. Колонки «чья это пометка» при этом не появляется:
+        операции чека и без того связаны `check_id`.
         """
         spreadsheet = await self._get_ready(spreadsheet_id)
         check = await self._checks.get_for_spreadsheet(check_id, spreadsheet_id)
@@ -282,6 +289,7 @@ class CheckService(BaseSpreadsheetService):
                         added_at=day,
                         product_name=item.product_name,
                         product_type=item.product_type,
+                        notes=notes,
                         check_id=check_id,
                     )
                 )

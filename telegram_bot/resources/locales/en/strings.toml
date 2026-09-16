@@ -92,6 +92,8 @@ skip = "Postpone"
 delete = "Delete"
 back_to_types = "Back to types"
 back_to_categories = "Back to categories"
+back_to_day = "Back to the day"
+clear = "Clear"
 help = "Help"
 help_hide = "Hide help"
 
@@ -131,7 +133,6 @@ too_precise = "The amount has more than two decimal places"
 [parse.record]
 usage = "Like this: /add currency amount category note\nA day of the month may come first: /add 3 euros 20 food"
 bad_currency = "“{word}” doesn't look like a currency.\nYou can write it like this: {hint}\n{usage}"
-notes_too_long = "The note is longer than {limit} characters"
 
 [parse.currency]
 hint = "rubles, dollars, euros, dinars"
@@ -147,6 +148,11 @@ usage = "Send a number — the day of the month to record the purchases on. For 
 not_a_number = "«{value}» doesn't look like a day of the month. Send a number, for example: 3"
 out_of_period = "There is no such day in the current period: it runs from {start} to {end}"
 in_future = "That day hasn't come yet. The latest you can use is {last}"
+
+[parse.notes]
+too_long = "The note is longer than {limit} characters"
+multiline = "The note must be a single line"
+empty = "Send the text of the note. To remove it, use the “Clear” button"
 
 [parse.onboarding]
 title_empty = "The name can't be empty"
@@ -216,6 +222,7 @@ new_suffix = " (new)"
 types = "Type selection"
 categories = "Category selection"
 day = "Day selection"
+notes = "Note"
 
 [format.llm]
 title = "LLM costs, user {telegram_id}"

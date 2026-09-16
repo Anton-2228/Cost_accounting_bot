@@ -408,3 +408,47 @@ async def test_commit_with_a_day_outside_the_period_is_422(
 
     assert response.status_code == 422
     assert response.json()["details"]["reason"] == "day_outside_period"
+
+
+async def test_commit_puts_the_note_on_the_records(
+    client: AsyncClient,
+    session: AsyncSession,
+) -> None:
+    """Пометка из тела запроса достаётся каждой операции чека."""
+    base, body, _ = await _ready_check(session)
+    body["notes"] = "магазин у дома"
+
+    response = await client.post(f"{base}/checks/commit", json=body)
+
+    assert response.status_code == 201
+    assert [item["notes"] for item in response.json()["items"]] == ["магазин у дома"]
+
+
+async def test_commit_without_a_note_is_accepted(
+    client: AsyncClient,
+    session: AsyncSession,
+) -> None:
+    """Тело без `notes` законно: пометка необязательна, и операции без неё.
+
+    Как и у `added_at`, необязательность здесь — условие выката: `extra="forbid"`
+    отверг бы запрос целиком, будь поле обязательным.
+    """
+    base, body, _ = await _ready_check(session)
+
+    response = await client.post(f"{base}/checks/commit", json=body)
+
+    assert response.status_code == 201
+    assert response.json()["items"][0]["notes"] == ""
+
+
+async def test_commit_with_too_long_a_note_is_422(
+    client: AsyncClient,
+    session: AsyncSession,
+) -> None:
+    """Пометка длиннее колонки отвергается схемой, а не базой."""
+    base, body, _ = await _ready_check(session)
+    body["notes"] = "я" * 513
+
+    response = await client.post(f"{base}/checks/commit", json=body)
+
+    assert response.status_code == 422

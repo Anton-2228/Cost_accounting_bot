@@ -11,6 +11,7 @@ from telegram_bot.parsers import currency_parser
 from telegram_bot.parsers.amount_parser import AmountParser
 from telegram_bot.parsers.association_matcher import AssociationMatcher
 from telegram_bot.parsers.day_parser import DayParser
+from telegram_bot.parsers.notes_parser import NotesParser
 from telegram_bot.parsers.results import ParsedRecord, ParseError
 
 
@@ -114,9 +115,12 @@ class RecordParser:
             hint = AssociationMatcher.hint([item.title for item in categories])
             raise ParseError(t("parse.category_not_found", value=parts[2], hint=hint))
 
-        notes = " ".join(parts[constants.RECORD_ARGUMENTS :])
-        if len(notes) > constants.NOTES_MAX_LENGTH:
-            raise ParseError(t("parse.record.notes_too_long", limit=constants.NOTES_MAX_LENGTH))
+        # Пустой хвост здесь законен и значит «операция без пометки»: строгую
+        # проверку несёт стадия пометки в разборе чека, где пустое сообщение —
+        # промах.
+        notes = NotesParser.parse(
+            " ".join(parts[constants.RECORD_ARGUMENTS :]), allow_empty=True
+        )
 
         return ParsedRecord(
             amount=amount,

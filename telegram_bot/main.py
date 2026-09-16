@@ -45,6 +45,7 @@ _CHECK_STATES = (
     States.CHECK_TYPES,
     States.CHECK_CATEGORIES,
     States.CHECK_DAY,
+    States.CHECK_NOTES,
 )
 
 #: Все состояния диалогов разом. Список нужен трижды — `/start` как выходу,
@@ -197,6 +198,11 @@ def _register_handlers() -> None:
         F.data.startswith("check_back:"),
     )
     router.callback_query.register(
+        _on_check_clear,
+        StateFilter(*_CHECK_STATES),
+        F.data.startswith("check_clear:"),
+    )
+    router.callback_query.register(
         _on_check_help,
         StateFilter(*_CHECK_STATES),
         F.data.startswith("check_help:"),
@@ -307,6 +313,18 @@ async def _on_check_back(callback: CallbackQuery, state: FSMContext) -> None:
 
     Ведёт в ту же команду, что и «Готово»: обе — переходы между стадиями
     одного разбора, и различает их сама команда по префиксу `callback_data`.
+    """
+    await MANAGER.launch_callback(CommandName.CHECK, callback, state)
+
+
+async def _on_check_clear(callback: CallbackQuery, state: FSMContext) -> None:
+    """Кнопка «Очистить» на стадии пометки.
+
+    Ведёт в ту же команду, что и остальные кнопки разбора. Фильтр здесь — по
+    всем состояниям ветки, а не по одному `CHECK_NOTES`: кнопка живёт в
+    переписке дольше своей стадии, и нажатая после возврата ко дню она обязана
+    получить внятный отказ внутри команды, а не провалиться мимо всех
+    обработчиков в «неизвестную команду».
     """
     await MANAGER.launch_callback(CommandName.CHECK, callback, state)
 

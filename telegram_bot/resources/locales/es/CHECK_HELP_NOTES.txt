@@ -1,0 +1,2 @@
+Una nota para el recibo: irá a cada una de sus operaciones.
+Envía el texto en una sola línea, quítalo con el botón «Borrar» o pulsa «Listo» directamente: la nota es opcional.
