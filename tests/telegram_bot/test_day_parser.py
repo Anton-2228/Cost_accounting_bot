@@ -104,3 +104,27 @@ def test_leap_february_is_not_recomputed() -> None:
     assert _parse("29", start, end) == date(2028, 2, 29)
     assert _parse("14", start, end) == date(2028, 3, 14)
     assert _parse("15", start, end) == start
+
+
+class TestLooksLikeDay:
+    """Предикат «слово похоже на день»: им `/add` решает, день ли первое слово.
+
+    Проверяется отдельно от :meth:`DayParser.parse`, потому что у `/add` его
+    ответ «нет» — не отказ, а «первое слово не день, разбираем дальше как
+    валюту», и цена ошибки тут другая.
+    """
+
+    @pytest.mark.parametrize("word", ["1", "3", "25", "31", "09"])
+    def test_one_or_two_digits(self, word: str) -> None:
+        """Одна-две цифры — день; ведущий ноль ему не мешает."""
+        assert DayParser.looks_like_day(word) is True
+
+    @pytest.mark.parametrize("word", ["", "032", "2026", "20260803", "3a", "евро", "-1", "3,5"])
+    def test_everything_else_is_not_a_day(self, word: str) -> None:
+        """Всё прочее днём не считается.
+
+        «032» важнее остальных: с ним `/add` не должен перепутать день с
+        валютой, а `/check` — сказать «такого дня в периоде нет» вместо
+        «это не день месяца».
+        """
+        assert DayParser.looks_like_day(word) is False

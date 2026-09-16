@@ -5,7 +5,7 @@ from __future__ import annotations
 from httpx import AsyncClient
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from api.core.period import now_in_timezone
+from api.core.period import now_in_timezone, period_bounds, today_in_timezone
 from api.enums import CategoryKind
 from api.repositories.period_repository import PeriodRepository
 from tests import factories
@@ -191,3 +191,81 @@ async def test_list_by_explicit_period(client: AsyncClient, session: AsyncSessio
     alien = await client.get(base, params={"period_id": period_id + 1000})
     assert alien.status_code == 404
 
+
+async def test_given_day_dates_the_record(
+    client: AsyncClient,
+    session: AsyncSession,
+) -> None:
+    """Присланный день доезжает до операции через весь слой."""
+    spreadsheet = await factories.create_spreadsheet(session, ready=True)
+    category = await factories.create_category(session, spreadsheet)
+    await session.commit()
+
+    start_date, _ = period_bounds(
+        today_in_timezone(spreadsheet.timezone), spreadsheet.reset_day
+    )
+    response = await client.post(
+        f"/api/v1/spreadsheets/{spreadsheet.id}/records",
+        json={
+            "category_id": category.id,
+            "amount": "100.50",
+            "currency": "RUB",
+            "added_at": start_date.isoformat(),
+        },
+    )
+
+    assert response.status_code == 201
+    assert response.json()["data"]["added_at"] == start_date.isoformat()
+
+
+async def test_record_without_a_day_is_accepted(
+    client: AsyncClient,
+    session: AsyncSession,
+) -> None:
+    """Тело без `added_at` законно: поле необязательное, день тогда сегодняшний.
+
+    Это и позволяет выкатывать api раньше бота: `extra="forbid"` отверг бы
+    запрос целиком, будь поле обязательным.
+    """
+    spreadsheet = await factories.create_spreadsheet(session, ready=True)
+    category = await factories.create_category(session, spreadsheet)
+    await session.commit()
+
+    response = await client.post(
+        f"/api/v1/spreadsheets/{spreadsheet.id}/records",
+        json={"category_id": category.id, "amount": "100.50", "currency": "RUB"},
+    )
+
+    assert response.status_code == 201
+    assert response.json()["data"]["added_at"] == today_in_timezone(
+        spreadsheet.timezone
+    ).isoformat()
+
+
+async def test_day_outside_the_period_is_422(
+    client: AsyncClient,
+    session: AsyncSession,
+) -> None:
+    """День из чужого периода отвергается отдельной причиной, а не общей.
+
+    По ней бот отличает «период сменился, пока набирали» от прочих отказов.
+    """
+    spreadsheet = await factories.create_spreadsheet(session, ready=True)
+    category = await factories.create_category(session, spreadsheet)
+    await session.commit()
+
+    _, end_date = period_bounds(
+        today_in_timezone(spreadsheet.timezone), spreadsheet.reset_day
+    )
+    response = await client.post(
+        f"/api/v1/spreadsheets/{spreadsheet.id}/records",
+        json={
+            "category_id": category.id,
+            "amount": "100.50",
+            "currency": "RUB",
+            "added_at": end_date.isoformat(),
+        },
+    )
+
+    assert response.status_code == 422
+    assert response.json()["details"]["reason"] == "day_outside_period"

@@ -43,6 +43,9 @@ async def create_record(
 
     Сумма приходит без знака, знак ставит вид категории. Период определяется
     сегодняшней датой в часовом поясе документа и создаётся, если его ещё нет.
+
+    Необязательный `added_at` датирует операцию другим днём **того же**
+    периода; чужой день — 422 `day_outside_period`.
     """
     record = await service.create(
         spreadsheet_id,
@@ -52,6 +55,7 @@ async def create_record(
         notes=payload.notes,
         product_name=payload.product_name,
         product_type=payload.product_type,
+        added_at=payload.added_at,
     )
     return DataResponse(data=RecordResponse.model_validate(record))
 

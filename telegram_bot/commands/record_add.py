@@ -14,7 +14,7 @@ from telegram_bot.parsers import ParseError, RecordParser
 
 
 class RecordAddCommand(BaseCommand):
-    """`валюта сумма категория [пометка...]` одной строкой.
+    """`[день] валюта сумма категория [пометка...]` одной строкой.
 
     Валюта обязательна: подставить её больше неоткуда, а умолчание молча
     приписывало бы валюту той трате, где пользователь про неё забыл.
@@ -23,34 +23,51 @@ class RecordAddCommand(BaseCommand):
     определяет вид категории. Так пользователь не может ошибиться знаком, а
     api — получить перевёрнутую операцию.
 
-    Дата не спрашивается тоже — её ставит api по часовому поясу документа.
-    Ввода задним числом нет: закрытый период не меняется.
+    День необязателен: без него дату ставит api по часовому поясу документа.
+    Названный день обязан лежать в текущем периоде — правило «закрытый период
+    не меняется» этим не нарушается, задним числом можно поправить только
+    сегодняшний месяц.
+
+    Границы периода едут в api только тогда, когда день действительно прислан:
+    `/add` — самая частая команда бота, и лишний круг по сети на каждой трате
+    ради необязательного аргумента ничего бы не добавил.
     """
 
     async def execute(self, message: Message, state: FSMContext, **kwargs: Any) -> None:
         """Разбирает строку и записывает операцию."""
         command: CommandObject | None = kwargs.get("command")
+        raw_args = command.args if command else None
 
         spreadsheet = await self.spreadsheet(message)
         if spreadsheet is None:
             return
 
         categories = await self.api.catalog.categories(spreadsheet.id)
+        period = (
+            await self.api.periods.current(spreadsheet.id)
+            if RecordParser.starts_with_day(raw_args)
+            else None
+        )
 
         try:
             parsed = RecordParser.parse(
-                command.args if command else None,
+                raw_args,
                 categories=categories,
+                period=period,
             )
         except ParseError as error:
             await self.aiogram.answer_message(message, error.message)
             return
 
+        # Период мог смениться между чтением границ и записью. Тогда api ответит
+        # 422 `day_outside_period`, и его напечатает общий перехват в
+        # `CommandManager`: перерисовывать здесь нечего, диалога у `/add` нет.
         record = await self.api.records.create(
             spreadsheet.id,
             category_id=parsed.category_id,
             amount=parsed.amount,
             currency=parsed.currency,
             notes=parsed.notes,
+            added_at=parsed.added_at,
         )
         await self.aiogram.answer_message(message, RecordFormatter.saved(parsed, record))

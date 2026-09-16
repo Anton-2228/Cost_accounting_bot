@@ -6,6 +6,7 @@ Commands
 
 /add currency amount category note
     Example: /add euros 20 food coffee to go
+    A day of the month may come first: /add 3 euros 20 food
 /del id
     Without an id, I'll delete the last transaction of the period.
     Before deleting, I'll show the transaction and ask you to type its id.
@@ -26,3 +27,7 @@ The currency is required and comes first:
 /add euros 20 food coffee
 Write it as you like: rubles, dollars, euros, dinars — or short: rub, usd, eur, rsd.
 The currency of a receipt isn't asked: I know it from the receipt itself.
+
+A day of the month before the currency dates the transaction that day:
+/add 3 euros 20 food coffee
+Without it I use today. The day has to be one of the current period — a month that is already closed doesn't change.

@@ -2,12 +2,32 @@
 
 from __future__ import annotations
 
+from datetime import date
 from decimal import Decimal
 
 import pytest
 
-from telegram_bot.api_client.models import Category, Currency
+from telegram_bot.api_client.models import Category, Currency, Period, PeriodStatus
 from telegram_bot.parsers import ParseError, RecordParser
+
+#: Период, начинающийся не первого числа: в нём видно, что число месяца
+#: разбирается обходом окна, а не приставляется к текущему месяцу.
+_PERIOD = Period(
+    id=1,
+    start_date=date(2026, 7, 25),
+    end_date=date(2026, 8, 25),
+    status=PeriodStatus.OPEN,
+)
+
+#: Период с первого числа короткого месяца: в нём есть число, которого в окне
+#: нет вовсе. В окне `_PERIOD` таких чисел не бывает — месяц, начатый 25 июля,
+#: перебирает все числа от 1 до 31.
+_SHORT_PERIOD = Period(
+    id=2,
+    start_date=date(2026, 9, 1),
+    end_date=date(2026, 10, 1),
+    status=PeriodStatus.OPEN,
+)
 
 
 def test_full_line(categories: list[Category]) -> None:
@@ -140,3 +160,92 @@ def test_notes_may_start_with_a_currency_word(categories: list[Category]) -> Non
 
     assert parsed.currency is Currency.RUB
     assert parsed.notes == "евро на сдачу"
+
+
+class TestDay:
+    """Необязательный день первым словом."""
+
+    def test_day_dates_the_record_and_leaves_the_rest_alone(
+        self, categories: list[Category]
+    ) -> None:
+        """Число снимается со строки, остальное разбирается как прежде."""
+        parsed = RecordParser.parse("3 евро 500 еда обед", categories=categories, period=_PERIOD)
+
+        assert parsed.added_at == date(2026, 8, 3)
+        assert parsed.currency is Currency.EUR
+        assert parsed.amount == Decimal("500")
+        assert parsed.category_id == 1
+        assert parsed.notes == "обед"
+
+    def test_day_is_resolved_inside_the_period(self, categories: list[Category]) -> None:
+        """Число ищется в окне периода, а не в текущем месяце.
+
+        «25» в окне «25 июля — 25 августа» — июльское: `end_date` исключительна.
+        """
+        parsed = RecordParser.parse("25 евро 500 еда", categories=categories, period=_PERIOD)
+        assert parsed.added_at == date(2026, 7, 25)
+
+    def test_without_a_day_the_date_is_left_to_api(self, categories: list[Category]) -> None:
+        """Без числа дня нет и в разборе: сегодняшний день поставит api."""
+        parsed = RecordParser.parse("евро 500 еда", categories=categories)
+        assert parsed.added_at is None
+
+    def test_day_outside_the_period_is_refused(self, categories: list[Category]) -> None:
+        """Дня нет в периоде — отказ с его границами, операция не пишется.
+
+        Границы названы включительно: `end_date` исключительна, и печатать её
+        как конец периода значило бы обещать день, которого в нём нет.
+        """
+        with pytest.raises(ParseError) as error:
+            RecordParser.parse("31 евро 500 еда", categories=categories, period=_SHORT_PERIOD)
+
+        assert "01.09.2026" in error.value.message
+        assert "30.09.2026" in error.value.message
+
+    def test_zero_is_refused_by_the_period_too(self, categories: list[Category]) -> None:
+        """«0» — такое же число месяца, которого в периоде нет."""
+        with pytest.raises(ParseError):
+            RecordParser.parse("0 евро 500 еда", categories=categories, period=_PERIOD)
+
+    def test_notes_start_after_the_day(self, categories: list[Category]) -> None:
+        """Пометка берётся из остатка уже без дня, а не со сдвигом на слово."""
+        parsed = RecordParser.parse(
+            "3 евро 500 еда обед в столовой", categories=categories, period=_PERIOD
+        )
+        assert parsed.notes == "обед в столовой"
+
+    @pytest.mark.parametrize("raw", ["3", "3 евро", "3 евро 500"])
+    def test_day_alone_is_not_a_command(self, raw: str, categories: list[Category]) -> None:
+        """Строка со днём, но без остального — та же подсказка про формат.
+
+        Счёт слов идёт после того, как день снят: иначе «3 евро 500» ругалось бы
+        на валюту «3», хотя не хватает как раз категории.
+        """
+        with pytest.raises(ParseError, match="/add"):
+            RecordParser.parse(raw, categories=categories, period=_PERIOD)
+
+    def test_three_digits_are_not_a_day(self, categories: list[Category]) -> None:
+        """Длинное число днём не становится и уходит в разбор валюты.
+
+        Поэтому период за такую строку не запрашивается вовсе, а пользователь
+        получает привычный отказ про валюту.
+        """
+        assert RecordParser.starts_with_day("032 евро 500 еда") is False
+        with pytest.raises(ParseError) as error:
+            RecordParser.parse("032 евро 500 еда", categories=categories)
+
+        assert "032" in error.value.message
+        assert "валюту" in error.value.message
+
+
+class TestStartsWithDay:
+    """Предикат, по которому команда решает, ехать ли за границами периода."""
+
+    @pytest.mark.parametrize("raw", ["3 евро 500 еда", " 25 евро 500 еда", "3"])
+    def test_leading_number_needs_the_period(self, raw: str) -> None:
+        assert RecordParser.starts_with_day(raw) is True
+
+    @pytest.mark.parametrize("raw", [None, "", "   ", "евро 500 еда", "500 еда обед"])
+    def test_everything_else_does_not(self, raw: str | None) -> None:
+        """В том числе пустая строка: за периодом ради отказа ходить незачем."""
+        assert RecordParser.starts_with_day(raw) is False

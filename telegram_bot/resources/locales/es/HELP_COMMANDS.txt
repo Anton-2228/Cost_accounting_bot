@@ -6,6 +6,7 @@ Comandos
 
 /add moneda importe categoría nota
     Ejemplo: /add euros 20 comida café para llevar
+    Delante puede ir el día del mes: /add 3 euros 20 comida
 /del id
     Sin id, eliminaré la última operación del periodo.
     Antes de eliminarla, te mostraré la operación y te pediré que escribas su id.
@@ -26,3 +27,7 @@ La moneda es obligatoria y va primero:
 /add euros 20 comida café
 Escríbela como prefieras: rublos, dólares, euros, dinares, o abreviada: rub, usd, eur, rsd.
 La moneda de un recibo no se pregunta: la sé por el propio recibo.
+
+El día del mes delante de la moneda fecha la operación ese día:
+/add 3 euros 20 comida café
+Sin él pongo hoy. El día tiene que ser del periodo actual: un mes ya cerrado no cambia.

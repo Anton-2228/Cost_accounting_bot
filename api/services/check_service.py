@@ -24,7 +24,7 @@ from api.repositories.period_repository import PeriodRepository
 from api.repositories.record_repository import RecordRepository
 from api.repositories.sheet_sync_task_repository import SheetSyncTaskRepository, TaskKey
 from api.repositories.spreadsheet_repository import SpreadsheetRepository
-from api.services._periods import ensure_current_period, today_for
+from api.services._periods import assert_in_period, ensure_current_period, today_for
 from api.services.base import BaseSpreadsheetService
 
 logger = get_logger(__name__)
@@ -44,16 +44,6 @@ ALREADY_PROCESSED_REASON = "check_already_processed"
 #: молчаливое переназначение было бы хуже отказа: раскладка позиций чека стала
 #: бы зависеть от порядка обработки.
 TYPE_TAKEN_REASON = "product_type_taken"
-
-#: Причина отказа: присланный день не принадлежит текущему периоду. Отдельная
-#: причина, а не общее «неверный запрос»: день приходит из диалога, где его
-#: набрал человек, и единственный осмысленный ответ на такой отказ — показать
-#: границы периода и спросить снова.
-#:
-#: Сюда попадает и гонка: пользователь выбрал день, задумался, а период за это
-#: время сменился. Отличить её от опечатки на стороне api нельзя и не нужно —
-#: чек в обоих случаях не записан, а разбираться с этим клиенту.
-DAY_OUTSIDE_PERIOD_REASON = "day_outside_period"
 
 #: Валюта чека по его формату. Не спрашивается у пользователя и не извлекается
 #: из расшифровки: каждый из форматов привязан к своей стране и своей валюте, и
@@ -259,15 +249,7 @@ class CheckService(BaseSpreadsheetService):
         assert period.id is not None
 
         day = today if added_at is None else added_at
-        if not period.contains(day):
-            raise BusinessRuleError(
-                f"День {day} не входит в текущий период",
-                details={
-                    "reason": DAY_OUTSIDE_PERIOD_REASON,
-                    "start_date": period.start_date.isoformat(),
-                    "end_date": period.end_date.isoformat(),
-                },
-            )
+        assert_in_period(period, day)
 
         # Все категории документа, а не только активные: неактивная категория
         # скрыта из подсказок, но продолжает существовать, и позиция чека,

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from datetime import date
 from decimal import Decimal
 
 from telegram_bot import constants
@@ -31,11 +32,15 @@ class RecordsClient:
         amount: Decimal,
         currency: Currency,
         notes: str,
+        added_at: date | None = None,
     ) -> Record:
         """Записывает операцию.
 
         Сумма уходит **без знака**: расход это или доход, определяет вид
         категории. Минус от пользователя не может перевернуть операцию.
+
+        `added_at` — день, которым датировать операцию; пусто значит
+        «сегодняшний день документа», его подставит api.
         """
         data = await self._http.post_data(
             f"/spreadsheets/{spreadsheet_id}/records",
@@ -44,6 +49,7 @@ class RecordsClient:
                 "amount": str(amount),
                 "currency": currency.value,
                 "notes": notes,
+                "added_at": added_at.isoformat() if added_at is not None else None,
             },
             timeout=constants.WRITE_TIMEOUT_SECONDS,
         )

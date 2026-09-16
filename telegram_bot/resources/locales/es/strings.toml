@@ -128,7 +128,7 @@ too_big = "El importe es demasiado grande"
 too_precise = "El importe tiene más de dos decimales"
 
 [parse.record]
-usage = "Así: /add moneda importe categoría nota"
+usage = "Así: /add moneda importe categoría nota\nDelante puede ir el día del mes: /add 3 euros 20 comida"
 bad_currency = "«{word}» no parece una moneda.\nPuedes escribirla así: {hint}\n{usage}"
 notes_too_long = "La nota supera los {limit} caracteres"
 

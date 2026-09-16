@@ -9,6 +9,7 @@
 
 from __future__ import annotations
 
+from datetime import date
 from decimal import Decimal
 from enum import StrEnum
 
@@ -28,6 +29,10 @@ class ParsedRecord(BaseModel):
     category_title: str
     category_is_income: bool
     notes: str
+    #: День, которым датировать операцию. `None` значит «пользователь дня не
+    #: называл», и api поставит сегодняшний день документа; второго смысла у
+    #: пустоты тут нет.
+    added_at: date | None = None
 
 
 class CheckEditKind(StrEnum):

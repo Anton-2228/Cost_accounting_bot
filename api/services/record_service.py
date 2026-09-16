@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from datetime import date
 from decimal import Decimal
 
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -19,7 +20,13 @@ from api.repositories.period_repository import PeriodRepository
 from api.repositories.record_repository import RecordRepository
 from api.repositories.sheet_sync_task_repository import SheetSyncTaskRepository, TaskKey
 from api.repositories.spreadsheet_repository import SpreadsheetRepository
-from api.services._periods import assert_open, ensure_current_period, resolve_period, today_for
+from api.services._periods import (
+    assert_in_period,
+    assert_open,
+    ensure_current_period,
+    resolve_period,
+    today_for,
+)
 from api.services.base import BaseSpreadsheetService
 
 logger = get_logger(__name__)
@@ -73,6 +80,7 @@ class RecordService(BaseSpreadsheetService):
         notes: str = "",
         product_name: str | None = None,
         product_type: str | None = None,
+        added_at: date | None = None,
     ) -> Record:
         """Добавляет операцию и помечает устаревшими зависящие от неё листы.
 
@@ -88,6 +96,12 @@ class RecordService(BaseSpreadsheetService):
         Период под сегодняшнюю дату создаётся здесь же, если его ещё нет:
         ждать фонового ролловера нельзя, иначе первая операция после простоя
         упёрлась бы в отсутствующий период.
+
+        `added_at` — день, которым датировать операцию; пустое значение означает
+        сегодняшний день документа. Он обязан лежать в **текущем** периоде:
+        период под него не подбирается. Подбор пустил бы запись в прошлый —
+        возможно, уже закрытый — период, и правило «операция ложится в текущий
+        месяц» не жило бы больше нигде.
         """
         if amount <= 0:
             raise BusinessRuleError(
@@ -104,6 +118,9 @@ class RecordService(BaseSpreadsheetService):
         period = await ensure_current_period(self._periods, spreadsheet, today)
         assert period.id is not None
 
+        day = today if added_at is None else added_at
+        assert_in_period(period, day)
+
         signed = amount if category.kind is CategoryKind.INCOME else -amount
         record = await self._records.add(
             Record(
@@ -112,7 +129,7 @@ class RecordService(BaseSpreadsheetService):
                 category_id=category_id,
                 amount=signed,
                 currency=currency,
-                added_at=today,
+                added_at=day,
                 notes=notes,
                 product_name=product_name,
                 product_type=product_type,

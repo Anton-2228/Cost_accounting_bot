@@ -6,6 +6,7 @@ Commandes
 
 /add devise montant catégorie note
     Exemple : /add euros 20 repas café à emporter
+    Le jour du mois peut venir en premier : /add 3 euros 20 repas
 /del id
     Sans id, je supprime la dernière opération de la période.
     Avant de supprimer, j'affiche l'opération et vous demande d'écrire son id.
@@ -26,3 +27,7 @@ La devise est obligatoire et vient en premier :
 /add euros 20 repas café
 Écrivez-la comme vous voulez : roubles, dollars, euros, dinars — ou en abrégé : rub, usd, eur, rsd.
 La devise d'un ticket n'est pas demandée : je la connais d'après le ticket lui-même.
+
+Un jour du mois avant la devise date l'opération à ce jour-là :
+/add 3 euros 20 repas café
+Sans lui, je mets aujourd'hui. Le jour doit appartenir à la période en cours : un mois déjà clos ne change pas.

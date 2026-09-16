@@ -32,6 +32,17 @@ class DayParser:
     """Число из сообщения → день внутри границ периода."""
 
     @staticmethod
+    def looks_like_day(text: str) -> bool:
+        """Слово похоже на день месяца: одна-две цифры и ничего больше.
+
+        Отдельно от :meth:`parse`, потому что у `/add` день необязателен и
+        стоит перед валютой: там сначала решается, день ли это вообще, и только
+        потом — какой именно. Ответ «нет» там не отказ, а «первое слово — не
+        день», и разбор продолжается с валюты.
+        """
+        return 0 < len(text) <= _MAX_DIGITS and text.isdecimal()
+
+    @staticmethod
     def parse(raw: str | None, *, start_date: date, end_date: date) -> date:
         """День периода по его числу; `end_date` исключительна.
 
@@ -44,7 +55,7 @@ class DayParser:
         if not text:
             raise ParseError(t("parse.day.usage"))
 
-        if len(text) > _MAX_DIGITS or not text.isdecimal():
+        if not DayParser.looks_like_day(text):
             raise ParseError(t("parse.day.not_a_number", value=text))
 
         number = int(text)

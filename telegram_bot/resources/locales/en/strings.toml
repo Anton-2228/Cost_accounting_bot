@@ -128,7 +128,7 @@ too_big = "The amount is too large"
 too_precise = "The amount has more than two decimal places"
 
 [parse.record]
-usage = "Like this: /add currency amount category note"
+usage = "Like this: /add currency amount category note\nA day of the month may come first: /add 3 euros 20 food"
 bad_currency = "“{word}” doesn't look like a currency.\nYou can write it like this: {hint}\n{usage}"
 notes_too_long = "The note is longer than {limit} characters"
 

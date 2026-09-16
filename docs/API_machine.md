@@ -308,7 +308,7 @@ backoff перестал бы работать.
 | `GET/POST /spreadsheets/{id}/accesses` · `POST .../accesses/{id}/granted` | доступы; `?pending_only=` |
 | `POST /spreadsheets/{id}/sync` | попросить вчитать листы, 202 |
 | `POST /spreadsheets/{id}/google-id` | привязать созданный документ (для gsheets) |
-| `GET/POST /spreadsheets/{id}/records` · `DELETE .../records/last` · `.../records/{id}` | операции; `?period_id=` |
+| `GET/POST /spreadsheets/{id}/records` · `DELETE .../records/last` · `.../records/{id}` | операции; `?period_id=`; у `POST` необязательный `added_at` датирует операцию другим днём **текущего** периода, чужой день — 422 `day_outside_period` |
 | `GET /spreadsheets/{id}/periods` · `.../periods/current` · `.../periods/{id}/statistics` | периоды и дневные итоги; `current` заводит период под сегодня, если его ещё нет — ленивая починка, как у операции |
 | `GET/POST /spreadsheets/{id}/checks` | сохранённые чеки, `?unprocessed=` (очередь разбора) либо `?period_id=` (архив месяца для листа чеков); оба фильтра сразу — 422; повтор — 409 `check_already_saved` |
 | `DELETE /spreadsheets/{id}/checks/{check_id}` | убрать неразобранный чек (204, мягко); разобранный — 409 `check_already_processed`, он уходит вслед за своими операциями |

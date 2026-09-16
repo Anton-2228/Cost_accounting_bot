@@ -16,6 +16,16 @@ from api.enums import PeriodStatus
 from api.exceptions.base import BusinessRuleError, NotFoundError
 from api.repositories.period_repository import PeriodRepository
 
+#: Причина отказа: присланный день не принадлежит текущему периоду. Отдельная
+#: причина, а не общее «неверный запрос»: день приходит оттуда, где его набрал
+#: человек, и единственный осмысленный ответ на такой отказ — показать границы
+#: периода и спросить снова.
+#:
+#: Сюда попадает и гонка: пользователь выбрал день, задумался, а период за это
+#: время сменился. Отличить её от опечатки на стороне api нельзя и не нужно —
+#: запись в обоих случаях не состоялась, а разбираться с этим клиенту.
+DAY_OUTSIDE_PERIOD_REASON = "day_outside_period"
+
 
 def today_for(spreadsheet: Spreadsheet) -> date:
     """Сегодняшняя дата в часовом поясе документа."""
@@ -61,6 +71,25 @@ async def resolve_period(
     if period is None:
         raise NotFoundError("period")
     return period
+
+
+def assert_in_period(period: Period, day: date) -> None:
+    """Запрещает датировать запись днём вне периода.
+
+    Здесь, а не в схеме запроса: допустимость дня определяет учётный период
+    документа, а не календарь. Границы уходят в `details` — назвать их
+    необходимо, иначе отказ выглядит беспричинным, ведь своего календаря у
+    клиента нет.
+    """
+    if not period.contains(day):
+        raise BusinessRuleError(
+            f"День {day} не входит в текущий период",
+            details={
+                "reason": DAY_OUTSIDE_PERIOD_REASON,
+                "start_date": period.start_date.isoformat(),
+                "end_date": period.end_date.isoformat(),
+            },
+        )
 
 
 def assert_open(period: Period) -> None:

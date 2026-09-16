@@ -2,13 +2,13 @@
 
 from __future__ import annotations
 
-from datetime import date
+from datetime import date, timedelta
 from decimal import Decimal
 
 import pytest
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from api.core.period import now_in_timezone, today_in_timezone
+from api.core.period import now_in_timezone, period_bounds, today_in_timezone
 from api.domain.cashed_record import CashedRecord
 from api.enums import CategoryKind, Currency, SheetTarget
 from api.exceptions.base import BusinessRuleError, NotFoundError
@@ -431,3 +431,71 @@ async def test_list_by_period_defaults_to_current_and_checks_owner(
 
     with pytest.raises(NotFoundError):
         await record_service.list_by_period(spreadsheet.id, alien_period.id)
+
+
+async def test_given_day_dates_the_record(
+    session: AsyncSession,
+    record_service: RecordService,
+) -> None:
+    """Присланный день становится датой операции, не сдвигая её период.
+
+    День выбирают **внутри** текущего периода, а не вместо него: под чужое
+    число период не подбирается, иначе трата уехала бы в прошлый — возможно,
+    уже закрытый — месяц.
+    """
+    spreadsheet = await factories.create_spreadsheet(session, ready=True)
+    category = await factories.create_category(session, spreadsheet)
+    await session.commit()
+    assert spreadsheet.id is not None and category.id is not None
+
+    start_date, _ = period_bounds(
+        today_in_timezone(spreadsheet.timezone), spreadsheet.reset_day
+    )
+    record = await record_service.create(
+        spreadsheet.id,
+        category_id=category.id,
+        amount=Decimal("10.00"),
+        currency=Currency.RUB,
+        added_at=start_date,
+    )
+
+    assert record.added_at == start_date
+    periods = await PeriodRepository(session).list_by_spreadsheet(spreadsheet.id)
+    assert [period.id for period in periods] == [record.period_id]
+
+
+@pytest.mark.parametrize("edge", ["before", "end"])
+async def test_day_outside_current_period_is_refused(
+    session: AsyncSession,
+    record_service: RecordService,
+    edge: str,
+) -> None:
+    """Дни по обе стороны периода отвергаются отдельной причиной.
+
+    Обе границы, потому что полуинтервал позволяет ошибиться ровно на них:
+    `end_date` принадлежит уже следующему периоду. Причина названа затем, что по
+    ней бот отличает «день не тот» от всего остального.
+    """
+    spreadsheet = await factories.create_spreadsheet(session, ready=True)
+    category = await factories.create_category(session, spreadsheet)
+    await session.commit()
+    assert spreadsheet.id is not None and category.id is not None
+
+    start_date, end_date = period_bounds(
+        today_in_timezone(spreadsheet.timezone), spreadsheet.reset_day
+    )
+    day = start_date - timedelta(days=1) if edge == "before" else end_date
+
+    with pytest.raises(BusinessRuleError) as error:
+        await record_service.create(
+            spreadsheet.id,
+            category_id=category.id,
+            amount=Decimal("10.00"),
+            currency=Currency.RUB,
+            added_at=day,
+        )
+
+    assert (error.value.details or {})["reason"] == "day_outside_period"
+    # Отказ не оставляет следов: операции нет, хотя период под сегодня уже
+    # заведён — его создаёт та же ленивая починка, что и у обычной записи.
+    assert await record_service.list_by_period(spreadsheet.id) == []

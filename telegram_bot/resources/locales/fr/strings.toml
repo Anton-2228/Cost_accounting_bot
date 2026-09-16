@@ -128,7 +128,7 @@ too_big = "Le montant est trop élevé"
 too_precise = "Le montant a plus de deux décimales"
 
 [parse.record]
-usage = "Comme ceci : /add devise montant catégorie note"
+usage = "Comme ceci : /add devise montant catégorie note\nLe jour du mois peut venir en premier : /add 3 euros 20 repas"
 bad_currency = "« {word} » ne ressemble pas à une devise.\nVous pouvez l'écrire ainsi : {hint}\n{usage}"
 notes_too_long = "La note dépasse {limit} caractères"
 
