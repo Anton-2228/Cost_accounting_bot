@@ -1,6 +1,2 @@
 Which day should the purchases be recorded on?
-
-Period: {start} to {end}
-Chosen: {day}
-
 Send another number — a day of the month — or press «Done».

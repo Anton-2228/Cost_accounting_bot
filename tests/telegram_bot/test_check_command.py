@@ -66,6 +66,8 @@ CANCEL_BUTTON_TEXT = t("buttons.cancel")
 _DONE_BUTTON = t("buttons.check.done")
 _BACK_BUTTON = t("buttons.check.back_to_types")
 _BACK_TO_CATEGORIES_BUTTON = t("buttons.check.back_to_categories")
+_HELP_BUTTON = t("buttons.check.help")
+_HELP_HIDE_BUTTON = t("buttons.check.help_hide")
 SKIP_BUTTON = t("buttons.check.skip")
 DELETE_BUTTON = t("buttons.check.delete")
 _CONFIRM_BUTTON = t("buttons.check_delete.confirm")
@@ -121,6 +123,11 @@ class FakeAiogram(AiogramWrapper):
         self.keyboards: list[InlineKeyboardMarkup] = []
         #: Сообщения, у которых сняли клавиатуру.
         self.cleared: list[int] = []
+        #: Правки сообщений на месте: «номер сообщения, текст».
+        self.edits: list[tuple[int, str]] = []
+        #: Чем ответит следующая правка. `False` — Telegram отказал: сообщение
+        #: удалили, устарело, переросло лимит.
+        self.edit_succeeds = True
 
     async def answer_message(self, message: Message, text: str) -> Message:
         self.sent.append(text)
@@ -142,6 +149,29 @@ class FakeAiogram(AiogramWrapper):
     async def clear_keyboard(self, chat_id: int, message_id: int) -> None:
         """Гасит клавиатуру: помнит, у какого сообщения её сняли."""
         self.cleared.append(message_id)
+
+    async def edit_text(
+        self,
+        chat_id: int,
+        message_id: int,
+        text: str,
+        *,
+        keyboard: InlineKeyboardMarkup | None = None,
+        parse_mode: str | None = None,
+    ) -> bool:
+        """Переписывает сообщение на месте.
+
+        Подмена обязательна: без неё правка ушла бы в настоящий `Bot`. Текст
+        ложится и в `edits`, и в `sent` — проверкам вида `said` всё равно, новым
+        сообщением бот сказал это или правкой прежнего.
+        """
+        if not self.edit_succeeds:
+            return False
+        self.edits.append((message_id, text))
+        self.sent.append(text)
+        if keyboard is not None:
+            self.keyboards.append(keyboard)
+        return True
 
     async def answer_callback(self, callback: CallbackQuery, text: str | None = None) -> None:
         if text is not None:
@@ -522,6 +552,11 @@ class Harness:
         """Нажимает последнюю показанную кнопку «Готово»."""
         await self.press(_DONE_BUTTON)
 
+    async def press_help(self) -> None:
+        """Нажимает кнопку справки, какой бы из двух надписей она ни была."""
+        labels = self.aiogram.labels()
+        await self.press(_HELP_HIDE_BUTTON if _HELP_HIDE_BUTTON in labels else _HELP_BUTTON)
+
     async def press(self, label: str) -> None:
         """Нажимает кнопку последнего блока по её надписи.
 
@@ -533,9 +568,13 @@ class Harness:
     async def press_data(self, data: str) -> None:
         """Нажимает кнопку с явной `callback_data`: для устаревших кнопок."""
         prefix = data.split(":", maxsplit=1)[0]
-        # Префиксы, не совпадающие с ключом команды: «Готово» и «К типам»
-        # обслуживает сам разбор, и `main` разводит их тем же правилом.
-        name = CommandName.CHECK if prefix in {"check_done", "check_back"} else prefix
+        # Префиксы, не совпадающие с ключом команды: «Готово», «К типам» и
+        # «Справка» обслуживает сам разбор, и `main` разводит их тем же правилом.
+        name = (
+            CommandName.CHECK
+            if prefix in {"check_done", "check_back", "check_help"}
+            else prefix
+        )
         await self.manager.launch_callback(name, _callback(data), self.state)
 
     async def current_state(self) -> str | None:
@@ -801,6 +840,7 @@ async def test_declined_deletion_returns_to_the_stage() -> None:
     assert await harness.current_state() == States.CHECK_TYPES.state
     assert harness.aiogram.rows() == [
         [_DONE_BUTTON],
+        [_HELP_BUTTON],
         [SKIP_BUTTON, DELETE_BUTTON],
         [CANCEL_BUTTON_TEXT],
     ]
@@ -818,6 +858,7 @@ async def test_every_stage_can_drop_the_check() -> None:
     await harness.send("/check")
     assert harness.aiogram.rows() == [
         [_DONE_BUTTON],
+        [_HELP_BUTTON],
         [SKIP_BUTTON, DELETE_BUTTON],
         [CANCEL_BUTTON_TEXT],
     ]
@@ -828,6 +869,7 @@ async def test_every_stage_can_drop_the_check() -> None:
     assert harness.aiogram.rows() == [
         [_DONE_BUTTON],
         [_BACK_BUTTON],
+        [_HELP_BUTTON],
         [SKIP_BUTTON, DELETE_BUTTON],
         [CANCEL_BUTTON_TEXT],
     ]
@@ -839,6 +881,7 @@ async def test_every_stage_can_drop_the_check() -> None:
     assert harness.aiogram.rows() == [
         [_DONE_BUTTON],
         [_BACK_TO_CATEGORIES_BUTTON],
+        [_HELP_BUTTON],
         [SKIP_BUTTON, DELETE_BUTTON],
         [CANCEL_BUTTON_TEXT],
     ]
@@ -1288,8 +1331,9 @@ async def test_typing_the_receipt_price_back_removes_the_mark() -> None:
     await harness.send("1-89,90")
 
     assert harness.aiogram.said("<b>молочка</b> · 89,90 ₽")
-    # Именно в последнем списке: зачёркнутая цена была в предыдущем.
-    assert not any("<s>" in text for text in harness.aiogram.sent[-2:])
+    # Именно в последнем списке: зачёркнутая цена была в предыдущем. Блок
+    # стадии — одно сообщение, и последнее из них и есть свежий список.
+    assert "<s>" not in harness.aiogram.last
 
 
 async def test_price_and_type_are_edited_in_one_message() -> None:
@@ -1499,6 +1543,7 @@ async def test_declined_deletion_redraws_the_day_stage() -> None:
     assert harness.aiogram.rows() == [
         [_DONE_BUTTON],
         [_BACK_TO_CATEGORIES_BUTTON],
+        [_HELP_BUTTON],
         [SKIP_BUTTON, DELETE_BUTTON],
         [CANCEL_BUTTON_TEXT],
     ]
@@ -1520,3 +1565,219 @@ async def test_readiness_is_checked_before_the_day_is_asked() -> None:
     assert await harness.current_state() == States.CHECK_CATEGORIES.state
     assert harness.checks.committed == []
     assert harness.checks.deleted == []
+
+
+# --- Справка и названия этапов -------------------------------------------
+
+
+def _stage_title(stage: str) -> str:
+    """Заголовок этапа так, как он печатается в сообщении стадии."""
+    return f"<b>{t(f'format.check.stage.{stage}')}</b>"
+
+
+async def test_stage_names_itself() -> None:
+    """Каждая стадия называет себя в основном сообщении.
+
+    Без названия список типов и список категорий отличались бы друг от друга
+    только тем, что стоит под названием товара, а стадия дня не говорила бы о
+    себе вовсе.
+    """
+    harness = _at_day_stage()
+
+    await harness.send("/check")
+    assert _stage_title("types") in harness.aiogram.last
+
+    await harness.press_done()
+    assert _stage_title("categories") in harness.aiogram.last
+
+    await harness.press_done()
+    assert _stage_title("day") in harness.aiogram.last
+
+
+async def test_help_is_folded_on_every_stage() -> None:
+    """Справка не печатается сама: на каждой стадии её место занимает кнопка.
+
+    Ровно то, ради чего она заведена: инструкция о синтаксисе правок
+    повторялась после каждой правки и выдавливала с экрана список, по которому
+    правят.
+    """
+    harness = _at_day_stage()
+
+    await harness.send("/check")
+    assert t("text.check_help_types") not in harness.aiogram.last
+    assert _HELP_BUTTON in harness.aiogram.labels()
+
+    await harness.press_done()
+    assert t("text.check_help_categories") not in harness.aiogram.last
+    assert _HELP_BUTTON in harness.aiogram.labels()
+
+    await harness.press_done()
+    assert t("text.check_help_day") not in harness.aiogram.last
+    assert _HELP_BUTTON in harness.aiogram.labels()
+
+
+async def test_help_unfolds_in_place() -> None:
+    """«Справка» правит само сообщение стадии, а не присылает новое.
+
+    Новым сообщением она увела бы на себя единственную живую клавиатуру,
+    оставив список выше без единой кнопки.
+    """
+    harness = _at_day_stage()
+
+    await harness.send("/check")
+    shown_with = len(harness.aiogram.sent)
+    await harness.press_help()
+
+    assert len(harness.aiogram.edits) == 1
+    edited = harness.aiogram.edits[-1][1]
+    # Правка несёт всё сообщение целиком: заголовок, список и справку.
+    assert _stage_title("types") in edited
+    assert "<b>молочка</b>" in edited
+    assert t("text.check_help_types") in edited
+    # Надпись называет то, что нажатие сделает теперь.
+    assert _HELP_HIDE_BUTTON in harness.aiogram.labels()
+    assert _HELP_BUTTON not in harness.aiogram.labels()
+    # Правка не добавила в переписку второго блока стадии.
+    assert len(harness.aiogram.sent) == shown_with + 1
+
+
+async def test_help_folds_back() -> None:
+    """Повторное нажатие убирает справку и возвращает прежнюю надпись."""
+    harness = _at_day_stage()
+
+    await harness.send("/check")
+    await harness.press_help()
+    await harness.press_help()
+
+    edited = harness.aiogram.edits[-1][1]
+    assert t("text.check_help_types") not in edited
+    assert _stage_title("types") in edited
+    assert _HELP_BUTTON in harness.aiogram.labels()
+
+
+async def test_unfolded_help_survives_an_edit() -> None:
+    """Правка внутри стадии не захлопывает раскрытую справку.
+
+    По справке в этот момент и работают: свернуть её на первой же правке
+    значило бы отнимать подсказку ровно тогда, когда ей пользуются.
+    """
+    harness = _at_day_stage()
+
+    await harness.send("/check")
+    await harness.press_help()
+    await harness.send("1 - выпечка")
+
+    assert t("text.check_help_types") in harness.aiogram.last
+    # Капсом, потому что тип новый: ни за одной категорией он не закреплён.
+    assert "<b>ВЫПЕЧКА</b>" in harness.aiogram.last
+    assert _HELP_HIDE_BUTTON in harness.aiogram.labels()
+
+
+async def test_unfolded_help_survives_a_bad_edit() -> None:
+    """Отказ разбора строки тоже не сворачивает справку.
+
+    Отказ печатает свой текст поверх живого списка и кнопки справки не несёт
+    вовсе — но флаг живёт стадию, и вернувшийся список приходит раскрытым.
+    """
+    harness = _at_day_stage()
+
+    await harness.send("/check")
+    await harness.press_help()
+    await harness.send("1 - ")
+    assert _HELP_BUTTON not in harness.aiogram.labels()
+    assert _HELP_HIDE_BUTTON not in harness.aiogram.labels()
+
+    await harness.send("1 - выпечка")
+    assert t("text.check_help_types") in harness.aiogram.last
+    assert _HELP_HIDE_BUTTON in harness.aiogram.labels()
+
+
+async def test_next_stage_starts_folded() -> None:
+    """Переход на следующую стадию начинается со свёрнутой справки."""
+    harness = _at_day_stage()
+
+    await harness.send("/check")
+    await harness.press_help()
+    await harness.press_done()
+
+    assert t("text.check_help_categories") not in harness.aiogram.last
+    assert t("text.check_help_types") not in harness.aiogram.last
+    assert _HELP_BUTTON in harness.aiogram.labels()
+
+
+async def test_going_back_starts_folded() -> None:
+    """Возврат на предыдущую стадию — тоже со свёрнутой справки."""
+    harness = _at_day_stage()
+
+    await harness.send("/check")
+    await harness.press_done()
+    await harness.press_help()
+    await harness.press(_BACK_BUTTON)
+
+    assert t("text.check_help_types") not in harness.aiogram.last
+    assert _HELP_BUTTON in harness.aiogram.labels()
+
+
+async def test_day_stage_help_carries_the_question() -> None:
+    """Справка стадии дня несёт и вопрос, и инструкцию; данные — в основном."""
+    harness = _at_day_stage()
+
+    await harness.send("/check")
+    await harness.press_done()
+    await harness.press_done()
+    folded = harness.aiogram.last
+    # Всё, что стоит под заголовком, — данные стадии: границы и выбранный день.
+    data = folded.split("\n\n", maxsplit=1)[1]
+    assert t("text.check_help_day") not in folded
+
+    await harness.press_help()
+    unfolded = harness.aiogram.edits[-1][1]
+    assert t("text.check_help_day") in unfolded
+    # Данные остаются на месте: справка дописывается, а не подменяет их.
+    assert data in unfolded
+
+
+async def test_refusal_blocks_have_no_help_button() -> None:
+    """У блоков-отказов кнопки справки нет: они рисуют текст поверх списка.
+
+    Досталась бы она им даром — и правила бы текст отказа вместо списка, ради
+    которого её нажали.
+    """
+    harness = _at_day_stage()
+
+    await harness.send("/check")
+    await harness.send("1 - ")
+
+    assert _HELP_BUTTON not in harness.aiogram.labels()
+    assert _HELP_HIDE_BUTTON not in harness.aiogram.labels()
+
+
+async def test_broken_receipt_has_no_help_button() -> None:
+    """У неразобранного чека нет ни стадии, ни справки — только судьба чека."""
+    harness = Harness(checks=[_check(1)])
+
+    await harness.send("/check")
+
+    assert _HELP_BUTTON not in harness.aiogram.labels()
+    assert harness.aiogram.rows() == [
+        [SKIP_BUTTON, DELETE_BUTTON],
+        [CANCEL_BUTTON_TEXT],
+    ]
+
+
+async def test_failed_edit_keeps_the_flag() -> None:
+    """Отказ правки не разводит флаг с экраном.
+
+    Экран остался свёрнутым, и следующее нажатие обязано снова пытаться
+    раскрыть, а не сворачивать то, что не раскрылось.
+    """
+    harness = _at_day_stage()
+
+    await harness.send("/check")
+    harness.aiogram.edit_succeeds = False
+    await harness.press_help()
+    assert harness.aiogram.edits == []
+
+    harness.aiogram.edit_succeeds = True
+    await harness.press_help()
+    assert t("text.check_help_types") in harness.aiogram.edits[-1][1]

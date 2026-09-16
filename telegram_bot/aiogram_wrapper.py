@@ -164,6 +164,7 @@ class AiogramWrapper:
         text: str,
         *,
         keyboard: InlineKeyboardMarkup | None = None,
+        parse_mode: str | None = None,
     ) -> bool:
         """Переписывает текст ранее отправленного сообщения. `False` — не вышло.
 
@@ -171,6 +172,11 @@ class AiogramWrapper:
         сопровождает шаг, а не составляет его, и вызывающий сам решает, чем её
         заменить (обычно — новым сообщением). «Message is not modified» —
         успех: сообщение уже такое, как просили.
+
+        `parse_mode` задаётся на месте вызова по той же причине, что у
+        `send_message`, и обязан ему совпадать: правка заменяет текст целиком, и
+        сообщение, отправленное с разметкой, переписанное без неё показало бы
+        собственные теги пользователю.
         """
         try:
             await self.bot.edit_message_text(
@@ -178,6 +184,7 @@ class AiogramWrapper:
                 message_id=message_id,
                 text=text,
                 reply_markup=keyboard,
+                parse_mode=parse_mode,
             )
         except TelegramBadRequest as error:
             if "message is not modified" in str(error):

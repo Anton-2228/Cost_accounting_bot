@@ -95,6 +95,8 @@ skip = "Отложить"
 delete = "Удалить"
 back_to_types = "К типам"
 back_to_categories = "К категориям"
+help = "Справка"
+help_hide = "Скрыть справку"
 
 [buttons.check_delete]
 confirm = "Да, удалить"
@@ -213,6 +215,11 @@ finished = "Чеки закончились."
 finished_saved = "Записано: {count}."
 finished_skipped = "Пропущено: {count} — они остались в списке, /check покажет их снова."
 new_suffix = " (новый)"
+
+[format.check.stage]
+types = "Выбор типа"
+categories = "Выбор категории"
+day = "Выбор дня"
 
 [format.llm]
 title = "Траты на модель, пользователь {telegram_id}"

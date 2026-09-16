@@ -94,6 +94,8 @@ skip = "बाद में"
 delete = "हटाएँ"
 back_to_types = "प्रकार पर वापस"
 back_to_categories = "श्रेणियों पर वापस"
+help = "सहायता"
+help_hide = "सहायता छिपाएँ"
 
 [buttons.check_delete]
 confirm = "हाँ, हटाएँ"
@@ -210,6 +212,11 @@ finished = "और रसीदें नहीं हैं।"
 finished_saved = "दर्ज: {count}।"
 finished_skipped = "बाद के लिए रखी गईं: {count} — ये सूची में बनी रहेंगी, /check इन्हें फिर दिखाएगा।"
 new_suffix = " (नया)"
+
+[format.check.stage]
+types = "प्रकार का चयन"
+categories = "श्रेणी का चयन"
+day = "दिन का चयन"
 
 [format.llm]
 title = "LLM खर्च, उपयोगकर्ता {telegram_id}"

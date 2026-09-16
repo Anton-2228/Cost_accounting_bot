@@ -91,6 +91,8 @@ skip = "Aplazar"
 delete = "Eliminar"
 back_to_types = "Volver a los tipos"
 back_to_categories = "Volver a las categorías"
+help = "Ayuda"
+help_hide = "Ocultar ayuda"
 
 [buttons.check_delete]
 confirm = "Sí, eliminar"
@@ -207,6 +209,11 @@ finished = "No hay más recibos."
 finished_saved = "Registrados: {count}."
 finished_skipped = "Aplazados: {count}; siguen en la lista y /check los volverá a mostrar."
 new_suffix = " (nuevo)"
+
+[format.check.stage]
+types = "Selección de tipo"
+categories = "Selección de categoría"
+day = "Selección de día"
 
 [format.llm]
 title = "Gastos en LLM, usuario {telegram_id}"

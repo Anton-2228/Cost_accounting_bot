@@ -197,6 +197,11 @@ def _register_handlers() -> None:
         F.data.startswith("check_back:"),
     )
     router.callback_query.register(
+        _on_check_help,
+        StateFilter(*_CHECK_STATES),
+        F.data.startswith("check_help:"),
+    )
+    router.callback_query.register(
         _on_check_skip,
         StateFilter(*_CHECK_STATES),
         F.data.startswith(f"{CommandName.CHECK_SKIP}:"),
@@ -302,6 +307,15 @@ async def _on_check_back(callback: CallbackQuery, state: FSMContext) -> None:
 
     Ведёт в ту же команду, что и «Готово»: обе — переходы между стадиями
     одного разбора, и различает их сама команда по префиксу `callback_data`.
+    """
+    await MANAGER.launch_callback(CommandName.CHECK, callback, state)
+
+
+async def _on_check_help(callback: CallbackQuery, state: FSMContext) -> None:
+    """Кнопка «Справка» на стадии разбора чека.
+
+    Ведёт в ту же команду, что «Готово» и возврат: справка у каждого этапа своя,
+    а какой этап открыт, знает состояние FSM внутри команды.
     """
     await MANAGER.launch_callback(CommandName.CHECK, callback, state)
 

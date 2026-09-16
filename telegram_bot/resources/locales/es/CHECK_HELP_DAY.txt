@@ -1,6 +1,2 @@
 ¿En qué día registrar las compras?
-
-Periodo: del {start} al {end}
-Elegido: {day}
-
 Envíe otro número —un día del mes— o pulse «Listo».

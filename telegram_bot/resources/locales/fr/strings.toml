@@ -91,6 +91,8 @@ skip = "Reporter"
 delete = "Supprimer"
 back_to_types = "Retour aux types"
 back_to_categories = "Retour aux catégories"
+help = "Aide"
+help_hide = "Masquer l'aide"
 
 [buttons.check_delete]
 confirm = "Oui, supprimer"
@@ -207,6 +209,11 @@ finished = "Plus de tickets."
 finished_saved = "Enregistrés : {count}."
 finished_skipped = "Reportés : {count} — ils restent dans la liste, /check les affichera de nouveau."
 new_suffix = " (nouveau)"
+
+[format.check.stage]
+types = "Choix du type"
+categories = "Choix de la catégorie"
+day = "Choix du jour"
 
 [format.llm]
 title = "Coûts LLM, utilisateur {telegram_id}"

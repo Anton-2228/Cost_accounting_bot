@@ -51,6 +51,7 @@ from typing import Any
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from aiogram.fsm.context import FSMContext
+from aiogram.fsm.state import State
 from aiogram.types import CallbackQuery, Message
 
 from telegram_bot import constants
@@ -99,12 +100,41 @@ _DONE_PREFIX = "check_done"
 #: вернуться назад» читалось бы задом наперёд.
 _BACK_PREFIX = "check_back"
 
+#: Префикс кнопки «Справка». Свой, как и у возврата, и без метки стадии:
+#: справка у каждого этапа своя, но какой этап открыт, знает FSM, а не кнопка,
+#: пролежавшая в переписке с прошлой стадии.
+_HELP_PREFIX = "check_help"
+
 #: Метки стадий в `callback_data`. Короткие и свои, а не строка состояния:
 #: `States.CHECK_TYPES.state` — это «States:CHECK_TYPES», и двоеточие внутри
 #: развалило бы разбор `callback_data`, который сам разделён двоеточиями.
 _STAGE_TYPES = "types"
 _STAGE_CATEGORIES = "categories"
 _STAGE_DAY = "day"
+
+#: Название этапа в основном сообщении стадии. Раньше стадия не называлась
+#: никак: списки отличались друг от друга только тем, что стояло под названием
+#: товара, и по одному сообщению нельзя было понять, типы правят или категории.
+_STAGE_TITLES = {
+    _STAGE_TYPES: "format.check.stage.types",
+    _STAGE_CATEGORIES: "format.check.stage.categories",
+    _STAGE_DAY: "format.check.stage.day",
+}
+
+#: Справка этапа — то, что раньше печаталось на каждом показе стадии.
+_STAGE_HELP = {
+    _STAGE_TYPES: "text.check_help_types",
+    _STAGE_CATEGORIES: "text.check_help_categories",
+    _STAGE_DAY: "text.check_help_day",
+}
+
+#: Метка стадии по состоянию FSM. Нужна кнопке справки: та не несёт метки в
+#: `callback_data` — по той же причине, что и кнопка возврата, см. `_HELP_PREFIX`.
+_STAGE_BY_STATE = {
+    States.CHECK_TYPES.state: _STAGE_TYPES,
+    States.CHECK_CATEGORIES.state: _STAGE_CATEGORIES,
+    States.CHECK_DAY.state: _STAGE_DAY,
+}
 
 #: Разметка списков сопоставления. Включается на месте вызова, а не глобально:
 #: остальные сообщения несут данные пользователя, и HTML на всех превратил бы
@@ -214,6 +244,19 @@ class CheckCommand(BaseCommand):
         # переписке дольше своей стадии, и нажатая на третьей кнопка второй
         # перепрыгнула бы стадию целиком. Где пользователь сейчас, знает FSM, а
         # не кнопка недельной давности.
+        # Справка разбирается до возврата и «Готово» и раньше всего, что двигает
+        # разбор: она не шаг диалога, а переключатель вида одного сообщения, и
+        # состояние FSM после неё остаётся тем же.
+        if (callback.data or "").startswith(f"{_HELP_PREFIX}:"):
+            await self._toggle_help(
+                chat_id=chat_id,
+                message_id=callback.message.message_id,
+                state=state,
+                draft=draft,
+                spreadsheet=spreadsheet,
+            )
+            return
+
         if (callback.data or "").startswith(f"{_BACK_PREFIX}:"):
             if current == States.CHECK_DAY.state:
                 await self._back_to_categories(chat_id, state, draft, spreadsheet)
@@ -291,7 +334,7 @@ class CheckCommand(BaseCommand):
             # бы отнять единственное объяснение.
             broken = CheckDraft(check_id=check.id)
             await self._save_draft(state, broken)
-            await self.aiogram.set_state(state, States.CHECK_TYPES)
+            await self._enter_stage(state, States.CHECK_TYPES)
             await self.ask(
                 chat_id=chat_id,
                 state=state,
@@ -331,7 +374,7 @@ class CheckCommand(BaseCommand):
             return
 
         await self._save_draft(state, draft)
-        await self.aiogram.set_state(state, States.CHECK_TYPES)
+        await self._enter_stage(state, States.CHECK_TYPES)
         await self.ask(
             chat_id=chat_id,
             state=state,
@@ -416,6 +459,116 @@ class CheckCommand(BaseCommand):
         except ApiError as error:
             logger.warning("Замер обращения к модели не записан: %s", error)
 
+    # --- Блок стадии -----------------------------------------------------
+
+    def _stage_text(self, *, stage: str, body: str, help_shown: bool) -> str:
+        """Текст основного сообщения стадии.
+
+        Отдельно от показа, потому что собирают его двое: `_show_stage_block`
+        новым сообщением и `_toggle_help` правкой на месте. Собранный в двух
+        местах, он разъехался бы с первым же изменением вёрстки — и разъехался
+        бы незаметно, потому что видны эти два текста никогда не одновременно.
+        """
+        return CheckFormatter.stage(
+            title=t(_STAGE_TITLES[stage]),
+            body=body,
+            help_text=t(_STAGE_HELP[stage]) if help_shown else None,
+        )
+
+    async def _show_stage_block(
+        self,
+        *,
+        chat_id: int,
+        state: FSMContext,
+        draft: CheckDraft,
+        stage: str,
+        body: str,
+    ) -> None:
+        """Печатает блок стадии: название этапа, тело, справку и клавиатуру.
+
+        Один на все три стадии: различает их только тело, а заголовок, место
+        справки, разметка и клавиатура у них общие.
+
+        Состояние справки берётся из FSM, а не приходит доводом: показ стадии
+        зовут из десяти мест, и протащить флаг через каждое значило бы дать
+        десять шансов забыть его — забытый же читался бы как «свернуть»,
+        захлопывая справку ровно тогда, когда по ней работают.
+        """
+        help_shown = await self._help_shown(state)
+        await self.ask(
+            chat_id=chat_id,
+            state=state,
+            text=self._stage_text(stage=stage, body=body, help_shown=help_shown),
+            rows=self.stage_rows(draft, stage=stage, help_shown=help_shown),
+            parse_mode=_HTML,
+        )
+
+    async def _toggle_help(
+        self,
+        *,
+        chat_id: int,
+        message_id: int,
+        state: FSMContext,
+        draft: CheckDraft,
+        spreadsheet: Spreadsheet,
+    ) -> None:
+        """Раскрывает или сворачивает справку правкой самого сообщения стадии.
+
+        Правкой, а не новым сообщением: живая клавиатура в боте ровно одна и
+        всегда внизу переписки, а справка — не шаг диалога, и отправленная
+        отдельным блоком она увела бы клавиатуру со списка на себя, оставив
+        список выше без единой кнопки.
+
+        Правится сообщение, на котором нажали, а не запомненное в
+        `KEYBOARD_MESSAGE_ID`. Различить их можно: у всех блоков, кроме
+        последнего, клавиатура уже погашена, так что нажать можно только на
+        живом, — но брать номер оттуда, где он и так есть, надёжнее.
+
+        Тело собирается заново, а не запоминается: список зависит от справочника
+        категорий (новый тип выделяется по нему), а стадия дня — от границ
+        периода, и оба могли смениться, пока блок висел в переписке.
+        """
+        stage = _STAGE_BY_STATE.get(await self.aiogram.get_state(state) or "")
+        # Ни стадии, ни позиций — справке нечего пояснять: у неразобранного чека
+        # кнопки справки нет вовсе, и попасть сюда можно только ею.
+        if stage is None or not draft.items:
+            return
+
+        if stage == _STAGE_TYPES:
+            categories = await self.api.catalog.categories(spreadsheet.id)
+            body = CheckFormatter.types(draft, _product_types(categories))
+        elif stage == _STAGE_CATEGORIES:
+            body = CheckFormatter.categories(draft)
+        else:
+            # Границы перечитываются по той же причине, что в `show_stage`:
+            # период мог смениться, пока блок висел, и день по памяти вернул бы
+            # число, которого в периоде уже нет.
+            period = await self.api.periods.current(spreadsheet.id)
+            _ensure_day(draft, period, spreadsheet.timezone)
+            await self._save_draft(state, draft)
+            body = _day_body(draft, period)
+
+        help_shown = not await self._help_shown(state)
+        await self.aiogram.set_state_data(state, FsmDataKeys.CHECK_HELP_SHOWN, help_shown)
+        edited = await self.aiogram.edit_text(
+            chat_id,
+            message_id,
+            self._stage_text(stage=stage, body=body, help_shown=help_shown),
+            keyboard=self.aiogram.inline_keyboard_rows(
+                self.stage_rows(draft, stage=stage, help_shown=help_shown)
+            ),
+            parse_mode=_HTML,
+        )
+        if not edited:
+            # Экран остался прежним, и флаг обязан остаться прежним вместе с
+            # ним: иначе следующее нажатие свернуло бы то, что не раскрылось, а
+            # надпись кнопки обещала бы обратное. Своего сообщения отказ не
+            # получает — «часики» уже погашены, а сказать тут можно только
+            # «нажмите ещё раз».
+            await self.aiogram.set_state_data(
+                state, FsmDataKeys.CHECK_HELP_SHOWN, not help_shown
+            )
+
     # --- Стадия 1: типы --------------------------------------------------
 
     async def _show_types(
@@ -425,25 +578,22 @@ class CheckCommand(BaseCommand):
         draft: CheckDraft,
         categories: list[Category],
     ) -> None:
-        """Печатает список «товар → тип» и клавиатуру стадии.
+        """Печатает название этапа, список «товар → тип» и клавиатуру стадии.
 
         Справочник нужен не для подбора, а для показа: тип, которого нет ни у
         одной категории, выделяется — он будет заведён при записи чека.
 
-        Блок из двух сообщений, клавиатура — у нижнего: список бывает длинным,
-        и кнопки, приклеенные к его началу, уехали бы за край экрана.
+        Одно сообщение, а не два: инструкция о синтаксисе правок, которая
+        раньше ехала вторым блоком с клавиатурой, теперь живёт под кнопкой
+        «Справка». Печатать её заново после каждой правки значило бы выдавливать
+        с экрана тот самый список, по которому правят.
         """
-        await self.ask(
+        await self._show_stage_block(
             chat_id=chat_id,
             state=state,
-            text=CheckFormatter.types(draft, _product_types(categories)),
-            parse_mode=_HTML,
-        )
-        await self.ask(
-            chat_id=chat_id,
-            state=state,
-            text=t("text.check_ask_types"),
-            rows=self.stage_rows(draft, stage=_STAGE_TYPES),
+            draft=draft,
+            stage=_STAGE_TYPES,
+            body=CheckFormatter.types(draft, _product_types(categories)),
         )
 
     async def _show_broken(self, chat_id: int, state: FSMContext, draft: CheckDraft) -> None:
@@ -592,7 +742,7 @@ class CheckCommand(BaseCommand):
             item.category_for_type = item.product_type
 
         await self._save_draft(state, draft)
-        await self.aiogram.set_state(state, States.CHECK_CATEGORIES)
+        await self._enter_stage(state, States.CHECK_CATEGORIES)
         await self._show_categories(chat_id, state, draft)
 
     async def _back_to_types(
@@ -615,7 +765,7 @@ class CheckCommand(BaseCommand):
         if not draft.items:
             await self._show_broken(chat_id, state, draft)
             return
-        await self.aiogram.set_state(state, States.CHECK_TYPES)
+        await self._enter_stage(state, States.CHECK_TYPES)
         await self._show_types(
             chat_id,
             state,
@@ -650,18 +800,13 @@ class CheckCommand(BaseCommand):
         state: FSMContext,
         draft: CheckDraft,
     ) -> None:
-        """Печатает список «товар → категория» и клавиатуру стадии."""
-        await self.ask(
+        """Печатает название этапа, список «товар → категория» и клавиатуру."""
+        await self._show_stage_block(
             chat_id=chat_id,
             state=state,
-            text=CheckFormatter.categories(draft),
-            parse_mode=_HTML,
-        )
-        await self.ask(
-            chat_id=chat_id,
-            state=state,
-            text=t("text.check_ask_categories"),
-            rows=self.stage_rows(draft, stage=_STAGE_CATEGORIES),
+            draft=draft,
+            stage=_STAGE_CATEGORIES,
+            body=CheckFormatter.categories(draft),
         )
 
     async def _edit_categories(self, message: Message, state: FSMContext) -> None:
@@ -782,7 +927,7 @@ class CheckCommand(BaseCommand):
         period = await self.api.periods.current(spreadsheet.id)
         _ensure_day(draft, period, spreadsheet.timezone)
         await self._save_draft(state, draft)
-        await self.aiogram.set_state(state, States.CHECK_DAY)
+        await self._enter_stage(state, States.CHECK_DAY)
         await self._show_day(chat_id, state, draft, period)
 
     async def _show_day(
@@ -792,25 +937,25 @@ class CheckCommand(BaseCommand):
         draft: CheckDraft,
         period: Period,
     ) -> None:
-        """Печатает вопрос о дне с границами периода и клавиатурой стадии.
+        """Печатает название этапа, границы периода и выбранный день.
 
-        Одним блоком и без списка позиций: на этой стадии не правят ни типы, ни
-        категории, и повторять весь чек ради одного числа значило бы утопить в
-        нём вопрос. Список остался выше в переписке, со второй стадии.
+        Без списка позиций: на этой стадии не правят ни типы, ни категории, и
+        повторять весь чек ради одного числа значило бы утопить в нём вопрос.
+        Список остался выше в переписке, со второй стадии.
+
+        Сам вопрос «на какой день» в основном сообщении не печатается: его и
+        инструкцию к нему показывает справка, а название этапа спрашивает о том
+        же короче.
 
         Конец периода печатается на день раньше `end_date`: та исключительна, и
         напечатанная как есть рекламировала бы день, который api отвергнет.
         """
-        await self.ask(
+        await self._show_stage_block(
             chat_id=chat_id,
             state=state,
-            text=t(
-                "text.check_ask_day",
-                start=LocaleFormat.day(period.start_date),
-                end=LocaleFormat.day(period.end_date - timedelta(days=1)),
-                day=LocaleFormat.day(draft.added_at) if draft.added_at else "",
-            ),
-            rows=self.stage_rows(draft, stage=_STAGE_DAY),
+            draft=draft,
+            stage=_STAGE_DAY,
+            body=_day_body(draft, period),
         )
 
     async def _back_to_categories(
@@ -833,7 +978,7 @@ class CheckCommand(BaseCommand):
         if not draft.items:
             await self._show_broken(chat_id, state, draft)
             return
-        await self.aiogram.set_state(state, States.CHECK_CATEGORIES)
+        await self._enter_stage(state, States.CHECK_CATEGORIES)
         await self._show_categories(chat_id, state, draft)
 
     async def _edit_day(self, message: Message, state: FSMContext) -> None:
@@ -928,7 +1073,7 @@ class CheckCommand(BaseCommand):
                 raise
             # Чек не записан. Возвращаем на стадию типов: чинить надо именно
             # тип, из-за которого отказали.
-            await self.aiogram.set_state(state, States.CHECK_TYPES)
+            await self._enter_stage(state, States.CHECK_TYPES)
             await self.ask(
                 chat_id=chat_id,
                 state=state,
@@ -1020,6 +1165,26 @@ class CheckCommand(BaseCommand):
         """Кладёт черновик в FSM-данные."""
         await self.aiogram.set_state_data(state, FsmDataKeys.CHECK_DRAFT, draft.dump())
 
+    async def _enter_stage(self, state: FSMContext, target: State) -> None:
+        """Переводит на стадию, сворачивая справку.
+
+        Единственный способ сменить стадию в этой ветке, и `set_state` напрямую
+        здесь больше не зовётся нигде. Переходов семь — вперёд, назад, начало
+        чека, отказ по занятому типу, — и сброс справки, оставленный на каждом
+        из них вручную, забылся бы на первом же новом: раскрытая справка тогда
+        молча переехала бы на следующий этап, где по условию её быть не должно.
+
+        Свернуть, а не запомнить: справка живёт ровно стадию. Правки и отказы
+        разбора внутри стадии её не трогают — они и не проходят через этот
+        метод.
+        """
+        await self.aiogram.set_state(state, target)
+        await self.aiogram.set_state_data(state, FsmDataKeys.CHECK_HELP_SHOWN, False)
+
+    async def _help_shown(self, state: FSMContext) -> bool:
+        """Раскрыта ли справка на нынешней стадии."""
+        return bool(await self.aiogram.get_state_data(state, FsmDataKeys.CHECK_HELP_SHOWN))
+
     async def _skipped(self, state: FSMContext) -> list[int]:
         """Чеки, пропущенные в этой сессии."""
         raw = await self.aiogram.get_state_data(state, FsmDataKeys.SKIPPED_CHECK_IDS, [])
@@ -1084,11 +1249,23 @@ class CheckCommand(BaseCommand):
     # --- Кнопки ----------------------------------------------------------
 
     @staticmethod
-    def stage_rows(draft: CheckDraft, *, stage: str | None) -> list[tuple[tuple[str, str], ...]]:
-        """Клавиатура блока: переход, судьба чека и выход.
+    def stage_rows(
+        draft: CheckDraft,
+        *,
+        stage: str | None,
+        help_shown: bool | None = None,
+    ) -> list[tuple[tuple[str, str], ...]]:
+        """Клавиатура блока: переход, справка, судьба чека и выход.
 
         `stage` — метка стадии для кнопки «Готово»; `None` означает, что
         переходить некуда: у неразобранного чека следующего шага нет вовсе.
+
+        `help_shown` — раскрыта ли справка, и `None` означает, что кнопки
+        справки на этом блоке нет вообще. Умолчание именно `None`, а не `False`:
+        блоков в ветке больше, чем стадий, — отказ разбора строки, ненайденная
+        категория, пустой после удалений чек, — и все они рисуют свой текст
+        поверх живого списка. Кнопка, доставшаяся такому блоку даром, правила бы
+        текст отказа вместо списка, ради которого её нажали.
 
         «Отложить» и «Удалить» стоят рядом одним рядом и есть на каждом блоке
         ветки: заметить «этот чек лишний» можно на любой стадии, а не только на
@@ -1124,6 +1301,14 @@ class CheckCommand(BaseCommand):
                 rows.append(
                     ((t("buttons.check.back_to_categories"), f"{_BACK_PREFIX}:{draft.check_id}"),)
                 )
+        # Справка — своим рядом между движением по чеку и судьбой чека: она не
+        # двигает разбор ни вперёд, ни назад, и прилипать к «Удалить» ей тем
+        # более незачем. Надпись говорит, что нажатие сделает, а не что открыто
+        # сейчас: кнопка «Справка» на раскрытой справке читалась бы как
+        # предложение открыть уже открытое.
+        if help_shown is not None:
+            label = "buttons.check.help_hide" if help_shown else "buttons.check.help"
+            rows.append(((t(label), f"{_HELP_PREFIX}:{draft.check_id}"),))
         rows.append(
             (
                 (t("buttons.check.skip"), f"{CommandName.CHECK_SKIP}:{draft.check_id}"),
@@ -1183,6 +1368,22 @@ def _set_amount(draft: CheckDraft, numbers: tuple[int, ...], amount: Decimal) ->
         item.amount = amount
         if item.original_amount == item.amount:
             item.original_amount = None
+
+
+def _day_body(draft: CheckDraft, period: Period) -> str:
+    """Тело стадии дня: границы периода и выбранный день.
+
+    Функцией, а не строкой по месту: собирают его двое — показ стадии и
+    переключатель справки, — и конец периода, посчитанный в одном месте
+    правильно, а в другом как есть, отличался бы ровно на сутки и ровно там, где
+    это заметят только в отказе api.
+    """
+    return t(
+        "text.check_day",
+        start=LocaleFormat.day(period.start_date),
+        end=LocaleFormat.day(period.end_date - timedelta(days=1)),
+        day=LocaleFormat.day(draft.added_at) if draft.added_at else "",
+    )
 
 
 def _product_types(categories: list[Category]) -> set[str]:

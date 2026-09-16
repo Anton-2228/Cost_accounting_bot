@@ -150,6 +150,7 @@ class FakeAiogram(AiogramWrapper):
         text: str,
         *,
         keyboard: InlineKeyboardMarkup | None = None,
+        parse_mode: str | None = None,
     ) -> bool:
         """Переписывает сообщение: текст считается сказанным."""
         if not self.editable:
