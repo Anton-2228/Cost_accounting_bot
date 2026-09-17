@@ -401,11 +401,110 @@
       }
     },
     {
+      "id": 11,
+      "type": "table",
+      "title": "Чек: что отдал фискальный сервис",
+      "description": "Шапка чека в том виде, в каком её вернула налоговая: продавец, магазин, адрес, время покупки и итог. Лежит в checks.raw_payload и появляется сразу после сканирования — разбирать чек в боте для этого не нужно.\n\nПоля у форматов разные и сведены в общие колонки: у сербского берётся английская версия (ключи там латиницей и числа с точкой), у российского — data.json.",
+      "gridPos": { "h": 8, "w": 24, "x": 0, "y": 31 },
+      "datasource": { "type": "grafana-postgresql-datasource", "uid": "postgres-ro" },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": { "type": "grafana-postgresql-datasource", "uid": "postgres-ro" },
+          "editorMode": "code",
+          "format": "table",
+          "rawQuery": true,
+          "rawSql": "SELECT\n    c.created_at AS \"Добавлен\",\n    c.id         AS \"id\",\n    c.kind::text AS \"Формат\",\n    COALESCE(c.raw_payload->'en'->>'Company',\n             c.raw_payload->'data'->'json'->>'user')                   AS \"Продавец\",\n    COALESCE(c.raw_payload->'en'->>'Location Name',\n             c.raw_payload->'data'->'json'->>'retailPlace')            AS \"Магазин\",\n    COALESCE(NULLIF(concat_ws(', ', c.raw_payload->'en'->>'Address',\n                                    c.raw_payload->'en'->>'City'), ''),\n             c.raw_payload->'data'->'json'->>'retailPlaceAddress')     AS \"Адрес\",\n    COALESCE(c.raw_payload->'en'->>'SDC Time (server time zone)',\n             c.raw_payload->'data'->'json'->>'dateTime')               AS \"Время покупки\",\n    -- Итог приводится к рублям только у ФНС: там он в копейках целым числом.\n    -- Проверка регуляркой обязательна — незнакомое значение иначе уронило бы\n    -- всю панель ошибкой приведения типа.\n    CASE\n        WHEN c.kind = 'SRB_SUF' THEN c.raw_payload->'en'->>'Total Amount'\n        WHEN c.raw_payload->'data'->'json'->>'totalSum' ~ '^-?[0-9]+$'\n            THEN round((c.raw_payload->'data'->'json'->>'totalSum')::numeric / 100, 2)::text\n    END AS \"Итого по чеку\",\n    CASE c.kind WHEN 'SRB_SUF' THEN 'RSD' WHEN 'RU_FNS' THEN 'RUB' END AS \"Валюта\",\n    CASE\n        WHEN jsonb_typeof(c.raw_payload->'en'->'Invoice specification') = 'array'\n            THEN jsonb_array_length(c.raw_payload->'en'->'Invoice specification')\n        WHEN jsonb_typeof(c.raw_payload->'data'->'json'->'items') = 'array'\n            THEN jsonb_array_length(c.raw_payload->'data'->'json'->'items')\n    END AS \"Позиций\",\n    c.processed_at AS \"Разобран\"\nFROM checks c\nJOIN spreadsheets s ON s.id = c.spreadsheet_id\nJOIN users        u ON u.id = s.user_id\nWHERE c.deleted_at IS NULL\n  AND u.telegram_id IN ($user)\n  AND ('$check_id' =  '' OR c.id = NULLIF('$check_id', '')::bigint)\n  AND ('$check_id' <> '' OR $__timeFilter(c.created_at))\nORDER BY c.created_at DESC"
+        }
+      ],
+      "options": {
+        "showHeader": true,
+        "cellHeight": "sm",
+        "footer": { "show": false, "reducer": ["sum"], "fields": "" }
+      },
+      "fieldConfig": {
+        "defaults": {
+          "custom": { "align": "auto", "cellOptions": { "type": "auto" }, "filterable": true }
+        },
+        "overrides": [
+          {
+            "matcher": { "id": "byName", "options": "id" },
+            "properties": [
+              { "id": "custom.width", "value": 70 },
+              {
+                "id": "links",
+                "value": [
+                  {
+                    "title": "Показать позиции этого чека",
+                    "url": "/d/receipts/?var-check_id=${__value.raw}&${__url_time_range}&${user:queryparam}",
+                    "targetBlank": false
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "matcher": { "id": "byName", "options": "Разобран" },
+            "properties": [{ "id": "noValue", "value": "ждёт разбора" }]
+          }
+        ]
+      }
+    },
+    {
+      "id": 12,
+      "type": "table",
+      "title": "Позиции чека — как их отдал фискальный сервис",
+      "description": "Товары, вынутые парсером из чека. Источник — checks.raw_payload, поэтому список виден СРАЗУ после сканирования, ещё до того как чек разобран в боте.\n\nОтличие от таблицы ниже: здесь чек как он есть у налоговой (название, количество, цена, а у сербского ещё ГТИН и ставка НДС); ниже — то, что после разбора легло в реестр, уже с типом товара и категорией. Пока чек не разобран, нижняя таблица по нему пуста, а эта — нет.\n\nКлик по номеру чека в таблицах выше оставляет здесь только его позиции.",
+      "gridPos": { "h": 12, "w": 24, "x": 0, "y": 39 },
+      "datasource": { "type": "grafana-postgresql-datasource", "uid": "postgres-ro" },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": { "type": "grafana-postgresql-datasource", "uid": "postgres-ro" },
+          "editorMode": "code",
+          "format": "table",
+          "rawQuery": true,
+          "rawSql": "-- Позиции лежат в JSONB по-разному у каждого формата, поэтому две ветки.\n-- jsonb_array_elements обёрнут проверкой типа: на объекте вместо массива она\n-- падает с ошибкой и уносит панель целиком, а raw_payload — сырьё внешнего\n-- сервиса, чью структуру мы не контролируем.\n\n-- Россия (ФНС): суммы в копейках целыми числами.\nSELECT\n    c.id                          AS \"Чек\",\n    c.kind::text                  AS \"Формат\",\n    u.telegram_id                 AS \"Пользователь\",\n    i->>'name'                    AS \"Товар\",\n    CASE WHEN i->>'quantity' ~ '^-?[0-9]+([.][0-9]+)?$'\n         THEN (i->>'quantity')::numeric END AS \"Кол-во\",\n    CASE WHEN i->>'sum' ~ '^-?[0-9]+$'\n         THEN round((i->>'sum')::numeric / 100, 2) END AS \"Сумма\",\n    'RUB'                         AS \"Валюта\",\n    NULL::text                    AS \"ГТИН\",\n    NULL::text                    AS \"Ставка НДС\",\n    c.created_at                  AS \"Добавлен\"\nFROM checks c\nJOIN spreadsheets s ON s.id = c.spreadsheet_id\nJOIN users        u ON u.id = s.user_id\nCROSS JOIN LATERAL jsonb_array_elements(\n    CASE WHEN jsonb_typeof(c.raw_payload->'data'->'json'->'items') = 'array'\n         THEN c.raw_payload->'data'->'json'->'items' ELSE '[]'::jsonb END) AS i\nWHERE c.kind = 'RU_FNS'\n  AND c.deleted_at IS NULL\n  AND u.telegram_id IN ($user)\n  AND ('$check_id' =  '' OR c.id = NULLIF('$check_id', '')::bigint)\n  AND ('$check_id' <> '' OR $__timeFilter(c.created_at))\n\nUNION ALL\n\n-- Сербия (ПУРС): берётся английская версия — ключи латиницей, числа с точкой.\nSELECT\n    c.id,\n    c.kind::text,\n    u.telegram_id,\n    i->>'Name',\n    CASE WHEN i->>'Quantity' ~ '^-?[0-9]+([.][0-9]+)?$'\n         THEN (i->>'Quantity')::numeric END,\n    CASE WHEN i->>'Total Price' ~ '^-?[0-9]+([.][0-9]+)?$'\n         THEN (i->>'Total Price')::numeric END,\n    'RSD',\n    i->>'GTIN',\n    i->>'Rate',\n    c.created_at\nFROM checks c\nJOIN spreadsheets s ON s.id = c.spreadsheet_id\nJOIN users        u ON u.id = s.user_id\nCROSS JOIN LATERAL jsonb_array_elements(\n    CASE WHEN jsonb_typeof(c.raw_payload->'en'->'Invoice specification') = 'array'\n         THEN c.raw_payload->'en'->'Invoice specification' ELSE '[]'::jsonb END) AS i\nWHERE c.kind = 'SRB_SUF'\n  AND c.deleted_at IS NULL\n  AND u.telegram_id IN ($user)\n  AND ('$check_id' =  '' OR c.id = NULLIF('$check_id', '')::bigint)\n  AND ('$check_id' <> '' OR $__timeFilter(c.created_at))\n\nORDER BY 1 DESC, 4"
+        }
+      ],
+      "options": {
+        "showHeader": true,
+        "cellHeight": "sm",
+        "footer": { "show": true, "reducer": ["sum"], "fields": ["Сумма"] }
+      },
+      "fieldConfig": {
+        "defaults": {
+          "custom": { "align": "auto", "cellOptions": { "type": "auto" }, "filterable": true }
+        },
+        "overrides": [
+          {
+            "matcher": { "id": "byName", "options": "Сумма" },
+            "properties": [
+              { "id": "decimals", "value": 2 },
+              { "id": "custom.align", "value": "right" }
+            ]
+          },
+          {
+            "matcher": { "id": "byName", "options": "Товар" },
+            "properties": [{ "id": "custom.width", "value": 340 }]
+          },
+          {
+            "matcher": { "id": "byName", "options": "Ставка НДС" },
+            "properties": [{ "id": "noValue", "value": "—" }]
+          },
+          {
+            "matcher": { "id": "byName", "options": "ГТИН" },
+            "properties": [{ "id": "noValue", "value": "—" }]
+          }
+        ]
+      }
+    },
+    {
       "id": 10,
       "type": "table",
-      "title": "Что извлекли из чека: товары",
-      "description": "Позиции, вынутые из чека и записанные в реестр. Сумма показана по модулю: в базе она знаковая, а позиция чека — всегда расход.\n\nПока переменная «Чек» пуста, показываются позиции всех чеков диапазона. С выбранным чеком он показывается целиком — даже если разобран за пределами диапазона: чек сканируют в один день, а разбирают в другой.",
-      "gridPos": { "h": 10, "w": 24, "x": 0, "y": 31 },
+      "title": "Позиции, записанные в реестр (после разбора)",
+      "description": "Что легло в реестр операций, когда чек разобрали в боте: к товару добавлены тип и категория, сумма приведена к валюте формата. Пока чек не разобран, здесь его нет — сырые позиции смотрите в таблице выше.\n\nСумма показана по модулю: в базе она знаковая, а позиция чека — всегда расход.\n\nПока переменная «Чек» пуста, показываются позиции всех чеков диапазона. С выбранным чеком он показывается целиком — даже если разобран за пределами диапазона: чек сканируют в один день, а разбирают в другой.",
+      "gridPos": { "h": 10, "w": 24, "x": 0, "y": 51 },
       "datasource": { "type": "grafana-postgresql-datasource", "uid": "postgres-ro" },
       "targets": [
         {
