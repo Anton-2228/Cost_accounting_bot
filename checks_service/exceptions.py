@@ -13,6 +13,7 @@ from typing import Any
 from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse
 
+from checks_service import constants, metrics
 from checks_service.logging import get_logger
 
 logger = get_logger(__name__)
@@ -107,7 +108,7 @@ class ApiError(ChecksError):
         super().__init__(f"api {status_code}: {body}", details={"status_code": status_code})
 
 
-async def _checks_error_handler(_: Request, exc: Exception) -> JSONResponse:
+async def _checks_error_handler(request: Request, exc: Exception) -> JSONResponse:
     assert isinstance(exc, ChecksError)  # noqa: S101 — гарантировано регистрацией
     # Пишем отказ здесь, а не на каждом `raise`. Причина не в удобстве: Mini App
     # выбирает текст плашки по коду, поэтому все девять способов не расшифровать
@@ -137,6 +138,21 @@ async def _checks_error_handler(_: Request, exc: Exception) -> JSONResponse:
             exc.message,
             exc.details,
         )
+
+    # Метрика отказа живёт здесь по той же причине, что и запись в журнал: это
+    # единственное место, через которое проходит каждый отказ сервиса, включая
+    # те, которых ещё нет. Причиной служит сам код исключения — множество кодов
+    # закрыто этим файлом, и новый подкласс попадает в метрику сам, ровно как
+    # попадает в лог.
+    #
+    # Считаются только две стадии приёма чека: карта путей закрытая, и запрос к
+    # `/me` или к чужому URL метрику не трогает — охват наблюдения ограничен
+    # чеками намеренно.
+    stage = constants.METRIC_STAGE_BY_PATH.get(request.url.path)
+    if stage is not None:
+        telegram_id = getattr(request.state, "telegram_id", None) or metrics.UNKNOWN_TELEGRAM_ID
+        metrics.observe_failure(telegram_id, stage=stage, reason=exc.code)
+
     return JSONResponse(
         status_code=exc.status_code,
         content={"code": exc.code, "message": exc.message, "details": exc.details},

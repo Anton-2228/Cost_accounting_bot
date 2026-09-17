@@ -42,4 +42,11 @@ def current_telegram_id(
     verified = get_verifier(request).verify(init_data)
     if verified.telegram_id not in settings.permitted_telegram_ids:
         raise ForbiddenError("Доступ запрещён")
+
+    # Отсюда id забирает обработчик отказов: он помечает метрику отказа тем, чей
+    # запрос отказал, а зависимостей у него нет — ему достаётся только `Request`.
+    # Строка стоит **после** проверки списка намеренно: до неё id ещё не наш, и
+    # посторонний, раздобывший верную подпись Telegram, иначе заводил бы своей
+    # меткой новый ряд в хранилище метрик на каждый стук.
+    request.state.telegram_id = verified.telegram_id
     return verified.telegram_id

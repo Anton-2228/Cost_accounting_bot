@@ -1,0 +1,23 @@
+# Откуда Grafana берёт дашборды. Из файлов, и только из них.
+#
+# Правка мышью запрещена намеренно (`allowUiUpdates: false`): дашборд — такая же
+# часть развёртывания, как docker-compose.yml, и живёт в репозитории. Разрешённая
+# правка в UI означала бы, что при пересоздании контейнера изменения молча
+# пропадут, а до тех пор никто не сможет сказать, чем показанное отличается от
+# описанного в git.
+
+apiVersion: 1
+
+providers:
+  - name: cost-accounting
+    orgId: 1
+    folder: Чеки
+    type: file
+    # Удаление из UI тоже закрыто: файл никуда не делся, и удалённый дашборд
+    # вернулся бы сам через updateIntervalSeconds, выглядя как сбой.
+    disableDeletion: true
+    allowUiUpdates: false
+    updateIntervalSeconds: 30
+    options:
+      path: /var/lib/grafana/dashboards
+      foldersFromFilesStructure: false

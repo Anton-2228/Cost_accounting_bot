@@ -1,0 +1,445 @@
+{
+  "uid": "receipts",
+  "title": "Чеки",
+  "description": "Сканирование чеков: сколько, кем, чем кончилось — и что именно приехало из QR-кода и из самого чека. Числа во времени берутся из Prometheus, содержимое — прямо из Postgres ролью только на чтение.",
+  "tags": ["чеки", "checks-service"],
+  "timezone": "utc",
+  "schemaVersion": 39,
+  "version": 1,
+  "refresh": "1m",
+  "editable": false,
+  "graphTooltip": 1,
+  "time": {
+    "from": "now-30d",
+    "to": "now"
+  },
+  "templating": {
+    "list": [
+      {
+        "name": "user",
+        "label": "Пользователь",
+        "description": "Фильтрует и SQL-панели (по users.telegram_id), и панели Prometheus (по метке telegram_id).",
+        "type": "query",
+        "datasource": {
+          "type": "grafana-postgresql-datasource",
+          "uid": "postgres-ro"
+        },
+        "definition": "SELECT u.telegram_id::text AS \"__value\", COALESCE(NULLIF(s.title, ''), u.telegram_id::text) AS \"__text\" FROM users u LEFT JOIN spreadsheets s ON s.user_id = u.id AND s.deleted_at IS NULL ORDER BY 2",
+        "query": "SELECT u.telegram_id::text AS \"__value\", COALESCE(NULLIF(s.title, ''), u.telegram_id::text) AS \"__text\" FROM users u LEFT JOIN spreadsheets s ON s.user_id = u.id AND s.deleted_at IS NULL ORDER BY 2",
+        "multi": true,
+        "includeAll": true,
+        "allValue": "",
+        "refresh": 1,
+        "sort": 1,
+        "current": {},
+        "options": [],
+        "hide": 0
+      },
+      {
+        "name": "check_id",
+        "label": "Чек",
+        "description": "Номер чека для разбора по позициям. Пусто — показываются все чеки диапазона. Заполняется кликом по колонке id в таблице «Что приехало из QR-кода»; чтобы вернуться ко всем, очистите поле.",
+        "type": "textbox",
+        "query": "",
+        "current": {
+          "text": "",
+          "value": ""
+        },
+        "options": [],
+        "hide": 0
+      }
+    ]
+  },
+  "panels": [
+    {
+      "id": 1,
+      "type": "stat",
+      "title": "Отсканировано чеков · Prometheus",
+      "description": "Счётчик приёма чеков за выбранный диапазон. Живёт в памяти процесса checks-service и обнуляется при его перезапуске: диапазон, захвативший рестарт, покажет меньше правды. Точное число — в соседней панели.",
+      "gridPos": { "h": 5, "w": 6, "x": 0, "y": 0 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": { "type": "prometheus", "uid": "prometheus" },
+          "editorMode": "code",
+          "expr": "sum(increase(receipt_saves_total{telegram_id=~\"$user\"}[$__range]))",
+          "instant": true,
+          "range": false,
+          "legendFormat": "Чеков"
+        }
+      ],
+      "options": {
+        "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false },
+        "textMode": "auto",
+        "colorMode": "value",
+        "graphMode": "none"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "decimals": 0,
+          "color": { "mode": "fixed", "fixedColor": "text" },
+          "noValue": "0"
+        },
+        "overrides": []
+      }
+    },
+    {
+      "id": 2,
+      "type": "stat",
+      "title": "Отсканировано чеков · Postgres (точно)",
+      "description": "То же число, посчитанное по строкам таблицы checks. Это источник истины: оно переживает перезапуски и не зависит от того, работали ли метрики. Расхождение с соседней панелью — норма, а не расследование.",
+      "gridPos": { "h": 5, "w": 6, "x": 6, "y": 0 },
+      "datasource": { "type": "grafana-postgresql-datasource", "uid": "postgres-ro" },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": { "type": "grafana-postgresql-datasource", "uid": "postgres-ro" },
+          "editorMode": "code",
+          "format": "table",
+          "rawQuery": true,
+          "rawSql": "SELECT count(*) AS \"Чеков\"\nFROM checks c\nJOIN spreadsheets s ON s.id = c.spreadsheet_id\nJOIN users        u ON u.id = s.user_id\nWHERE $__timeFilter(c.created_at)\n  AND c.deleted_at IS NULL\n  AND u.telegram_id IN ($user)"
+        }
+      ],
+      "options": {
+        "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false },
+        "textMode": "auto",
+        "colorMode": "value",
+        "graphMode": "none"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "decimals": 0,
+          "color": { "mode": "fixed", "fixedColor": "green" },
+          "noValue": "0"
+        },
+        "overrides": []
+      }
+    },
+    {
+      "id": 3,
+      "type": "stat",
+      "title": "Ждут разбора",
+      "description": "Чеки, сохранённые, но ещё не превращённые в операции. Диапазон времени эта панель намеренно игнорирует: двухнедельный неразобранный чек — именно то, что нужно заметить.",
+      "gridPos": { "h": 5, "w": 6, "x": 12, "y": 0 },
+      "datasource": { "type": "grafana-postgresql-datasource", "uid": "postgres-ro" },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": { "type": "grafana-postgresql-datasource", "uid": "postgres-ro" },
+          "editorMode": "code",
+          "format": "table",
+          "rawQuery": true,
+          "rawSql": "SELECT count(*) AS \"Ждут разбора\"\nFROM checks c\nJOIN spreadsheets s ON s.id = c.spreadsheet_id\nJOIN users        u ON u.id = s.user_id\nWHERE c.processed_at IS NULL\n  AND c.deleted_at IS NULL\n  AND u.telegram_id IN ($user)"
+        }
+      ],
+      "options": {
+        "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false },
+        "textMode": "auto",
+        "colorMode": "value",
+        "graphMode": "none"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "decimals": 0,
+          "noValue": "0",
+          "color": { "mode": "thresholds" },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "green", "value": null },
+              { "color": "yellow", "value": 3 },
+              { "color": "red", "value": 10 }
+            ]
+          }
+        },
+        "overrides": []
+      }
+    },
+    {
+      "id": 4,
+      "type": "bargauge",
+      "title": "Отказы по причинам · Prometheus",
+      "description": "Из чего складываются отказы приёма чека за диапазон. Причина — код исключения сервиса: format_not_supported (отсканирован не чек), receipt_not_found (чека нет в базе налоговой), receipt_fetch_failed (внешний сервис не ответил), check_already_saved (повтор), spreadsheet_not_found (нет таблицы), api_error, unauthorized, forbidden.",
+      "gridPos": { "h": 5, "w": 6, "x": 18, "y": 0 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": { "type": "prometheus", "uid": "prometheus" },
+          "editorMode": "code",
+          "expr": "sum by (reason) (increase(receipt_failures_total{telegram_id=~\"$user\"}[$__range]))",
+          "instant": true,
+          "range": false,
+          "legendFormat": "{{reason}}"
+        }
+      ],
+      "options": {
+        "displayMode": "gradient",
+        "orientation": "horizontal",
+        "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false },
+        "showUnfilled": false
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "decimals": 0,
+          "noValue": "Отказов не было",
+          "color": { "mode": "fixed", "fixedColor": "orange" }
+        },
+        "overrides": []
+      }
+    },
+    {
+      "id": 5,
+      "type": "timeseries",
+      "title": "Сканирование чеков по форматам · Postgres",
+      "description": "Сколько чеков каждого формата добавлено во времени. RU_FNS — Россия (ФНС), SRB_SUF — Сербия (ПУРС). Считается по строкам таблицы checks, поэтому число точное.",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 5 },
+      "datasource": { "type": "grafana-postgresql-datasource", "uid": "postgres-ro" },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": { "type": "grafana-postgresql-datasource", "uid": "postgres-ro" },
+          "editorMode": "code",
+          "format": "time_series",
+          "rawQuery": true,
+          "rawSql": "SELECT\n    $__timeGroupAlias(c.created_at, $__interval),\n    c.kind::text AS metric,\n    count(*)     AS \"Чеков\"\nFROM checks c\nJOIN spreadsheets s ON s.id = c.spreadsheet_id\nJOIN users        u ON u.id = s.user_id\nWHERE $__timeFilter(c.created_at)\n  AND c.deleted_at IS NULL\n  AND u.telegram_id IN ($user)\nGROUP BY 1, 2\nORDER BY 1"
+        }
+      ],
+      "options": {
+        "legend": { "displayMode": "list", "placement": "bottom", "showLegend": true },
+        "tooltip": { "mode": "multi", "sort": "desc" }
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "decimals": 0,
+          "custom": {
+            "drawStyle": "bars",
+            "fillOpacity": 60,
+            "lineWidth": 1,
+            "stacking": { "mode": "normal", "group": "A" },
+            "spanNulls": false
+          }
+        },
+        "overrides": []
+      }
+    },
+    {
+      "id": 6,
+      "type": "timeseries",
+      "title": "Отказы: стадия и причина · Prometheus",
+      "description": "Стадия preview — распознавание QR до подтверждения, save — расшифровка и сохранение. Отказ на preview внешний сервис не трогает: расшифровка платная, и до подтверждения пользователем её не зовут.",
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 5 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": { "type": "prometheus", "uid": "prometheus" },
+          "editorMode": "code",
+          "expr": "sum by (stage, reason) (increase(receipt_failures_total{telegram_id=~\"$user\"}[$__interval]))",
+          "range": true,
+          "legendFormat": "{{stage}} · {{reason}}"
+        }
+      ],
+      "options": {
+        "legend": { "displayMode": "list", "placement": "bottom", "showLegend": true },
+        "tooltip": { "mode": "multi", "sort": "desc" }
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "decimals": 0,
+          "custom": {
+            "drawStyle": "bars",
+            "fillOpacity": 60,
+            "lineWidth": 1,
+            "stacking": { "mode": "normal", "group": "A" }
+          }
+        },
+        "overrides": []
+      }
+    },
+    {
+      "id": 7,
+      "type": "timeseries",
+      "title": "Расшифровка внешним сервисом: задержка · Prometheus",
+      "description": "Сколько занимает поход за содержимым чека. У ФНС это один запрос с таймаутом 20 с, у ПУРС — три подряд с таймаутом 30 с каждый (страница на двух языках и отдельный запрос позиций), поэтому сербский чек законно медленнее.",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 13 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": { "type": "prometheus", "uid": "prometheus" },
+          "editorMode": "code",
+          "expr": "histogram_quantile(0.95, sum by (le, kind) (rate(receipt_fetch_seconds_bucket[$__rate_interval])))",
+          "range": true,
+          "legendFormat": "{{kind}} · p95"
+        },
+        {
+          "refId": "B",
+          "datasource": { "type": "prometheus", "uid": "prometheus" },
+          "editorMode": "code",
+          "expr": "histogram_quantile(0.50, sum by (le, kind) (rate(receipt_fetch_seconds_bucket[$__rate_interval])))",
+          "range": true,
+          "legendFormat": "{{kind}} · медиана"
+        }
+      ],
+      "options": {
+        "legend": { "displayMode": "list", "placement": "bottom", "showLegend": true },
+        "tooltip": { "mode": "multi", "sort": "desc" }
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "s",
+          "decimals": 2,
+          "custom": { "drawStyle": "line", "fillOpacity": 10, "lineWidth": 2, "showPoints": "auto" }
+        },
+        "overrides": []
+      }
+    },
+    {
+      "id": 8,
+      "type": "timeseries",
+      "title": "Позиций из чеков записано · Postgres",
+      "description": "Строки реестра, пришедшие из чеков (records.check_id заполнен). Метрики для этого нет намеренно: записывает их api, а telegram_id там нет — документ, а не пользователь, единица владения. Join до пользователя здесь дешевле, чем счётчик в api.",
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 13 },
+      "datasource": { "type": "grafana-postgresql-datasource", "uid": "postgres-ro" },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": { "type": "grafana-postgresql-datasource", "uid": "postgres-ro" },
+          "editorMode": "code",
+          "format": "time_series",
+          "rawQuery": true,
+          "rawSql": "SELECT\n    $__timeGroupAlias(r.created_at, $__interval),\n    count(*) AS \"Позиций\"\nFROM records r\nJOIN spreadsheets s ON s.id = r.spreadsheet_id\nJOIN users        u ON u.id = s.user_id\nWHERE $__timeFilter(r.created_at)\n  AND r.check_id IS NOT NULL\n  AND r.deleted_at IS NULL\n  AND u.telegram_id IN ($user)\nGROUP BY 1\nORDER BY 1"
+        }
+      ],
+      "options": {
+        "legend": { "displayMode": "list", "placement": "bottom", "showLegend": false },
+        "tooltip": { "mode": "single", "sort": "none" }
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "decimals": 0,
+          "custom": { "drawStyle": "bars", "fillOpacity": 60, "lineWidth": 1 }
+        },
+        "overrides": []
+      }
+    },
+    {
+      "id": 9,
+      "type": "table",
+      "title": "Что приехало из QR-кода",
+      "description": "Содержимое самого QR-кода, как его отдал сканер. У сербского чека в коде лежит ссылка на страницу налоговой и номер счёта; у российского — фискальные реквизиты ФН, ФД, ФП, момент покупки и сумма, и они разбираются прямо из строки. Колонка «QR целиком» — первоисточник, из которого получено остальное.\n\nКлик по номеру чека в колонке id показывает его позиции в таблице ниже.",
+      "gridPos": { "h": 10, "w": 24, "x": 0, "y": 21 },
+      "datasource": { "type": "grafana-postgresql-datasource", "uid": "postgres-ro" },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": { "type": "grafana-postgresql-datasource", "uid": "postgres-ro" },
+          "editorMode": "code",
+          "format": "table",
+          "rawQuery": true,
+          "rawSql": "SELECT\n    c.created_at        AS \"Добавлен\",\n    c.id                AS \"id\",\n    u.telegram_id       AS \"Пользователь\",\n    c.kind::text        AS \"Формат\",\n    c.external_key      AS \"Ключ дедупликации\",\n    CASE WHEN c.kind = 'SRB_SUF' THEN c.raw_payload->>'url' END              AS \"Ссылка ПУРС\",\n    CASE WHEN c.kind = 'SRB_SUF' THEN c.raw_payload->>'invoice_number' END   AS \"Номер счёта\",\n    CASE WHEN c.kind = 'RU_FNS'  THEN substring(c.qr_raw from 'fn=([0-9]+)') END        AS \"ФН\",\n    CASE WHEN c.kind = 'RU_FNS'  THEN substring(c.qr_raw from '(?:^|&)i=([0-9]+)') END  AS \"ФД\",\n    CASE WHEN c.kind = 'RU_FNS'  THEN substring(c.qr_raw from 'fp=([0-9]+)') END        AS \"ФП\",\n    CASE WHEN c.kind = 'RU_FNS'  THEN substring(c.qr_raw from 't=([0-9T]+)') END        AS \"Момент покупки\",\n    CASE WHEN c.kind = 'RU_FNS'  THEN substring(c.qr_raw from '(?:^|&)s=([0-9.,]+)') END AS \"Сумма по QR\",\n    c.qr_raw            AS \"QR целиком\",\n    c.processed_at      AS \"Разобран\"\nFROM checks c\nJOIN spreadsheets s ON s.id = c.spreadsheet_id\nJOIN users        u ON u.id = s.user_id\nWHERE $__timeFilter(c.created_at)\n  AND c.deleted_at IS NULL\n  AND u.telegram_id IN ($user)\nORDER BY c.created_at DESC"
+        }
+      ],
+      "options": {
+        "showHeader": true,
+        "cellHeight": "sm",
+        "footer": { "show": false, "reducer": ["sum"], "fields": "" }
+      },
+      "fieldConfig": {
+        "defaults": {
+          "custom": { "align": "auto", "cellOptions": { "type": "auto" }, "filterable": true }
+        },
+        "overrides": [
+          {
+            "matcher": { "id": "byName", "options": "id" },
+            "properties": [
+              { "id": "custom.width", "value": 70 },
+              {
+                "id": "links",
+                "value": [
+                  {
+                    "title": "Показать позиции этого чека",
+                    "url": "/d/receipts/?var-check_id=${__value.raw}&${__url_time_range}&${user:queryparam}",
+                    "targetBlank": false
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "matcher": { "id": "byName", "options": "Ссылка ПУРС" },
+            "properties": [
+              {
+                "id": "links",
+                "value": [
+                  { "title": "Открыть чек на сайте налоговой Сербии", "url": "${__value.raw}", "targetBlank": true }
+                ]
+              }
+            ]
+          },
+          {
+            "matcher": { "id": "byName", "options": "QR целиком" },
+            "properties": [
+              { "id": "custom.width", "value": 320 },
+              { "id": "custom.cellOptions", "value": { "type": "auto", "wrapText": false } }
+            ]
+          },
+          {
+            "matcher": { "id": "byName", "options": "Разобран" },
+            "properties": [{ "id": "noValue", "value": "ждёт разбора" }]
+          }
+        ]
+      }
+    },
+    {
+      "id": 10,
+      "type": "table",
+      "title": "Что извлекли из чека: товары",
+      "description": "Позиции, вынутые из чека и записанные в реестр. Сумма показана по модулю: в базе она знаковая, а позиция чека — всегда расход.\n\nПока переменная «Чек» пуста, показываются позиции всех чеков диапазона. С выбранным чеком он показывается целиком — даже если разобран за пределами диапазона: чек сканируют в один день, а разбирают в другой.",
+      "gridPos": { "h": 10, "w": 24, "x": 0, "y": 31 },
+      "datasource": { "type": "grafana-postgresql-datasource", "uid": "postgres-ro" },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": { "type": "grafana-postgresql-datasource", "uid": "postgres-ro" },
+          "editorMode": "code",
+          "format": "table",
+          "rawQuery": true,
+          "rawSql": "SELECT\n    r.created_at     AS \"Записан\",\n    r.check_id       AS \"Чек\",\n    c.kind::text     AS \"Формат\",\n    r.product_name   AS \"Товар\",\n    r.product_type   AS \"Тип\",\n    abs(r.amount)    AS \"Сумма\",\n    r.currency::text AS \"Валюта\",\n    r.added_at       AS \"Дата операции\",\n    r.notes          AS \"Пометка\"\nFROM records r\nJOIN checks       c ON c.id = r.check_id\nJOIN spreadsheets s ON s.id = r.spreadsheet_id\nJOIN users        u ON u.id = s.user_id\nWHERE r.check_id IS NOT NULL\n  AND r.deleted_at IS NULL\n  AND c.deleted_at IS NULL\n  AND u.telegram_id IN ($user)\n  AND ('$check_id' =  '' OR r.check_id = NULLIF('$check_id', '')::bigint)\n  AND ('$check_id' <> '' OR $__timeFilter(r.created_at))\nORDER BY r.check_id DESC, r.id"
+        }
+      ],
+      "options": {
+        "showHeader": true,
+        "cellHeight": "sm",
+        "footer": { "show": true, "reducer": ["sum"], "fields": ["Сумма"] }
+      },
+      "fieldConfig": {
+        "defaults": {
+          "custom": { "align": "auto", "cellOptions": { "type": "auto" }, "filterable": true }
+        },
+        "overrides": [
+          {
+            "matcher": { "id": "byName", "options": "Сумма" },
+            "properties": [
+              { "id": "decimals", "value": 2 },
+              { "id": "custom.align", "value": "right" }
+            ]
+          },
+          {
+            "matcher": { "id": "byName", "options": "Тип" },
+            "properties": [{ "id": "noValue", "value": "не определён" }]
+          }
+        ]
+      }
+    }
+  ]
+}

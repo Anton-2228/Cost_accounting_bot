@@ -13,6 +13,13 @@
 # смотрит ровно один сервис, и он единственный, у кого есть проверка подписи
 # initData.
 #
+# НАРУЖУ ВЫВЕДЕН ТОЛЬКО /api/. Это не мелочь конфигурации, а несущее свойство:
+# у checks_service есть ещё /metrics, и в метриках лежит telegram_id — кто и
+# когда сканировал чеки. Путь /metrics 404-ится блоком `location /` ниже
+# (`try_files ... =404`), и добавлять для него proxy_pass нельзя: Prometheus
+# ходит за метриками по docker-сети, из интернета туда пути нет и быть не
+# должно. То же про Grafana на 127.0.0.1:3000 — она сюда не выводится вовсе.
+#
 # Установка:
 #   sudo cp deploy/nginx/mini_app.conf.example /etc/nginx/sites-available/mini_app.conf
 #   sudo ln -s /etc/nginx/sites-available/mini_app.conf /etc/nginx/sites-enabled/

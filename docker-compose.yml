@@ -7,6 +7,14 @@ services:
       TZ: UTC
     volumes:
       - pg_data:/var/lib/postgresql/data
+      # Скрипт роли grafana_ro. Смонтирован для запуска руками и только для
+      # него — в /docker-entrypoint-initdb.d его класть НЕЛЬЗЯ. Хуки initdb
+      # выполняются при создании кластера, когда таблиц ещё нет: их создаёт
+      # `alembic upgrade head` из контейнера api, то есть заведомо позже. GRANT
+      # на несуществующую таблицу — ошибка, а ошибка в хуке роняет инициализацию
+      # целиком, и база просто не поднимется. Порядок обязан быть «сначала
+      # миграции, потом гранты», см. README, раздел «Наблюдение».
+      - ./deploy/postgres:/opt/sql:ro
     ports:
       # Наружу не публикуем: доступ только из docker-сети и с локальной машины.
       - "127.0.0.1:5433:5432"
@@ -145,6 +153,110 @@ services:
       retries: 5
       start_period: 20s
 
+  prometheus:
+    # Тег пиннуется, как у postgres и redis: `latest` однажды сменит формат
+    # хранилища под уже накопленными данными.
+    image: prom/prometheus:v3.1.0
+    restart: unless-stopped
+    command:
+      - --config.file=/etc/prometheus/prometheus.yml
+      - --storage.tsdb.path=/prometheus
+      # Полгода: метрик мало (десятки рядов), а сравнить нагрузку с прошлым
+      # сезоном иначе не с чем.
+      - --storage.tsdb.retention.time=180d
+    volumes:
+      - ./deploy/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - prometheus_data:/prometheus
+    depends_on:
+      checks-service:
+        condition: service_healthy
+    ports:
+      # Наружу не публикуем: интерфейс Prometheus нужен только чтобы проверить
+      # цели и отладить запрос. Смотрят в него через Grafana.
+      - "127.0.0.1:9090:9090"
+    healthcheck:
+      test: ["CMD", "wget", "-q", "--spider", "http://localhost:9090/-/healthy"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 15s
+
+  grafana-db-init:
+    # Одноразовый сервис: заводит роль grafana_ro и выходит. Нужен затем, чтобы
+    # права выдавались САМИ, но в единственный момент, когда это возможно, —
+    # после того как api накатил миграции и таблицы появились.
+    #
+    # Почему не миграцией alembic. Миграции применяет точка входа api под
+    # `set -euo pipefail`, и ей понадобился бы GRAFANA_DB_PASSWORD: не задан —
+    # api не стартует вовсе, то есть вся система падала бы из-за ненастроенной
+    # Grafana. Сверх того, роль и её пароль — не состояние схемы: пароль меняют
+    # и права досыпают повторно, а миграция выполняется однажды и «переприменить»
+    # её нечем. Здесь же скрипт идемпотентен и прогоняется на каждом `up -d`,
+    # поэтому смена пароля в env-файле доезжает до базы сама.
+    #
+    # Образ тот же, что у базы: нужен только psql.
+    image: postgres:16
+    restart: "no"
+    env_file: env/postgres.env
+    environment:
+      # Отсюда скрипт понимает, что работает не изнутри контейнера базы, и берёт
+      # пароль владельца из того же env-файла.
+      PGHOST: db
+      TZ: UTC
+    volumes:
+      - ./deploy/postgres:/opt/sql:ro
+    depends_on:
+      api:
+        condition: service_healthy
+    entrypoint: ["sh", "/opt/sql/10-grafana-readonly.sh"]
+
+  grafana:
+    image: grafana/grafana-oss:11.4.0
+    restart: unless-stopped
+    env_file: env/grafana.env
+    environment:
+      # Блок environment имеет приоритет над env_file.
+      GF_SERVER_ROOT_URL: http://127.0.0.1:3000/
+      # Регистрация и анонимный вход закрыты: за этим входом видно, кто что
+      # покупал. Единственный способ войти — пароль из env/grafana.env.
+      GF_USERS_ALLOW_SIGN_UP: "false"
+      GF_AUTH_ANONYMOUS_ENABLED: "false"
+      # Телеметрия наружу: система учитывает личные расходы, и отчёты о
+      # использовании ей ни к чему.
+      GF_ANALYTICS_REPORTING_ENABLED: "false"
+      GF_ANALYTICS_CHECK_FOR_UPDATES: "false"
+      TZ: UTC
+    volumes:
+      # Источники и дашборды — только на чтение: они описаны файлами в
+      # репозитории, правка мышью запрещена провижинингом.
+      - ./deploy/grafana/provisioning:/etc/grafana/provisioning:ro
+      - ./deploy/grafana/dashboards:/var/lib/grafana/dashboards:ro
+      # Своя sqlite: пользователи, сессии, избранное. Без тома вход пришлось бы
+      # заводить заново после каждого пересоздания контейнера.
+      - grafana_data:/var/lib/grafana
+    depends_on:
+      # Не «база жива», а «роль заведена»: без гранта Grafana поднялась бы с
+      # источником, который отвечает «permission denied», и это читалось бы как
+      # сломанный дашборд.
+      grafana-db-init:
+        condition: service_completed_successfully
+      prometheus:
+        condition: service_healthy
+    ports:
+      # Как и всё остальное — только 127.0.0.1. Наружу Grafana не выводится:
+      # nginx хоста знает лишь про Mini App.
+      - "127.0.0.1:3000:3000"
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q -O- http://localhost:3000/api/health || exit 1"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+
 volumes:
   pg_data:
   redis_data:
+  # Метрики и настройки Grafana. Про них надо помнить при бэкапе — но потеря их
+  # не смертельна: точные числа лежат в pg_data, а дашборды в репозитории.
+  prometheus_data:
+  grafana_data:

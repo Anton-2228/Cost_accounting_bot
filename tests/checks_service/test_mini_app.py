@@ -1,84 +1,17 @@
 """Тесты эндпоинтов Mini App.
 
-Приложение поднимается без lifespan (`ASGITransport` его не выполняет), а
-состояние собирается руками из фейков: настоящий граф ходил бы и в api, и во
-внешний сервис расшифровки.
+Стенд (`bench`) собирается в `conftest.py`: приложение поднимается без lifespan
+(`ASGITransport` его не выполняет), а состояние собирается руками из фейков —
+настоящий граф ходил бы и в api, и во внешний сервис расшифровки.
 """
 
 from __future__ import annotations
 
-from collections.abc import AsyncGenerator
-from typing import Any
-
 import httpx
-import pytest
-from httpx import ASGITransport, AsyncClient
 
-from checks_service.auth.init_data import InitDataVerifier
-from checks_service.enums import CheckKind
 from checks_service.exceptions import ApiError, ReceiptFetchError, ReceiptNotFoundError
-from checks_service.formats.registry import FormatRegistry
-from checks_service.formats.ru_fns.parser import RuFnsQrParser
-from checks_service.main import create_app
-from checks_service.main_api.spreadsheets import Spreadsheet
-from checks_service.services.check_intake import CheckIntakeService
-from tests.checks_service.conftest import ALLOWED_ID, BOT_TOKEN, STRANGER_ID
-from tests.checks_service.factories import (
-    PROVERKACHEKA_PAYLOAD,
-    RU_FNS_KEY,
-    RU_FNS_QR,
-    make_init_data,
-)
-from tests.checks_service.fakes import FakeApiGateway, FakeFetcher
-
-PREVIEW_URL = "/api/v1/mini-app/checks/preview"
-CHECKS_URL = "/api/v1/mini-app/checks"
-ME_URL = "/api/v1/mini-app/me"
-
-
-class Bench:
-    """Собранное приложение вместе с фейками, до которых надо дотянуться."""
-
-    def __init__(self, client: AsyncClient, api: FakeApiGateway, fetcher: FakeFetcher) -> None:
-        self.client = client
-        self.api = api
-        self.fetcher = fetcher
-
-    def auth(self, telegram_id: int = ALLOWED_ID) -> dict[str, str]:
-        """Заголовок с подписанной `initData`."""
-        return {
-            "Authorization": "tma " + make_init_data(
-                telegram_id=telegram_id, bot_token=BOT_TOKEN
-            )
-        }
-
-    async def preview(self, qr: str = RU_FNS_QR, **kwargs: Any) -> httpx.Response:
-        """POST на распознавание."""
-        return await self.client.post(PREVIEW_URL, json={"qr_raw": qr}, **kwargs)
-
-    async def add(self, qr: str = RU_FNS_QR, **kwargs: Any) -> httpx.Response:
-        """POST на добавление."""
-        return await self.client.post(CHECKS_URL, json={"qr_raw": qr}, **kwargs)
-
-
-@pytest.fixture
-async def bench() -> AsyncGenerator[Bench, None]:
-    """Приложение с фейковым api и фейковой расшифровкой."""
-    api = FakeApiGateway()
-    api.spreadsheets.spreadsheet = Spreadsheet(id=7, title="Мои расходы")
-    fetcher = FakeFetcher(payload=PROVERKACHEKA_PAYLOAD)
-
-    registry = FormatRegistry(parsers=[RuFnsQrParser()], fetchers={CheckKind.RU_FNS: fetcher})
-
-    app = create_app()
-    app.state.api = api
-    app.state.registry = registry
-    app.state.intake = CheckIntakeService(registry=registry, api=api)  # type: ignore[arg-type]
-    app.state.verifier = InitDataVerifier(BOT_TOKEN, max_age_seconds=3600)
-
-    transport = ASGITransport(app=app)
-    async with AsyncClient(transport=transport, base_url="http://test") as client:
-        yield Bench(client, api, fetcher)
+from tests.checks_service.conftest import ALLOWED_ID, ME_URL, STRANGER_ID, Bench
+from tests.checks_service.factories import PROVERKACHEKA_PAYLOAD, RU_FNS_KEY, RU_FNS_QR
 
 
 async def test_preview_does_not_touch_the_paid_service(bench: Bench) -> None:
