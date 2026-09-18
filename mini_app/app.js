@@ -122,6 +122,7 @@
 
     function resetCard() {
         pendingQr = null;
+        els.confirm.textContent = texts.confirm;
         show(els.card, false);
     }
 
@@ -210,6 +211,7 @@
         els.date.textContent = purchased || "";
         show(els.dateRow, Boolean(purchased));
 
+        els.confirm.textContent = texts.confirm;
         show(els.card, true);
     }
 
@@ -243,7 +245,14 @@
                 tg.HapticFeedback.notificationOccurred("success");
             }
         } catch (error) {
-            resetCard();
+            // Чек, который касса ещё не передала, через пару минут пройдёт —
+            // и сканировать его заново у кассы незачем: карточка остаётся, а
+            // кнопка отправляет тот же QR ещё раз.
+            if (error.code === "receipt_not_ready") {
+                els.confirm.textContent = texts.retry;
+            } else {
+                resetCard();
+            }
             setStatus(error.message, true);
         } finally {
             busy(false);

@@ -29,7 +29,11 @@ import httpx
 from bs4 import BeautifulSoup, Tag
 
 from checks_service import constants
-from checks_service.exceptions import ReceiptFetchError, ReceiptNotFoundError
+from checks_service.exceptions import (
+    ReceiptFetchError,
+    ReceiptNotFoundError,
+    ReceiptNotReadyError,
+)
 from checks_service.formats.base import ParsedCheck
 from checks_service.formats.srb_suf import labels
 from checks_service.logging import get_logger
@@ -77,14 +81,19 @@ class SufFetcher:
 
         Частичного результата не бывает: любой сбой на любом из трёх запросов —
         исключение, и в БД не попадает ничего. Чек там всегда полный, иначе
-        разбору пришлось бы уметь работать с получеками.
+        разбору пришлось бы уметь работать с получеками. Чек без позиций тоже
+        неполный — см. :class:`ReceiptNotReadyError`.
+
+        Позиции запрашиваются раньше английской страницы: это единственный из
+        трёх ответов, который у свежего чека бывает пустым, и узнать об этом
+        стоит до лишнего запроса, а не после.
         """
         url = parsed.credentials["url"]
         invoice_number = parsed.credentials["invoice_number"]
 
         sr_page = await self._page(url, constants.SRB_SUF_LOCALE_SR)
-        en_page = await self._page(url, constants.SRB_SUF_LOCALE_EN)
         items = await self._items(invoice_number, self._token(sr_page))
+        en_page = await self._page(url, constants.SRB_SUF_LOCALE_EN)
 
         return {
             labels.URL_FIELD: url,
@@ -152,6 +161,15 @@ class SufFetcher:
         raw_items = payload.get("items")
         if not isinstance(raw_items, list):
             raise ReceiptFetchError("Позиции чека пришли неожиданной структурой")
+        # Пустой список при `success: true` — не чек без покупок, а чек, который
+        # касса ещё не передала: страница его уже показывает, а позиций у
+        # налоговой пока нет. Сохранить такой — положить в очередь пустышку.
+        if not raw_items:
+            logger.info("У чека ПУРС %s ещё нет позиций", invoice_number)
+            raise ReceiptNotReadyError(
+                "Касса ещё не передала позиции чека в налоговую",
+                details={"invoice_number": invoice_number},
+            )
         return [item for item in raw_items if isinstance(item, dict)]
 
     @staticmethod

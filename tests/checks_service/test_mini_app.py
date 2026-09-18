@@ -9,7 +9,12 @@ from __future__ import annotations
 
 import httpx
 
-from checks_service.exceptions import ApiError, ReceiptFetchError, ReceiptNotFoundError
+from checks_service.exceptions import (
+    ApiError,
+    ReceiptFetchError,
+    ReceiptNotFoundError,
+    ReceiptNotReadyError,
+)
 from tests.checks_service.conftest import ALLOWED_ID, ME_URL, STRANGER_ID, Bench
 from tests.checks_service.factories import PROVERKACHEKA_PAYLOAD, RU_FNS_KEY, RU_FNS_QR
 
@@ -83,6 +88,21 @@ async def test_receipt_not_found_is_its_own_answer(bench: Bench) -> None:
 
     assert response.status_code == 404
     assert response.json()["code"] == "receipt_not_found"
+
+
+async def test_receipt_not_ready_saves_nothing(bench: Bench) -> None:
+    """Чек, который касса ещё не передала, не кладётся в очередь пустышкой.
+
+    Свой код нужен странице: на нём она оставляет карточку и предлагает
+    повторить, а не сканировать чек у кассы заново.
+    """
+    bench.fetcher.fail_with = ReceiptNotReadyError("Касса ещё не передала позиции чека")
+
+    response = await bench.add(headers=bench.auth())
+
+    assert response.status_code == 409
+    assert response.json()["code"] == "receipt_not_ready"
+    assert bench.api.checks.saved == []
 
 
 async def test_repeated_check_is_reported_as_already_saved(bench: Bench) -> None:

@@ -21,6 +21,7 @@ from checks_service.enums import CheckKind
 from checks_service.exceptions import (
     ReceiptFetchError,
     ReceiptNotFoundError,
+    ReceiptNotReadyError,
     SpreadsheetNotFoundError,
 )
 from checks_service.formats.base import ParsedCheck
@@ -39,9 +40,10 @@ def _fetch_observed(kind: CheckKind) -> Iterator[None]:
     налоговой» приходит быстро и повтора не заслуживает, а сбой сервиса обычно
     упирается в таймаут, и по одной лишь длительности их не отличить.
 
-    **Порядок `except` существенен.** :class:`ReceiptNotFoundError` — подкласс
-    :class:`ReceiptFetchError`, и стой общий обработчик первым, всякий
-    ненайденный чек тихо считался бы сбоем сервиса.
+    **Порядок `except` существенен.** :class:`ReceiptNotFoundError` и
+    :class:`ReceiptNotReadyError` — подклассы :class:`ReceiptFetchError`, и
+    стой общий обработчик первым, всякий ненайденный или ещё не переданный
+    кассой чек тихо считался бы сбоем сервиса.
 
     Исключение пробрасывается из любой ветки: замер — наблюдение, а не
     обработка, и решать судьбу отказа он не вправе.
@@ -52,6 +54,9 @@ def _fetch_observed(kind: CheckKind) -> Iterator[None]:
         yield
     except ReceiptNotFoundError:
         outcome = "not_found"
+        raise
+    except ReceiptNotReadyError:
+        outcome = "not_ready"
         raise
     except ReceiptFetchError:
         outcome = "error"

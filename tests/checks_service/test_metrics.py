@@ -12,7 +12,12 @@ from __future__ import annotations
 import httpx
 from prometheus_client import REGISTRY
 
-from checks_service.exceptions import ApiError, ReceiptFetchError, ReceiptNotFoundError
+from checks_service.exceptions import (
+    ApiError,
+    ReceiptFetchError,
+    ReceiptNotFoundError,
+    ReceiptNotReadyError,
+)
 from checks_service.main import create_app
 from checks_service.metrics import UNKNOWN_TELEGRAM_ID
 from tests.checks_service.conftest import ALLOWED_ID, ME_URL, METRICS_URL, STRANGER_ID, Bench
@@ -93,6 +98,22 @@ async def test_missing_receipt_is_not_counted_as_a_broken_service(bench: Bench) 
 
     assert failures("receipt_not_found") == 1
     assert fetches("not_found") == 1
+    assert fetches("error") is None
+    assert saves() is None
+
+
+async def test_receipt_not_ready_is_not_counted_as_a_broken_service(bench: Bench) -> None:
+    """«Касса ещё не передала чек» — свой исход, а не сбой сервиса.
+
+    Тот же порядок `except`, что и у ненайденного чека: `ReceiptNotReadyError`
+    — подкласс `ReceiptFetchError`.
+    """
+    bench.fetcher.fail_with = ReceiptNotReadyError("Касса ещё не передала позиции чека")
+
+    await bench.add(headers=bench.auth())
+
+    assert failures("receipt_not_ready") == 1
+    assert fetches("not_ready") == 1
     assert fetches("error") is None
     assert saves() is None
 

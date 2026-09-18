@@ -16,7 +16,11 @@ import httpx
 import pytest
 
 from checks_service import constants
-from checks_service.exceptions import ReceiptFetchError, ReceiptNotFoundError
+from checks_service.exceptions import (
+    ReceiptFetchError,
+    ReceiptNotFoundError,
+    ReceiptNotReadyError,
+)
 from checks_service.formats.srb_suf import labels
 from checks_service.formats.srb_suf.fetcher import SufFetcher
 from checks_service.formats.srb_suf.parser import SrbSufQrParser
@@ -263,8 +267,35 @@ async def test_nothing_is_returned_when_items_are_unavailable(body: str, status:
     получеками, а пользователю — догадываться, почему в чеке нет покупок.
     """
     handler, _ = _handler(specifications=body, specifications_status=status)
-    with pytest.raises(ReceiptFetchError):
+    with pytest.raises(ReceiptFetchError) as failure:
         await _fetch(handler)
+    # «Касса ещё не передала» — только про пустой список при успехе: сбой
+    # сервиса или чужой ответ повтором через пару минут не лечатся.
+    assert not isinstance(failure.value, ReceiptNotReadyError)
+
+
+async def test_empty_items_mean_the_receipt_is_not_ready_yet() -> None:
+    """Пустой список при `success: true` — чек, который касса ещё не передала.
+
+    Страница такого чека уже открывается (подпись проверяется прямо из QR), а
+    позиций у налоговой пока нет. Сохранить его значило бы положить в очередь
+    пустышку, которую бот разобрать не сможет.
+    """
+    handler, _ = _handler(specifications='{"success":true,"items":[]}')
+    with pytest.raises(ReceiptNotReadyError):
+        await _fetch(handler)
+
+
+async def test_english_page_is_not_fetched_for_a_receipt_that_is_not_ready() -> None:
+    """Позиции спрашиваются до английской страницы, и на неготовом чеке за ней не ходят."""
+    handler, seen = _handler(specifications='{"success":true,"items":[]}')
+    with pytest.raises(ReceiptNotReadyError):
+        await _fetch(handler)
+
+    assert [request.url.path for request in seen][-1] == constants.SRB_SUF_SPECIFICATIONS_PATH
+    assert not any(
+        request.headers.get("cookie", "").endswith(constants.SRB_SUF_LOCALE_EN) for request in seen
+    )
 
 
 async def test_values_are_collapsed_to_one_line() -> None:
