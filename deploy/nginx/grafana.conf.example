@@ -1,0 +1,129 @@
+# Вторая публичная точка системы: Grafana на https://95.31.139.53:41142.
+#
+# До этого файла Grafana не выводилась наружу вовсе и смотрелась через
+# SSH-туннель. Теперь она открыта из интернета, и это осознанный размен, а не
+# побочный эффект: за формой входа видно QR-строку каждого чека, ссылку на него
+# на сайте налоговой и каждую покупку с ценой. У Mini App снаружи есть проверка
+# подписи initData, здесь такой проверки нет и быть не может — единственная
+# защита — пароль из env/grafana.env. Пустой или слабый пароль здесь означает
+# чужие покупки в открытом доступе, см. README, раздел «Публикация Grafana».
+#
+# TLS ТЕРМИНИРУЕТСЯ ЗДЕСЬ, не на шлюзе, — в отличие от Mini App. Поэтому шлюз
+# 95.31.139.53 обязан пробрасывать 41142 КАК TCP: попытка разобрать поток как
+# HTTP упрётся в первый же байт TLS-рукопожатия, и соединение не установится.
+#
+# Сертификат самоподписанный и выписан на два голых IP, потому что доменного
+# имени у этого входа нет, а на приватный адрес публичный CA не выдаст
+# сертификат никогда. Браузер поэтому один раз на устройство показывает
+# предупреждение — «Дополнительно» → «Перейти». Выпуск (10 лет):
+#
+#   sudo mkdir -p /etc/ssl/grafana
+#   sudo openssl req -x509 -newkey rsa:2048 -nodes -days 3650 \
+#     -subj "/CN=95.31.139.53" \
+#     -addext "subjectAltName=IP:95.31.139.53,IP:192.168.100.114" \
+#     -keyout /etc/ssl/grafana/grafana.key -out /etc/ssl/grafana/grafana.crt
+#   sudo chmod 600 /etc/ssl/grafana/grafana.key
+#
+# HSTS ЗДЕСЬ НЕТ НАМЕРЕННО. Заголовок Strict-Transport-Security с
+# самоподписанным сертификатом убирает из Chrome саму кнопку «Перейти всё
+# равно»: вход станет недоступен, и починить это из браузера будет нечем.
+# Добавлять его можно только вместе с сертификатом от публичного CA.
+#
+# Отдельный файл, а не второй server-блок в mini_app.conf: у Mini App и Grafana
+# разные порты и разная судьба — любую из двух публикаций надо уметь выключить
+# одним symlink, не трогая вторую.
+#
+# Grafana остаётся опубликованной compose-ом только на 127.0.0.1:3000. Этот
+# файл — единственный путь к ней снаружи, поэтому ограничение частоты попыток
+# входа стоит именно здесь: своей защиты от подбора пароля у Grafana нет.
+#
+# Установка:
+#   sudo cp deploy/nginx/grafana.conf.example /etc/nginx/sites-available/grafana.conf
+#   sudo ln -s /etc/nginx/sites-available/grafana.conf /etc/nginx/sites-enabled/
+#   sudo nginx -t && sudo systemctl reload nginx
+
+# Зона под ограничение входа. Объявлена в http-контексте — файлы sites-enabled
+# подключаются именно туда, поэтому директива стоит вне server-блока. Имя зоны
+# уникально по всему конфигу nginx: второе объявление с тем же именем — ошибка
+# старта.
+#
+# 10 попыток в минуту с адреса: живому человеку, промахнувшемуся паролем,
+# этого не заметить, а перебор по словарю становится бессмысленным.
+limit_req_zone $binary_remote_addr zone=grafana_login:1m rate=10r/m;
+
+server {
+    listen 41142 ssl;
+    listen [::]:41142 ssl;
+
+    # На этом порту блок единственный, поэтому имя ни на что не влияет: сюда
+    # приходят и по 95.31.139.53 снаружи, и по 192.168.100.114 из локальной
+    # сети, и оба адреса перечислены в SAN сертификата.
+    server_name _;
+
+    # http2 здесь не включён сознательно: до nginx 1.25 это `listen ... ssl
+    # http2`, после — отдельная директива `http2 on`, и неверный для версии
+    # вариант роняет `nginx -t`. Grafana работает и без него; включать —
+    # осознанно, посмотрев `nginx -v`.
+    ssl_certificate     /etc/ssl/grafana/grafana.crt;
+    ssl_certificate_key /etc/ssl/grafana/grafana.key;
+    ssl_protocols       TLSv1.2 TLSv1.3;
+    ssl_session_cache   shared:grafana:1m;
+
+    # Отдельный лог: попытки входа в Grafana из интернета должны быть видны, не
+    # смешиваясь с обращениями к Mini App.
+    access_log /var/log/nginx/grafana.access.log;
+
+    # Дашборды отдают таблицы позиций целиком, и ответ бывает крупным; заодно
+    # это потолок для импорта дашборда через интерфейс.
+    client_max_body_size 10m;
+
+    # Форма входа — единственное место, где пароль можно подобрать, поэтому
+    # ограничение висит ровно на ней. Точное совпадение (`= /login`), чтобы под
+    # лимит не попали дашборды: их листают быстро и помногу.
+    #
+    # burst=10 nodelay: подряд идущие попытки сверх лимита получают 503, но
+    # небольшой всплеск (перезагрузка страницы, автозаполнение) проходит без
+    # задержки.
+    location = /login {
+        limit_req zone=grafana_login burst=10 nodelay;
+
+        proxy_pass http://127.0.0.1:3000;
+        proxy_set_header Host              $host;
+        proxy_set_header X-Real-IP         $remote_addr;
+        proxy_set_header X-Forwarded-For   $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+    }
+
+    # Grafana Live: панели обновляются по WebSocket. Без Upgrade/Connection
+    # nginx закрывает соединение как обычный HTTP-запрос, и это читается не как
+    # ошибка, а как «дашборд почему-то не живой».
+    location /api/live/ {
+        proxy_pass http://127.0.0.1:3000;
+        proxy_http_version 1.1;
+        proxy_set_header Upgrade           $http_upgrade;
+        proxy_set_header Connection        "upgrade";
+        proxy_set_header Host              $host;
+        proxy_set_header X-Real-IP         $remote_addr;
+        proxy_set_header X-Forwarded-For   $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+    }
+
+    # Всё остальное. В proxy_pass намеренно нет пути после порта — так nginx
+    # передаёт URI неизменным. Слэш в конце (`http://127.0.0.1:3000/`) обрезал
+    # бы префикс и сломал бы вложенные пути Grafana.
+    #
+    # X-Forwarded-Proto обязателен: без него Grafana считает соединение
+    # незашифрованным и не отдаёт куку, помеченную Secure, — вход молча
+    # зацикливается на форме логина.
+    location / {
+        proxy_pass http://127.0.0.1:3000;
+        proxy_set_header Host              $host;
+        proxy_set_header X-Real-IP         $remote_addr;
+        proxy_set_header X-Forwarded-For   $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+
+        # Тяжёлый SQL-запрос по позициям чеков за большой период не должен
+        # обрываться раньше, чем Grafana успеет ответить.
+        proxy_read_timeout 120s;
+    }
+}
