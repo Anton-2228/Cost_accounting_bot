@@ -1,4 +1,8 @@
-FROM ghcr.io/astral-sh/uv:python3.12-bookworm-slim
+# Базовый образ с Docker Hub и uv из PyPI закреплённой версией — ghcr.io из
+# сети прод-хоста недоступен. Почему именно так, подробно — в api.Dockerfile.
+FROM python:3.12-slim-bookworm
+
+RUN pip install --no-cache-dir uv==0.11.16
 
 ENV UV_COMPILE_BYTECODE=1 \
     UV_LINK_MODE=copy \
