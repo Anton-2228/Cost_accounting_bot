@@ -213,14 +213,18 @@ curl -si -X POST https://accounting.root-hub.ru/api/v1/mini-app/checks/preview
 
 ## Публикация Grafana
 
-Вторая — и последняя — публичная точка системы. Конфиг:
-[deploy/nginx/grafana.conf.example](deploy/nginx/grafana.conf.example).
+Вторая — и последняя — публичная точка системы. **Ручных шагов на машине нет:**
+её поднимает сам `docker compose up -d` — два сервиса,
+[grafana-tls-init](deploy/tls/10-grafana-cert.sh) (выпускает сертификат) и
+`grafana-proxy` с конфигом из
+[deploy/nginx/grafana.conf.template](deploy/nginx/grafana.conf.template).
+Ни `openssl`, ни nginx на хосте, ни правил ufw не требуется.
 
-Раскладка похожа на Mini App, но **TLS терминируется на хосте**, а не на шлюзе.
+Раскладка похожа на Mini App, но **TLS терминируется здесь**, а не на шлюзе.
 Причина в способе публикации: Proxmox пробрасывает 41142 порт-в-порт (DNAT), то
 есть шифрованное соединение идёт насквозь от браузера до `192.168.100.114`, и
-снять TLS по дороге некому. Nginx хоста расшифровывает и отдаёт запрос
-контейнеру на `127.0.0.1:3000`; сам контейнер наружу не публикуется.
+снять TLS по дороге некому. `grafana-proxy` расшифровывает и отдаёт запрос
+Grafana по docker-сети; сама Grafana наружу не публикуется.
 
 Отсюда два адреса у одного входа, оба по HTTPS: `https://root-hub.ru:41142`
 снаружи и `https://192.168.100.114:41142` из локальной сети (имя изнутри сети
@@ -234,42 +238,34 @@ curl -si -X POST https://accounting.root-hub.ru/api/v1/mini-app/checks/preview
 **не включён**: с самоподписанным сертификатом он убирает из Chrome кнопку
 «перейти всё равно» и закрывает вход наглухо.
 
-```bash
-# 1. Сертификат на 10 лет — на имя И на оба адреса
-sudo mkdir -p /etc/ssl/grafana
-sudo openssl req -x509 -newkey rsa:2048 -nodes -days 3650 \
-  -subj "/CN=root-hub.ru" \
-  -addext "subjectAltName=DNS:root-hub.ru,IP:192.168.100.114,IP:95.31.139.53" \
-  -keyout /etc/ssl/grafana/grafana.key -out /etc/ssl/grafana/grafana.crt
-sudo chmod 600 /etc/ssl/grafana/grafana.key
+Остаются ровно два шага, и оба вне машины либо про секреты:
 
-# 2. Конфиг
-sudo cp deploy/nginx/grafana.conf.example /etc/nginx/sites-available/grafana.conf
-sudo ln -s /etc/nginx/sites-available/grafana.conf /etc/nginx/sites-enabled/
-sudo nginx -t && sudo systemctl reload nginx
-
-# 3. Firewall — если он включён
-sudo ufw status                    # inactive — не включать, ничего не делать
-sudo ufw allow 41142/tcp           # только если active
-```
-
-4. На Proxmox — проброс **TCP** 41142 → `192.168.100.114:41142`. Именно проброс,
-   а не HTTP-прокси: TLS снимается на хосте, и попытка разобрать поток как HTTP
+1. На Proxmox — проброс **TCP** 41142 → `192.168.100.114:41142`. Именно проброс,
+   а не HTTP-прокси: TLS снимается здесь, и попытка разобрать поток как HTTP
    упрётся в первый же байт рукопожатия.
-5. Длинный случайный пароль в `env/grafana.env`, затем
-   `docker compose up -d grafana`. Пароль переприменяется из файла при каждом
-   старте контейнера, смена его в интерфейсе живёт до ближайшего перезапуска.
+2. Длинный случайный пароль в `env/grafana.env`. Он переприменяется из файла при
+   каждом старте контейнера, поэтому смена его в интерфейсе живёт до ближайшего
+   перезапуска.
 
 ```bash
-ss -ltnp | grep -E '41142|3000'   # 41142 — nginx; 3000 — по-прежнему 127.0.0.1
+docker compose up -d
+docker compose ps grafana-proxy                        # healthy
 curl -k -sI https://127.0.0.1:41142/login              # 200, с самой машины
 curl -k -s  https://192.168.100.114:41142/api/health   # "database": "ok"
 curl -k -sI https://root-hub.ru:41142/login            # снаружи, из другой сети
 # Connection refused снаружи при рабочем локальном ответе — нет проброса на Proxmox.
 # Соединение рвётся на рукопожатии — Proxmox разбирает 41142 как HTTP вместо TCP.
-# Вход зацикливается на форме логина — до Grafana не доходит X-Forwarded-Proto.
-# Панели не обновляются сами — не проксируется /api/live/ (WebSocket).
+# grafana-proxy не стартует — смотреть `docker compose logs grafana-tls-init`.
 ```
+
+**Развёртывание на другом сервере.** Скопировать [.env.example](.env.example) в
+`.env`, поправить имя, порт и список имён в сертификате — и `docker compose up
+-d`. Сертификат перевыпустится сам: скрипт сверяет запрошенный SAN с тем, для
+которого выпускал, и при расхождении делает новый. Без `.env` берутся значения
+по умолчанию, то есть текущий сервер.
+
+Он же перевыпускает сертификат за месяц до истечения — на каждом `up -d`, так
+что протухший вход в Grafana случиться не может.
 
 **Что теперь видно за этим входом.** Форму логина видит кто угодно в
 интернете: ограничений по адресу источника нет — это сознательное решение.
