@@ -8,9 +8,15 @@
 // с разрешениями камеры. Следствие принятое сознательно: на Telegram Desktop
 // сканера нет, приложение мобильное.
 //
-// Сканер открывается сам при запуске: сканирование — единственный сценарий
+// Сканер открывается сам при запуске: сканирование — главный сценарий
 // приложения, и лишний тап по кнопке ничего не решает. Кнопка остаётся путём
 // повтора — после отмены сканера, ошибки или добавленного чека.
+//
+// Исключение — отложенные чеки: отсканированы, но налоговая их пока не отдала.
+// Они живут на сервере, поэтому переживают закрытие приложения, и при запуске
+// страница сначала показывает их список — повторить или удалить, — а сканер
+// не открывает: иначе он заслонил бы то, ради чего человек, скорее всего,
+// и вернулся.
 //
 // Язык страницы — язык, выбранный в боте. Страница спрашивает его у сервиса
 // (`GET /me`) раньше, чем откроет сканер: подпись сканера и все статусы уже
@@ -47,6 +53,8 @@
         confirm: document.getElementById("confirm"),
         cancel: document.getElementById("cancel"),
         status: document.getElementById("status"),
+        pending: document.getElementById("pending"),
+        pendingList: document.getElementById("pending-list"),
     };
 
     let pendingQr = null;
@@ -118,6 +126,9 @@
         els.scan.disabled = isBusy;
         els.confirm.disabled = isBusy;
         els.cancel.disabled = isBusy;
+        els.pendingList.querySelectorAll("button").forEach(function (button) {
+            button.disabled = isBusy;
+        });
     }
 
     function resetCard() {
@@ -173,20 +184,25 @@
     }
 
     async function call(path, qrRaw) {
-        const response = await fetch(api + path, {
-            method: "POST",
-            headers: {
-                "Content-Type": "application/json",
-                "Authorization": authorization(),
-            },
-            body: JSON.stringify({ qr_raw: qrRaw }),
-        });
+        return request("POST", path, { qr_raw: qrRaw });
+    }
+
+    async function request(method, path, payload) {
+        const headers = { "Authorization": authorization() };
+        const init = { method: method, headers: headers };
+        if (payload !== undefined) {
+            headers["Content-Type"] = "application/json";
+            init.body = JSON.stringify(payload);
+        }
+        const response = await fetch(api + path, init);
 
         let body = null;
-        try {
-            body = await response.json();
-        } catch (error) {
-            body = null;
+        if (response.status !== 204) {
+            try {
+                body = await response.json();
+            } catch (error) {
+                body = null;
+            }
         }
 
         if (!response.ok) {
@@ -238,23 +254,118 @@
         busy(true);
         setStatus(texts.status_fetching, false);
         try {
-            await call("/checks", pendingQr);
+            const result = await call("/checks", pendingQr);
             resetCard();
-            setStatus(texts.status_added, false);
-            if (tg && tg.HapticFeedback) {
-                tg.HapticFeedback.notificationOccurred("success");
+            // Чек, который касса ещё не передала, сервер откладывает (202):
+            // фон будет спрашивать о нём сам, а здесь он встаёт в список, где
+            // его можно повторить и после закрытия приложения.
+            if (result && result.status === "pending") {
+                setStatus(texts.status_deferred, false);
+                await loadPending();
+            } else {
+                setStatus(texts.status_added, false);
+                haptic("success");
             }
         } catch (error) {
-            // Чек, который касса ещё не передала, через пару минут пройдёт —
-            // и сканировать его заново у кассы незачем: карточка остаётся, а
-            // кнопка отправляет тот же QR ещё раз.
-            if (error.code === "receipt_not_ready") {
-                els.confirm.textContent = texts.retry;
-            } else {
-                resetCard();
-            }
+            resetCard();
             setStatus(error.message, true);
         } finally {
+            busy(false);
+        }
+    }
+
+    function haptic(kind) {
+        if (tg && tg.HapticFeedback) {
+            tg.HapticFeedback.notificationOccurred(kind);
+        }
+    }
+
+    function pendingLabel(item) {
+        const parts = [formatMoney(item.total, item.kind), formatDate(item.purchased_at)];
+        const label = parts.filter(Boolean).join(" · ");
+        return label || texts.pending_unnamed;
+    }
+
+    function renderPending(items) {
+        els.pendingList.replaceChildren();
+        items.forEach(function (item) {
+            const row = document.createElement("li");
+            row.className = "pending__item";
+
+            const label = document.createElement("span");
+            label.className = "pending__label";
+            label.textContent = pendingLabel(item);
+
+            const retry = document.createElement("button");
+            retry.type = "button";
+            retry.className = "button button--primary";
+            retry.textContent = texts.retry;
+            retry.addEventListener("click", function () {
+                onRetryPending(item.id);
+            });
+
+            const remove = document.createElement("button");
+            remove.type = "button";
+            remove.className = "button";
+            remove.textContent = texts.delete;
+            remove.addEventListener("click", function () {
+                onDeletePending(item.id);
+            });
+
+            const actions = document.createElement("div");
+            actions.className = "pending__actions";
+            actions.append(retry, remove);
+            row.append(label, actions);
+            els.pendingList.append(row);
+        });
+        show(els.pending, items.length > 0);
+    }
+
+    // Список отложенных; `null`, если спросить не вышло. Сбой здесь не повод
+    // для ошибки на экране: главный сценарий — скан — работает и без списка.
+    async function loadPending() {
+        try {
+            const body = await request("GET", "/pending-checks");
+            const items = (body && body.items) || [];
+            renderPending(items);
+            return items;
+        } catch (error) {
+            return null;
+        }
+    }
+
+    // Чека в отложенных больше нет — ни повторять, ни удалять нечего: его
+    // добавили или убрали, возможно, с другого экрана или фоном.
+    function isGone(code) {
+        return code === "check_already_saved" || code === "pending_check_not_found";
+    }
+
+    async function onRetryPending(id) {
+        busy(true);
+        setStatus(texts.status_fetching, false);
+        try {
+            await request("POST", "/pending-checks/" + id + "/retry");
+            setStatus(texts.status_added, false);
+            haptic("success");
+        } catch (error) {
+            setStatus(error.message, !isGone(error.code));
+        } finally {
+            await loadPending();
+            busy(false);
+        }
+    }
+
+    async function onDeletePending(id) {
+        busy(true);
+        try {
+            await request("DELETE", "/pending-checks/" + id);
+            setStatus("", false);
+        } catch (error) {
+            if (!isGone(error.code)) {
+                setStatus(error.message, true);
+            }
+        } finally {
+            await loadPending();
             busy(false);
         }
     }
@@ -315,6 +426,13 @@
             resetCard();
             setStatus("", false);
         });
+
+        // Есть отложенные чеки — показываем их, а сканер не поднимаем: он
+        // заслонил бы список, ради которого человек, скорее всего, и вернулся.
+        const pending = await loadPending();
+        if (pending && pending.length > 0) {
+            return;
+        }
 
         // Сканер поднимаем последним и отдельным тиком: слушатели к этому
         // моменту уже на месте, а страница успевает отрисоваться — иначе

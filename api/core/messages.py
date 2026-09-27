@@ -15,6 +15,7 @@ from __future__ import annotations
 
 from datetime import date
 
+from api.domain.check_summary import CheckSummary
 from api.domain.user_message import UserMessage
 
 #: Название листа, который читается обратно в базу. Оно попадает в сообщение,
@@ -66,6 +67,20 @@ def sync_terminal(error: str) -> UserMessage:
     задача осталась в очереди и выполнится, как только препятствие исчезнет.
     """
     return UserMessage(code="sync_terminal", params={"error": error})
+
+
+def check_added(summary: CheckSummary) -> UserMessage:
+    """Отложенный чек дошёл до внешнего сервиса, и фон его добавил."""
+    return UserMessage(code="check_added", params=summary.params())
+
+
+def check_expired(summary: CheckSummary) -> UserMessage:
+    """Фон неделю не мог получить отложенный чек и сдался.
+
+    Чек при этом не удалён: он остаётся в Mini App, где его можно повторить
+    вручную или убрать.
+    """
+    return UserMessage(code="check_expired", params=summary.params())
 
 
 def access_failed(email: str) -> UserMessage:

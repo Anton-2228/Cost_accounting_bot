@@ -50,6 +50,8 @@ rollover_done = "Une nouvelle période comptable a commencé le {start_date}"
 sync_failed = "Je n'arrive pas à mettre à jour le tableur — tentatives échouées d'affilée : {attempts}. Vérifiez que l'accès au document n'a pas été révoqué."
 sync_terminal = "Le tableur n'a pas pu être mis à jour : {error}. Vérifiez que le document n'a pas été supprimé et que l'accès n'a pas été révoqué — ensuite, le tableur se mettra à jour tout seul."
 access_failed = "Je n'ai pas pu donner accès au tableur à {email}. Vérifiez l'adresse et ajoutez-la de nouveau."
+check_added = "Le ticket en attente de {total} du {day} a été reçu et ajouté. Vous pouvez le trier avec /check"
+check_expired = "Le ticket de {total} du {day} n'est toujours pas arrivé au fisc après une semaine, j'ai donc arrêté de réessayer. Il reste dans le scanner — vous pouvez le relancer ou le supprimer."
 fallback = "Une notification concernant votre tableur est arrivée, mais je n'ai pas pu l'afficher. Jetez un œil au tableur — tout y est."
 
 [notification.import_error]

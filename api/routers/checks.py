@@ -63,6 +63,7 @@ async def save_check(
         external_key=payload.external_key,
         raw_payload=payload.raw_payload,
         fetched_at=payload.fetched_at,
+        notice=None if payload.notice is None else payload.notice.to_domain(),
     )
     return DataResponse(data=CheckResponse.model_validate(check))
 

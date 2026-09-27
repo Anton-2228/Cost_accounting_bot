@@ -111,3 +111,51 @@ body {
 .status--error {
     color: var(--danger);
 }
+
+.pending {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
+.pending__title {
+    margin: 8px 0 0;
+    font-size: 16px;
+    font-weight: 600;
+}
+
+.pending__list {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    margin: 0;
+    padding: 0;
+    list-style: none;
+}
+
+.pending__item {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    padding: 12px 16px;
+    border-radius: 12px;
+    background: var(--section);
+}
+
+.pending__label {
+    font-weight: 600;
+}
+
+.pending__actions {
+    display: flex;
+    gap: 8px;
+}
+
+.pending__actions .button {
+    padding: 10px 12px;
+    font-size: 15px;
+}
+
+.pending__actions .button:not(.button--primary) {
+    background: var(--bg);
+}

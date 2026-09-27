@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from typing import Literal
+
 from pydantic import BaseModel
 
 from checks_service.enums import CheckKind
@@ -13,8 +15,12 @@ class SavedCheckResponse(BaseModel):
 
     Расшифровку наружу не отдаём: страница её не показывает, а весит она
     десятки килобайт — разбор возьмёт её из БД, когда до него дойдёт очередь.
+
+    `status` отличает этот ответ от отложенного чека (202,
+    :class:`PendingCheckResponse`) по телу, а не только по коду статуса.
     """
 
+    status: Literal["saved"] = "saved"
     id: int
     kind: CheckKind
 

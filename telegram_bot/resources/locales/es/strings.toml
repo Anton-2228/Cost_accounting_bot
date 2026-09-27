@@ -50,6 +50,8 @@ rollover_done = "El {start_date} empezó un nuevo periodo contable"
 sync_failed = "No consigo actualizar la hoja de cálculo; intentos fallidos seguidos: {attempts}. Comprueba que no se haya revocado el acceso al documento."
 sync_terminal = "No se pudo actualizar la hoja de cálculo: {error}. Comprueba que el documento no se haya eliminado y que no se haya revocado el acceso; después la hoja se actualizará sola."
 access_failed = "No pude dar acceso a la hoja de cálculo a {email}. Revisa la dirección y vuelve a añadirla."
+check_added = "El recibo pendiente de {total} del {day} ya llegó y se ha añadido. Puedes clasificarlo con /check"
+check_expired = "El recibo de {total} del {day} sigue sin llegar a la agencia tributaria tras una semana, así que dejé de reintentar. Sigue en el escáner: allí puedes reintentarlo o borrarlo."
 fallback = "Llegó un aviso sobre tu hoja de cálculo, pero no pude mostrarlo. Echa un vistazo a la hoja: allí está todo."
 
 [notification.import_error]

@@ -68,6 +68,7 @@ class NotificationKind(StrEnum):
     IMPORT_ERROR = "IMPORT_ERROR"
     SYNC_FAILED = "SYNC_FAILED"
     ROLLOVER = "ROLLOVER"
+    PENDING_CHECK = "PENDING_CHECK"
 
 
 class LlmOperation(StrEnum):

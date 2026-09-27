@@ -16,6 +16,7 @@ from api.repositories.category_repository import CategoryRepository
 from api.repositories.check_repository import CheckRepository
 from api.repositories.exchange_rate_repository import ExchangeRateRepository
 from api.repositories.llm_usage_repository import LlmUsageRepository
+from api.repositories.pending_check_repository import PendingCheckRepository
 from api.repositories.period_repository import PeriodRepository
 from api.repositories.record_repository import RecordRepository
 from api.repositories.sheet_mapping_repository import SheetMappingRepository
@@ -72,6 +73,13 @@ def get_check_repository(
 ) -> CheckRepository:
     """Репозиторий сохранённых чеков."""
     return CheckRepository(session)
+
+
+def get_pending_check_repository(
+    session: AsyncSession = Depends(get_session),
+) -> PendingCheckRepository:
+    """Репозиторий отложенных чеков."""
+    return PendingCheckRepository(session)
 
 
 def get_llm_usage_repository(

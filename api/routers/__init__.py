@@ -19,6 +19,7 @@ from api.routers import (
     imports,
     llm_usages,
     notifications,
+    pending_checks,
     periods,
     records,
     sheet_mappings,
@@ -35,6 +36,7 @@ api_router.include_router(spreadsheets.router)
 api_router.include_router(records.router)
 api_router.include_router(periods.router)
 api_router.include_router(checks.router)
+api_router.include_router(pending_checks.router)
 api_router.include_router(llm_usages.router)
 api_router.include_router(notifications.router)
 api_router.include_router(imports.router)

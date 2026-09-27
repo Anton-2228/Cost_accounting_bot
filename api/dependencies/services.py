@@ -18,6 +18,7 @@ from api.dependencies.repositories import (
     get_check_repository,
     get_exchange_rate_repository,
     get_llm_usage_repository,
+    get_pending_check_repository,
     get_period_repository,
     get_record_repository,
     get_sheet_mapping_repository,
@@ -32,6 +33,7 @@ from api.repositories.category_repository import CategoryRepository
 from api.repositories.check_repository import CheckRepository
 from api.repositories.exchange_rate_repository import ExchangeRateRepository
 from api.repositories.llm_usage_repository import LlmUsageRepository
+from api.repositories.pending_check_repository import PendingCheckRepository
 from api.repositories.period_repository import PeriodRepository
 from api.repositories.record_repository import RecordRepository
 from api.repositories.sheet_mapping_repository import SheetMappingRepository
@@ -45,6 +47,7 @@ from api.services.check_service import CheckService
 from api.services.exchange_rate_service import ExchangeRateService
 from api.services.llm_usage_service import LlmUsageService
 from api.services.notification_service import NotificationService
+from api.services.pending_check_service import PendingCheckService
 from api.services.period_service import PeriodService
 from api.services.record_service import RecordService
 from api.services.sheet_mapping_service import SheetMappingService
@@ -131,6 +134,8 @@ def get_check_service(
     cashed_records: CashedRecordRepository = Depends(get_cashed_record_repository),
     checks: CheckRepository = Depends(get_check_repository),
     tasks: SheetSyncTaskRepository = Depends(get_sheet_sync_task_repository),
+    pending_checks: PendingCheckRepository = Depends(get_pending_check_repository),
+    notifications: UserNotificationRepository = Depends(get_user_notification_repository),
 ) -> CheckService:
     """Сервис чеков: сохранение сырья, кэш типов и запись разобранного чека."""
     return CheckService(
@@ -142,6 +147,25 @@ def get_check_service(
         cashed_records=cashed_records,
         checks=checks,
         tasks=tasks,
+        pending_checks=pending_checks,
+        notifications=notifications,
+    )
+
+
+def get_pending_check_service(
+    session: AsyncSession = Depends(get_session),
+    spreadsheets: SpreadsheetRepository = Depends(get_spreadsheet_repository),
+    checks: CheckRepository = Depends(get_check_repository),
+    pending_checks: PendingCheckRepository = Depends(get_pending_check_repository),
+    notifications: UserNotificationRepository = Depends(get_user_notification_repository),
+) -> PendingCheckService:
+    """Сервис отложенных чеков: список, повторы, отчёты фона."""
+    return PendingCheckService(
+        session,
+        spreadsheets,
+        checks=checks,
+        pending_checks=pending_checks,
+        notifications=notifications,
     )
 
 

@@ -51,10 +51,19 @@ METRICS_URL = "/metrics"
 class Bench:
     """Собранное приложение вместе с фейками, до которых надо дотянуться."""
 
-    def __init__(self, client: AsyncClient, api: FakeApiGateway, fetcher: FakeFetcher) -> None:
+    def __init__(
+        self,
+        client: AsyncClient,
+        api: FakeApiGateway,
+        fetcher: FakeFetcher,
+        intake: CheckIntakeService,
+    ) -> None:
         self.client = client
         self.api = api
         self.fetcher = fetcher
+        #: Тот же сервис, что обслуживает запросы: через него зовётся фоновый
+        #: проход, у которого HTTP-входа нет.
+        self.intake = intake
 
     def auth(self, telegram_id: int = ALLOWED_ID) -> dict[str, str]:
         """Заголовок с подписанной `initData`."""
@@ -90,12 +99,13 @@ async def bench() -> AsyncGenerator[Bench, None]:
     app = create_app()
     app.state.api = api
     app.state.registry = registry
-    app.state.intake = CheckIntakeService(registry=registry, api=api)  # type: ignore[arg-type]
+    intake = CheckIntakeService(registry=registry, api=api)  # type: ignore[arg-type]
+    app.state.intake = intake
     app.state.verifier = InitDataVerifier(BOT_TOKEN, max_age_seconds=3600)
 
     transport = ASGITransport(app=app)
     async with AsyncClient(transport=transport, base_url="http://test") as client:
-        yield Bench(client, api, fetcher)
+        yield Bench(client, api, fetcher, intake)
 
 
 @pytest.fixture(autouse=True)

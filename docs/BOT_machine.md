@@ -434,7 +434,8 @@ POST /notify {notification_id, telegram_id, language, kind, code, params}
 
 **Виды уведомлений** (`NotificationKind` в `api_client/models.py` — зеркало
 `api/enums/notification_kind.py`): `TABLE_READY`, `IMPORT_OK`, `IMPORT_ERROR`,
-`SYNC_FAILED`, `ROLLOVER`. Вид — класс события (по `TABLE_READY` дорисовывается
+`SYNC_FAILED`, `ROLLOVER`, `PENDING_CHECK` (`check_added` / `check_expired` —
+судьба отложенного чека; сумма и день печатаются по языку). Вид — класс события (по `TABLE_READY` дорисовывается
 меню), фразу выбирает `code`: один вид бывает рассказан по-разному
 (`SYNC_FAILED` — это и «не удаётся обновить», и «доступ не выдан»). Коды,
 которые бот умеет печатать, перечислены в `NotificationFormatter.KNOWN_CODES`,

@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import httpx
 
+from checks_service.enums import CheckKind
 from checks_service.exceptions import (
     ApiError,
     ReceiptFetchError,
@@ -41,7 +42,7 @@ async def test_add_fetches_then_saves_whole_payload(bench: Bench) -> None:
     response = await bench.add(headers=bench.auth())
 
     assert response.status_code == 201
-    assert response.json() == {"id": 1, "kind": "RU_FNS"}
+    assert response.json() == {"status": "saved", "id": 1, "kind": "RU_FNS"}
 
     assert len(bench.fetcher.calls) == 1
     assert len(bench.api.checks.saved) == 1
@@ -90,19 +91,35 @@ async def test_receipt_not_found_is_its_own_answer(bench: Bench) -> None:
     assert response.json()["code"] == "receipt_not_found"
 
 
-async def test_receipt_not_ready_saves_nothing(bench: Bench) -> None:
-    """Чек, который касса ещё не передала, не кладётся в очередь пустышкой.
+async def test_receipt_not_ready_is_deferred(bench: Bench) -> None:
+    """Чек, который касса ещё не передала, не теряется, а откладывается.
 
-    Свой код нужен странице: на нём она оставляет карточку и предлагает
-    повторить, а не сканировать чек у кассы заново.
+    В `checks` он не попадает — там чек всегда полный. Ответ 202 со сводкой из
+    QR: страница кладёт его в список отложенных, и сканировать чек у кассы
+    заново не придётся даже после закрытия Mini App.
     """
     bench.fetcher.fail_with = ReceiptNotReadyError("Касса ещё не передала позиции чека")
 
     response = await bench.add(headers=bench.auth())
 
-    assert response.status_code == 409
-    assert response.json()["code"] == "receipt_not_ready"
+    assert response.status_code == 202
+    body = response.json()
+    assert body["status"] == "pending"
+    assert body["total"] == "1214.95"
     assert bench.api.checks.saved == []
+    assert bench.api.pending_checks.added == [
+        {"spreadsheet_id": 7, "kind": CheckKind.RU_FNS, "error": "receipt_not_ready"}
+    ]
+
+
+async def test_receipt_not_found_is_not_deferred(bench: Bench) -> None:
+    """«Чека нет в базе ФНС» не откладывается: чаще это испорченный QR."""
+    bench.fetcher.fail_with = ReceiptNotFoundError("Чек не найден в базе ФНС")
+
+    response = await bench.add(headers=bench.auth())
+
+    assert response.status_code == 404
+    assert bench.api.pending_checks.added == []
 
 
 async def test_repeated_check_is_reported_as_already_saved(bench: Bench) -> None:

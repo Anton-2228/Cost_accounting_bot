@@ -152,7 +152,7 @@ new_version/
 | `sheet_target` | `STRUCTURE`, `CATEGORIES`, `OPERATIONS`, `STATISTICS`, `CHECKS` |
 | `sync_task_kind` | `REDRAW` (БД → лист), `IMPORT` (лист → БД) |
 | `access_role` | `READER`, `WRITER` |
-| `notification_kind` | `TABLE_READY`, `IMPORT_OK`, `IMPORT_ERROR`, `SYNC_FAILED`, `ROLLOVER` |
+| `notification_kind` | `TABLE_READY`, `IMPORT_OK`, `IMPORT_ERROR`, `SYNC_FAILED`, `ROLLOVER`, `PENDING_CHECK` |
 | `language` | `RU`, `EN`, `HI`, `ES`, `FR` — язык интерфейса; зеркалится в `telegram_bot/i18n/language.py` |
 
 Миксины: `PkMixin` (BIGINT IDENTITY), `TimestampMixin`, `SoftDeleteMixin`
@@ -170,6 +170,7 @@ new_version/
 | `records` | `amount` **знаковая и может быть нулевой**, `added_at DATE`, `period_id`/`category_id`/`source_id`/`check_id` — составные FK, `deleted_at`, `product_name`/`product_type` |
 | `cashed_records` | UNIQUE `(spreadsheet_id, product_name)` |
 | `checks` | сырьё чека: `kind`, `qr_raw`, `external_key`, `raw_payload` JSONB, `fetched_at`, `processed_at`, `deleted_at`; партиальный UNIQUE `(spreadsheet_id, kind, external_key) WHERE deleted_at IS NULL`; UNIQUE `(id, spreadsheet_id)`; партиальный индекс очереди `WHERE processed_at IS NULL AND deleted_at IS NULL` |
+| `pending_checks` | отложенные чеки — внешний сервис их пока не отдал: `kind`, `qr_raw`, `external_key`, `attempts`, `window_started_at`, `next_attempt_at`, `claimed_at` (аренда), `expired_at`, `last_error`; UNIQUE `(spreadsheet_id, kind, external_key)`; партиальный индекс `next_attempt_at WHERE expired_at IS NULL`. См. шаг 9 |
 | `llm_usages` | учёт денег на модель: `operation`, `model` (возвращённая провайдером), три счётчика токенов, `cost NUMERIC(18,10)` nullable («неизвестно» ≠ ноль), `raw_usage` JSONB, полиморфная пара `entity_kind`/`entity_id` **без FK** с CHECK «обе или ни одной»; индекс `(spreadsheet_id, created_at)`. Пишутся только состоявшиеся вызовы |
 | `sheet_sync_tasks` | очередь, см. §5 |
 | `sheet_mappings` | `(spreadsheet_id, target, period_id) → google_sheet_id, title` |
@@ -311,8 +312,10 @@ backoff перестал бы работать.
 | `POST /spreadsheets/{id}/google-id` | привязать созданный документ (для gsheets) |
 | `GET/POST /spreadsheets/{id}/records` · `DELETE .../records/last` · `.../records/{id}` | операции; `?period_id=`; у `POST` необязательный `added_at` датирует операцию другим днём **текущего** периода, но не позже сегодняшнего: чужой день — 422 `day_outside_period`, завтрашний — 422 `day_in_future` (курса на ненаступивший день нет, и лист статистики не перерисовался бы) |
 | `GET /spreadsheets/{id}/periods` · `.../periods/current` · `.../periods/{id}/statistics` | периоды и дневные итоги; `current` заводит период под сегодня, если его ещё нет — ленивая починка, как у операции |
-| `GET/POST /spreadsheets/{id}/checks` | сохранённые чеки, `?unprocessed=` (очередь разбора) либо `?period_id=` (архив месяца для листа чеков); оба фильтра сразу — 422; повтор — 409 `check_already_saved` |
+| `GET/POST /spreadsheets/{id}/checks` | сохранённые чеки, `?unprocessed=` (очередь разбора) либо `?period_id=` (архив месяца для листа чеков); оба фильтра сразу — 422; повтор — 409 `check_already_saved`. `POST` убирает отложенный чек с тем же ключом той же транзакцией; необязательный `notice` (`total`, `purchased_at`) — сохранил фон, пользователю уходит `check_added` |
 | `DELETE /spreadsheets/{id}/checks/{check_id}` | убрать неразобранный чек (204, мягко); разобранный — 409 `check_already_processed`, он уходит вслед за своими операциями |
+| `GET/POST /spreadsheets/{id}/pending-checks` · `DELETE .../pending-checks/{id}` · `POST .../pending-checks/{id}/claim` | отложенные чеки: список (истёкшие тоже), отложить (повтор скана — та же строка; уже сохранённый — 409 `check_already_saved`), удалить, захватить для ручного повтора (занятый — 409 `pending_check_busy`) |
+| `POST /pending-checks/claim` · `POST /pending-checks/{id}/fail` | фоновый повтор (для `checks_service`): забрать созревшие, отчитаться о неудаче (`manual`, `notice`); строки уже нет — тоже 204 |
 | `GET /spreadsheets/{id}/cashed-records` · `POST .../checks/commit` | кэш типов, запись разобранного чека; необязательный `added_at` датирует операции, чужой период — 422 `day_outside_period`, будущий день — 422 `day_in_future`; необязательный `notes` (≤ `NOTES_MAX_LENGTH`) ложится в `notes` **каждой** созданной операции |
 | `POST /spreadsheets/{id}/llm-usages` | записать, во что обошёлся вызов модели (201); по отвязанному документу — 404 |
 | `GET /spreadsheets/{id}/llm-usages` | замеры документа по времени, **включая отвязанный**. Без агрегации: траты раскладываются по учётным периодам, а границы периода — даты в часовом поясе документа, и считает их бот |
@@ -588,6 +591,39 @@ TYPE` снимаются **все** CHECK по колонке `target`.
   `amount_not_positive`, `filters_incompatible`, `period_target_mismatch`.
 - `GET /users/{telegram_id}`, `PUT /users/{telegram_id}/language` (одним
   `INSERT … ON CONFLICT`), `UserService`.
+
+### Шаг 9. Отложенные чеки — сделан
+
+Сербский чек, который касса ещё не передала в налоговую (`receipt_not_ready`),
+раньше жил только в памяти Mini App: закрыл приложение — сканируй заново у кассы.
+Теперь он откладывается на сервере, виден при следующем открытии, повторяется
+вручную и фоном. Решение «ни статусов, ни фонового дозабора» из `CHECKS_PLAN.md`
+пересмотрено ровно настолько: `checks` по-прежнему хранит только полные чеки.
+
+- Миграция `a6f3c9d21b58`: таблица `pending_checks`, `notification_kind.
+  PENDING_CHECK`. Отдельная таблица, а не статус в `checks`: разбору не
+  приходится уметь работать с получеками.
+- Строка хранит только сырьё (`qr_raw`, `kind`, `external_key`). Сумму и дату
+  для списка `checks_service` достаёт повторным разбором QR — api форматов не
+  знает, как и у сохранённых чеков.
+- Внешний сервис api по-прежнему не зовёт: попытку делает `checks_service`
+  (там фетчеры), api ведёт учёт. Успех — обычный `POST .../checks`, который
+  удаляет отложенный чек по ключу **той же транзакцией**, как бы чек ни дошёл
+  (фон, ручной повтор, новый скан). Неудача — `POST /pending-checks/{id}/fail`.
+- Пауза: `15 мин · 2^(attempts−1)`, потолок 6 ч; первая попытка — сам скан.
+  Через 7 дней от начала окна фоновая неудача ставит `expired_at`, фон строку
+  больше не берёт, пользователю уходит `check_expired`. Строка остаётся:
+  ручной повтор (`manual=true`) открывает окно заново и сбрасывает счётчик.
+- Захват — аренда со сроком (`PENDING_CHECK_LEASE_SECONDS`), как у
+  `sheet_sync_tasks`: фон и ручной повтор не спрашивают об одном чеке
+  одновременно, а умерший воркер не запирает чек навсегда.
+- Уведомления `check_added` и `check_expired` называют чек суммой и днём
+  покупки (`CheckSummary`): их присылает `checks_service` полем `notice`, день
+  переводится в пояс документа. Без `notice` уведомления нет.
+- Откладываются только отказы из `RETRYABLE_ERRORS` в
+  `checks_service/services/check_intake.py` — сейчас `receipt_not_ready`.
+  `receipt_not_found` (ФНС) туда не входит: чаще это испорченный QR. Схема от
+  формата не зависит, включить его — строка в кортеже.
 
 ---
 

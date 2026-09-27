@@ -51,8 +51,12 @@ class ChecksApiClient:
         external_key: str,
         raw_payload: dict[str, Any],
         fetched_at: datetime,
+        notice: dict[str, str] | None = None,
     ) -> SavedCheck:
-        """Сохраняет расшифрованный чек; повтор превращает в понятный отказ."""
+        """Сохраняет расшифрованный чек; повтор превращает в понятный отказ.
+
+        `notice` передаёт фоновый повтор: сводка для уведомления «чек добавлен».
+        """
         try:
             body = await self._http.post_data(
                 f"/spreadsheets/{spreadsheet_id}/checks",
@@ -62,22 +66,23 @@ class ChecksApiClient:
                     "external_key": external_key,
                     "raw_payload": raw_payload,
                     "fetched_at": fetched_at.isoformat(),
+                    "notice": notice,
                 },
                 expected=httpx.codes.CREATED,
             )
         except ApiError as error:
-            if _is_already_saved(error):
+            if is_conflict(error, ALREADY_SAVED_REASON):
                 raise CheckAlreadySavedError("Этот чек уже добавлен") from error
             raise
         return SavedCheck.from_json(body)
 
 
-def _is_already_saved(error: ApiError) -> bool:
-    """Отличает «этот чек уже есть» от прочих ответов api."""
+def is_conflict(error: ApiError, reason: str) -> bool:
+    """Отличает 409 с данной причиной (`details.reason`) от прочих ответов api."""
     if error.api_status_code != httpx.codes.CONFLICT:
         return False
     body = error.body
     if not isinstance(body, dict):
         return False
     details = body.get("details")
-    return isinstance(details, dict) and details.get("reason") == ALREADY_SAVED_REASON
+    return isinstance(details, dict) and details.get("reason") == reason

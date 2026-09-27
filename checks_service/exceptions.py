@@ -59,8 +59,10 @@ class FormatNotSupportedError(ChecksError):
 class ReceiptFetchError(ChecksError):
     """Внешний сервис расшифровки не отдал чек.
 
-    В БД при этом не пишется ничего: чек в базе всегда полный. Иначе к разбору
-    пришлось бы прикручивать фоновый дозабор и обработку получекoв.
+    В `checks` при этом не пишется ничего: чек там всегда полный, иначе к
+    разбору пришлось бы прикручивать обработку получеков. Отказ, который со
+    временем проходит сам (:class:`ReceiptNotReadyError`), откладывает чек в
+    `pending_checks` — см. :data:`checks_service.services.check_intake.RETRYABLE_ERRORS`.
     """
 
     status_code = 502
@@ -106,6 +108,20 @@ class CheckAlreadySavedError(ChecksError):
 
     status_code = 409
     code = "check_already_saved"
+
+
+class PendingCheckNotFoundError(ChecksError):
+    """Отложенного чека нет: его уже добавили или удалили — возможно, с другого экрана."""
+
+    status_code = 404
+    code = "pending_check_not_found"
+
+
+class PendingCheckBusyError(ChecksError):
+    """Отложенный чек прямо сейчас запрашивается — фоном или с другого экрана."""
+
+    status_code = 409
+    code = "pending_check_busy"
 
 
 class ApiError(ChecksError):

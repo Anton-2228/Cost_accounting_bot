@@ -50,6 +50,8 @@ rollover_done = "A new accounting period started on {start_date}"
 sync_failed = "I can't update the spreadsheet — failed attempts in a row: {attempts}. Please check that access to the document hasn't been revoked."
 sync_terminal = "The spreadsheet couldn't be updated: {error}. Please check that the document hasn't been deleted and access hasn't been revoked — after that the spreadsheet will update by itself."
 access_failed = "I couldn't grant access to the spreadsheet for {email}. Please check the address and add it again."
+check_added = "The pending receipt for {total} from {day} came through and has been added. You can sort it with /check"
+check_expired = "The receipt for {total} from {day} still hasn't reached the tax service after a week, so I stopped retrying. It's still in the scanner — you can retry or delete it there."
 fallback = "A notification about your spreadsheet arrived, but I couldn't display it. Take a look at the spreadsheet — everything is there."
 
 [notification.import_error]

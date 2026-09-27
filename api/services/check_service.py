@@ -9,21 +9,32 @@ from typing import Any
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from api.core import messages
 from api.core.logging import get_logger
 from api.domain.cashed_record import CashedRecord
 from api.domain.category import Category
 from api.domain.check import Check
 from api.domain.check_item import CheckItem, ProductTypeAssignment
+from api.domain.check_summary import CheckNotice, CheckSummary
 from api.domain.record import Record
-from api.enums import CategoryKind, CheckKind, Currency, SheetTarget, SyncTaskKind
+from api.enums import (
+    CategoryKind,
+    CheckKind,
+    Currency,
+    NotificationKind,
+    SheetTarget,
+    SyncTaskKind,
+)
 from api.exceptions.base import BusinessRuleError, ConflictError, NotFoundError
 from api.repositories.cashed_record_repository import CashedRecordRepository
 from api.repositories.category_repository import CategoryRepository
 from api.repositories.check_repository import CheckRepository
+from api.repositories.pending_check_repository import PendingCheckRepository
 from api.repositories.period_repository import PeriodRepository
 from api.repositories.record_repository import RecordRepository
 from api.repositories.sheet_sync_task_repository import SheetSyncTaskRepository, TaskKey
 from api.repositories.spreadsheet_repository import SpreadsheetRepository
+from api.repositories.user_notification_repository import UserNotificationRepository
 from api.services._periods import assert_in_period, ensure_current_period, today_for
 from api.services.base import BaseSpreadsheetService
 
@@ -57,6 +68,11 @@ _CHECK_CURRENCY: dict[CheckKind, Currency] = {
 }
 
 
+def check_currency(kind: CheckKind) -> Currency:
+    """Валюта чека по его формату: см. :data:`_CHECK_CURRENCY`."""
+    return _CHECK_CURRENCY[kind]
+
+
 class CheckService(BaseSpreadsheetService):
     """Хранение сырья чека и запись уже разобранного чека.
 
@@ -81,6 +97,8 @@ class CheckService(BaseSpreadsheetService):
         cashed_records: CashedRecordRepository,
         checks: CheckRepository,
         tasks: SheetSyncTaskRepository,
+        pending_checks: PendingCheckRepository,
+        notifications: UserNotificationRepository,
     ) -> None:
         super().__init__(session, spreadsheets)
         self._periods = periods
@@ -89,6 +107,8 @@ class CheckService(BaseSpreadsheetService):
         self._cashed_records = cashed_records
         self._checks = checks
         self._tasks = tasks
+        self._pending_checks = pending_checks
+        self._notifications = notifications
 
     # --- сохранение ---
 
@@ -156,18 +176,24 @@ class CheckService(BaseSpreadsheetService):
         external_key: str,
         raw_payload: dict[str, Any],
         fetched_at: datetime,
+        notice: CheckNotice | None = None,
     ) -> Check:
         """Сохраняет расшифрованный чек целиком.
 
         Готовность Google-таблицы не проверяется: сканирующему незачем знать,
         дорисован ли документ, — чек полежит и дождётся разбора.
 
+        Отложенный чек с тем же ключом удаляется в той же транзакции: как бы
+        чек ни дошёл — фоновым повтором, ручным или новым сканом, — ждать его
+        больше незачем. `notice` передаёт фоновый повтор: пользователь в этот
+        момент на экран не смотрит, и о добавлении ему сообщает бот.
+
         Дубль ловится дважды. Предварительная проверка нужна, чтобы ответить
         внятной причиной, а `IntegrityError` — потому что между ней и вставкой
         помещается второй такой же скан: без перехвата гонка двух телефонов
         (или двойного нажатия) отвечала бы пятисоткой.
         """
-        await self._get(spreadsheet_id)
+        spreadsheet = await self._get(spreadsheet_id)
 
         existing = await self._checks.get_by_external_key(spreadsheet_id, kind, external_key)
         if existing is not None:
@@ -183,6 +209,18 @@ class CheckService(BaseSpreadsheetService):
         )
         try:
             saved = await self._checks.add(check)
+            await self._pending_checks.delete_by_key(spreadsheet_id, kind, external_key)
+            if notice is not None:
+                summary = CheckSummary.of(
+                    notice,
+                    currency=check_currency(kind),
+                    timezone=spreadsheet.timezone,
+                )
+                await self._notifications.notify(
+                    spreadsheet_id,
+                    NotificationKind.PENDING_CHECK,
+                    messages.check_added(summary),
+                )
             await self._commit()
         except IntegrityError as error:
             # Сессия после нарушения ограничения непригодна: без отката любой
@@ -269,7 +307,7 @@ class CheckService(BaseSpreadsheetService):
         }
         await self._assign_product_types(spreadsheet_id, new_product_types, categories)
 
-        currency = _CHECK_CURRENCY[check.kind]
+        currency = check_currency(check.kind)
 
         created: list[Record] = []
         for item in items:

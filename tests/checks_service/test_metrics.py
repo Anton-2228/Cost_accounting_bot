@@ -106,13 +106,14 @@ async def test_receipt_not_ready_is_not_counted_as_a_broken_service(bench: Bench
     """«Касса ещё не передала чек» — свой исход, а не сбой сервиса.
 
     Тот же порядок `except`, что и у ненайденного чека: `ReceiptNotReadyError`
-    — подкласс `ReceiptFetchError`.
+    — подкласс `ReceiptFetchError`. Отказом это не считается вовсе: чек
+    отложен, и пользователь получил ответ 202, а не ошибку.
     """
     bench.fetcher.fail_with = ReceiptNotReadyError("Касса ещё не передала позиции чека")
 
     await bench.add(headers=bench.auth())
 
-    assert failures("receipt_not_ready") == 1
+    assert failures("receipt_not_ready") is None
     assert fetches("not_ready") == 1
     assert fetches("error") is None
     assert saves() is None

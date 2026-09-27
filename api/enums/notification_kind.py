@@ -25,3 +25,5 @@ class NotificationKind(StrEnum):
     SYNC_FAILED = "SYNC_FAILED"
     #: Начался новый расчётный период.
     ROLLOVER = "ROLLOVER"
+    #: Судьба отложенного чека: фон его добавил или сдался.
+    PENDING_CHECK = "PENDING_CHECK"

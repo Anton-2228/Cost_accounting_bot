@@ -18,6 +18,7 @@ from checks_service.logging import get_logger, setup_logging
 from checks_service.main_api import ApiGateway
 from checks_service.routers import mini_app_router, system_router
 from checks_service.services.check_intake import CheckIntakeService
+from checks_service.tasks import PendingRetryLoop
 
 logger = get_logger(__name__)
 
@@ -54,7 +55,8 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
 
     app.state.api = api
     app.state.registry = registry
-    app.state.intake = CheckIntakeService(registry=registry, api=api)
+    intake = CheckIntakeService(registry=registry, api=api)
+    app.state.intake = intake
     app.state.verifier = InitDataVerifier(
         settings.telegram_bot_token,
         max_age_seconds=settings.init_data_max_age_seconds,
@@ -65,9 +67,12 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         settings.api_base_url,
         len(settings.permitted_telegram_ids),
     )
+    retry_loop = PendingRetryLoop(intake)
+    await retry_loop.start()
     try:
         yield
     finally:
+        await retry_loop.stop()
         await registry.aclose()
         await api.aclose()
         logger.info("Сервис остановлен")

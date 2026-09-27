@@ -41,12 +41,19 @@
     </section>
 
     <p id="status" class="status" hidden></p>
+
+    <!-- Отложенные чеки: отсканированы, но налоговая их пока не отдала. Живут
+         на сервере, поэтому видны и после того, как приложение закрыли. -->
+    <section id="pending" class="pending" hidden>
+        <h2 class="pending__title" data-i18n="pending_title">Waiting for the tax service</h2>
+        <ul id="pending-list" class="pending__list"></ul>
+    </section>
 </main>
 
 <!-- `?v=` — чтобы клиент Telegram не показал новую страницу со старым скриптом:
      WebView кэширует статику агрессивно. -->
 <script src="config.js?v=2"></script>
-<script src="locales.js?v=3"></script>
-<script src="app.js?v=3"></script>
+<script src="locales.js?v=4"></script>
+<script src="app.js?v=4"></script>
 </body>
 </html>

@@ -93,6 +93,15 @@ class TestRendering:
         text = NotificationFormatter.render("sync_terminal", {"error": "x" * 10_000})
         assert len(text) < 4096
 
+    @pytest.mark.parametrize("code", ["check_added", "check_expired"])
+    def test_check_is_named_by_amount_and_day(self, code: str) -> None:
+        """Отложенный чек узнают по сумме с валютой и дню покупки."""
+        text = NotificationFormatter.render(
+            code, {"total": "1234.5", "currency": "RSD", "day": "2026-08-27"}
+        )
+        assert "1 234,50 RSD" in text
+        assert "27.08.2026" in text
+
     def test_legacy_text_is_printed_as_is(self) -> None:
         """Строка старой версии печатается своим готовым текстом."""
         assert NotificationFormatter.render(LEGACY_CODE, {"text": "Готово"}) == "Готово"

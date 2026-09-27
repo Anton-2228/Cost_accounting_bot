@@ -13,6 +13,7 @@ from api.orm.category_product_type import CategoryProductTypeORM
 from api.orm.check import CheckORM
 from api.orm.exchange_rate import ExchangeRateORM
 from api.orm.llm_usage import LlmUsageORM
+from api.orm.pending_check import PendingCheckORM
 from api.orm.period import PeriodORM
 from api.orm.record import RecordORM
 from api.orm.sheet_mapping import SheetMappingORM
@@ -30,6 +31,7 @@ __all__ = [
     "CheckORM",
     "ExchangeRateORM",
     "LlmUsageORM",
+    "PendingCheckORM",
     "PeriodORM",
     "RecordORM",
     "SheetMappingORM",

@@ -16,6 +16,7 @@ from api.repositories.cashed_record_repository import CashedRecordRepository
 from api.repositories.category_repository import CategoryRepository
 from api.repositories.check_repository import CheckRepository
 from api.repositories.exchange_rate_repository import ExchangeRateRepository
+from api.repositories.pending_check_repository import PendingCheckRepository
 from api.repositories.period_repository import PeriodRepository
 from api.repositories.record_repository import RecordRepository
 from api.repositories.sheet_mapping_repository import SheetMappingRepository
@@ -28,6 +29,7 @@ from api.services.category_import_service import CategoryImportService
 from api.services.check_service import CheckService
 from api.services.exchange_rate_service import ExchangeRateService
 from api.services.notification_service import NotificationService
+from api.services.pending_check_service import PendingCheckService
 from api.services.period_service import PeriodService
 from api.services.record_service import RecordService
 from api.services.rollover_service import RolloverService
@@ -100,6 +102,20 @@ def check_service(session: AsyncSession) -> CheckService:
         cashed_records=CashedRecordRepository(session),
         checks=CheckRepository(session),
         tasks=SheetSyncTaskRepository(session),
+        pending_checks=PendingCheckRepository(session),
+        notifications=UserNotificationRepository(session),
+    )
+
+
+@pytest.fixture
+def pending_check_service(session: AsyncSession) -> PendingCheckService:
+    """Сервис отложенных чеков."""
+    return PendingCheckService(
+        session,
+        SpreadsheetRepository(session),
+        checks=CheckRepository(session),
+        pending_checks=PendingCheckRepository(session),
+        notifications=UserNotificationRepository(session),
     )
 
 

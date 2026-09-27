@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from collections.abc import Mapping
 from datetime import date
+from decimal import Decimal
 from typing import Any
 
 from telegram_bot.formatting.table_formatter import TableFormatter
@@ -29,6 +30,8 @@ KNOWN_CODES = frozenset(
         "sync_failed",
         "sync_terminal",
         "access_failed",
+        "check_added",
+        "check_expired",
         *(
             f"import_error.{name}"
             for name in (
@@ -53,6 +56,9 @@ KNOWN_CODES = frozenset(
 #: Сколько символов ошибки Google показывать. Её текст приходит целиком и бывает
 #: длинным, а сообщение Telegram ограничено 4096 символами.
 _ERROR_PREVIEW_LENGTH = 1000
+
+#: Знаков после запятой в сумме чека: и рубли, и динары делятся на сотые.
+_MONEY_PLACES = 2
 
 
 class NotificationFormatter:
@@ -104,6 +110,10 @@ class NotificationFormatter:
             prepared["url"] = TableFormatter.url_for(str(params["google_spreadsheet_id"]))
         elif code == "rollover_done":
             prepared["start_date"] = LocaleFormat.day(date.fromisoformat(str(params["start_date"])))
+        elif code in {"check_added", "check_expired"}:
+            prepared["day"] = LocaleFormat.day(date.fromisoformat(str(params["day"])))
+            amount = LocaleFormat.decimal(Decimal(str(params["total"])), _MONEY_PLACES)
+            prepared["total"] = f"{amount} {params['currency']}"
         elif code == "sync_terminal":
             error = str(params.get("error", ""))
             if len(error) > _ERROR_PREVIEW_LENGTH:

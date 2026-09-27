@@ -56,6 +56,33 @@ class ApiHttpClient:
         self._raise_for_status(response, expected=expected)
         return dict(response.json()["data"])
 
+    async def get_items(self, path: str) -> list[dict[str, Any]]:
+        """GET списка ресурсов."""
+        response = await self._request("GET", path)
+        self._raise_for_status(response, expected=httpx.codes.OK)
+        return [dict(item) for item in response.json()["items"]]
+
+    async def post_items(
+        self,
+        path: str,
+        *,
+        params: dict[str, Any] | None = None,
+    ) -> list[dict[str, Any]]:
+        """POST, возвращающий список ресурсов (захват очереди)."""
+        response = await self._request("POST", path, params=params)
+        self._raise_for_status(response, expected=httpx.codes.OK)
+        return [dict(item) for item in response.json()["items"]]
+
+    async def post_no_content(self, path: str, *, body: dict[str, Any] | None = None) -> None:
+        """POST без тела ответа (204)."""
+        response = await self._request("POST", path, json=body)
+        self._raise_for_status(response, expected=httpx.codes.NO_CONTENT)
+
+    async def delete(self, path: str) -> None:
+        """DELETE без тела ответа (204)."""
+        response = await self._request("DELETE", path)
+        self._raise_for_status(response, expected=httpx.codes.NO_CONTENT)
+
     async def _request(self, method: str, path: str, **kwargs: Any) -> httpx.Response:
         """Выполняет запрос, превращая сетевой сбой в :class:`ApiError`.
 

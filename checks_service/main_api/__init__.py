@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from checks_service.main_api.checks import ChecksApiClient, SavedCheck
 from checks_service.main_api.http import ApiHttpClient
+from checks_service.main_api.pending_checks import PendingCheck, PendingChecksApiClient
 from checks_service.main_api.spreadsheets import Spreadsheet, SpreadsheetsApiClient
 from checks_service.main_api.users import UsersApiClient
 
@@ -20,6 +21,7 @@ class ApiGateway:
         self._http = ApiHttpClient(base_url, timeout=timeout)
         self.spreadsheets = SpreadsheetsApiClient(self._http)
         self.checks = ChecksApiClient(self._http)
+        self.pending_checks = PendingChecksApiClient(self._http)
         self.users = UsersApiClient(self._http)
 
     async def aclose(self) -> None:
@@ -31,6 +33,8 @@ __all__ = [
     "ApiGateway",
     "ApiHttpClient",
     "ChecksApiClient",
+    "PendingCheck",
+    "PendingChecksApiClient",
     "SavedCheck",
     "Spreadsheet",
     "SpreadsheetsApiClient",
