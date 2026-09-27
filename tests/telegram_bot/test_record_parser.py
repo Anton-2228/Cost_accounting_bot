@@ -50,11 +50,26 @@ def test_full_line(categories: list[Category]) -> None:
     assert parsed.notes == "обед в столовой"
 
 
-def test_notes_are_optional(categories: list[Category]) -> None:
-    """Три слова — уже полная команда."""
-    parsed = RecordParser.parse("рубли 500 еда", categories=categories)
+@pytest.mark.parametrize("word", ["продукты", "Продукты"])
+def test_notes_are_optional(word: str, categories: list[Category]) -> None:
+    """Три слова — уже полная команда; названная по имени категория пометки не даёт."""
+    parsed = RecordParser.parse(f"рубли 500 {word}", categories=categories)
     assert parsed.notes == ""
     assert parsed.currency is Currency.RUB
+
+
+@pytest.mark.parametrize("word", ["еда", "Еда"])
+def test_alias_becomes_notes(word: str, categories: list[Category]) -> None:
+    """Псевдоним без пометки записывается в пометку так, как его набрали."""
+    parsed = RecordParser.parse(f"рубли 500 {word}", categories=categories)
+    assert parsed.category_id == 1
+    assert parsed.notes == word
+
+
+def test_own_notes_win_over_alias(categories: list[Category]) -> None:
+    """Своя пометка пользователя псевдонимом не заменяется и не дополняется."""
+    parsed = RecordParser.parse("рубли 500 еда обед", categories=categories)
+    assert parsed.notes == "обед"
 
 
 def test_income_category_is_marked(categories: list[Category]) -> None:
