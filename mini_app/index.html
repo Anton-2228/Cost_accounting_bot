@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
     <title>Add a receipt</title>
     <script src="https://telegram.org/js/telegram-web-app.js"></script>
-    <link rel="stylesheet" href="styles.css">
+    <link rel="stylesheet" href="styles.css?v=2">
 </head>
 <body>
 <main class="screen">
@@ -13,9 +13,16 @@
          пользователя, как только узнает его у сервиса (см. app.js). -->
     <h1 class="title" data-i18n="title">Add a receipt</h1>
 
-    <p id="hint" class="hint" data-i18n="hint">Point the camera at the QR code at the bottom of the receipt.</p>
+    <p id="hint" class="hint" data-i18n="hint">Scan the QR code at the bottom of the receipt or send a photo of it.</p>
 
-    <button id="scan" class="button button--primary" type="button" data-i18n="scan" disabled>Scan a receipt</button>
+    <div class="actions">
+        <button id="scan" class="button button--primary" type="button" data-i18n="scan" disabled>Scan a receipt</button>
+        <!-- Фото — второй путь к тому же QR: из галереи, со снимка камеры, а на
+             Telegram Desktop, где сканера нет, единственный. Без `capture`:
+             телефон сам предложит и камеру, и галерею. -->
+        <button id="photo" class="button" type="button" data-i18n="photo" disabled>Send a photo of a receipt</button>
+        <input id="photo-input" type="file" accept="image/*" hidden>
+    </div>
 
     <!-- Плашка распознанного чека. Показывается до расшифровки: пока
          пользователь не подтвердил, платный внешний сервис не зовётся. -->
@@ -53,7 +60,7 @@
 <!-- `?v=` — чтобы клиент Telegram не показал новую страницу со старым скриптом:
      WebView кэширует статику агрессивно. -->
 <script src="config.js?v=2"></script>
-<script src="locales.js?v=4"></script>
-<script src="app.js?v=4"></script>
+<script src="locales.js?v=5"></script>
+<script src="app.js?v=5"></script>
 </body>
 </html>

@@ -33,6 +33,15 @@ class FormatRegistry:
         self._parsers = tuple(parsers)
         self._fetchers = dict(fetchers)
 
+    def recognises(self, qr_raw: str) -> bool:
+        """Узнаёт ли строку хоть один парсер. Ничего не разбирает и не пишет в журнал.
+
+        Нужно, чтобы выбрать чек среди нескольких QR на одной фотографии:
+        рядом с фискальным часто напечатан рекламный.
+        """
+        text = qr_raw.strip()
+        return any(parser.matches(text) for parser in self._parsers)
+
     def parse(self, qr_raw: str) -> ParsedCheck:
         """Разбирает строку первым подошедшим парсером."""
         text = qr_raw.strip()

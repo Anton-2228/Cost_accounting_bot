@@ -11,10 +11,14 @@ from __future__ import annotations
 
 import hashlib
 import hmac
+import io
 import json
 from datetime import UTC, datetime
 from pathlib import Path
 from urllib.parse import urlencode
+
+import zxingcpp
+from PIL import Image
 
 from checks_service import constants
 
@@ -133,3 +137,31 @@ def make_init_data(
         )
 
     return urlencode({**fields, constants.INIT_DATA_HASH_FIELD: signature})
+
+
+def make_qr_photo(*texts: str, image_format: str = "JPEG") -> bytes:
+    """Снимок с QR-кодами в ряд — как фото чека, где их несколько.
+
+    JPEG по умолчанию: это то, что присылает страница после сжатия, и потери
+    сжатия декодер обязан переживать.
+    """
+    codes = [
+        Image.fromarray(
+            zxingcpp.write_barcode_to_image(  # type: ignore[arg-type]
+                zxingcpp.create_barcode(text, zxingcpp.BarcodeFormat.QRCode), scale=8
+            )
+        )
+        for text in texts
+    ]
+    margin = 40
+    width = sum(code.width for code in codes) + margin * (len(codes) + 1)
+    height = max((code.height for code in codes), default=0) + margin * 2
+    canvas = Image.new("L", (max(width, 200), max(height, 200)), 255)
+    left = margin
+    for code in codes:
+        canvas.paste(code, (left, margin))
+        left += code.width + margin
+
+    buffer = io.BytesIO()
+    canvas.convert("RGB").save(buffer, image_format, quality=90)
+    return buffer.getvalue()

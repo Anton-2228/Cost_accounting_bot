@@ -56,6 +56,35 @@ class FormatNotSupportedError(ChecksError):
     code = "format_not_supported"
 
 
+class PhotoTooLargeError(ChecksError):
+    """Фотография больше лимита.
+
+    Страница ужимает снимок до отправки, поэтому сюда попадает только то, что
+    прошло мимо неё: старый кэш страницы или запрос не от неё вовсе.
+    """
+
+    status_code = 413
+    code = "photo_too_large"
+
+
+class PhotoUnreadableError(ChecksError):
+    """Присланный файл не читается как изображение."""
+
+    status_code = 422
+    code = "photo_unreadable"
+
+
+class QrNotFoundError(ChecksError):
+    """Изображение прочитано, но ни одного QR-кода на нём не нашлось.
+
+    Ожидаемый случай: размытый снимок, QR обрезан краем кадра или сфотографирован
+    не тот чек.
+    """
+
+    status_code = 422
+    code = "qr_not_found"
+
+
 class ReceiptFetchError(ChecksError):
     """Внешний сервис расшифровки не отдал чек.
 
@@ -177,7 +206,7 @@ async def _checks_error_handler(request: Request, exc: Exception) -> JSONRespons
     # закрыто этим файлом, и новый подкласс попадает в метрику сам, ровно как
     # попадает в лог.
     #
-    # Считаются только две стадии приёма чека: карта путей закрытая, и запрос к
+    # Считаются только стадии приёма чека: карта путей закрытая, и запрос к
     # `/me` или к чужому URL метрику не трогает — охват наблюдения ограничен
     # чеками намеренно.
     stage = constants.METRIC_STAGE_BY_PATH.get(request.url.path)

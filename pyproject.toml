@@ -44,6 +44,12 @@ dependencies = [
     # Единственная внешняя зависимость бота помимо api и Telegram.
     "openai>=1.55",
     "babel>=2.16",
+    # checks_service: QR с фотографии чека. zxing-cpp и Pillow ставятся
+    # wheel'ами, без системных библиотек в образе; python-multipart нужен
+    # FastAPI, чтобы принять файл (`UploadFile`).
+    "zxing-cpp>=2.2",
+    "pillow>=11.0",
+    "python-multipart>=0.0.12",
 ]
 
 [dependency-groups]

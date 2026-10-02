@@ -42,6 +42,7 @@ from tests.checks_service.factories import (  # noqa: E402
 )
 from tests.checks_service.fakes import FakeApiGateway, FakeFetcher  # noqa: E402
 
+PHOTO_URL = "/api/v1/mini-app/checks/decode-photo"
 PREVIEW_URL = "/api/v1/mini-app/checks/preview"
 CHECKS_URL = "/api/v1/mini-app/checks"
 ME_URL = "/api/v1/mini-app/me"
@@ -72,6 +73,14 @@ class Bench:
                 telegram_id=telegram_id, bot_token=BOT_TOKEN
             )
         }
+
+    async def photo(
+        self, data: bytes, content_type: str = "image/jpeg", **kwargs: Any
+    ) -> httpx.Response:
+        """POST фотографии чека."""
+        return await self.client.post(
+            PHOTO_URL, files={"photo": ("receipt.jpg", data, content_type)}, **kwargs
+        )
 
     async def preview(self, qr: str = RU_FNS_QR, **kwargs: Any) -> httpx.Response:
         """POST на распознавание."""

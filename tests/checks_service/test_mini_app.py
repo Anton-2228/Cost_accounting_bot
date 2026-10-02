@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import httpx
 
+from checks_service.constants import MAX_PHOTO_BYTES
 from checks_service.enums import CheckKind
 from checks_service.exceptions import (
     ApiError,
@@ -17,7 +18,12 @@ from checks_service.exceptions import (
     ReceiptNotReadyError,
 )
 from tests.checks_service.conftest import ALLOWED_ID, ME_URL, STRANGER_ID, Bench
-from tests.checks_service.factories import PROVERKACHEKA_PAYLOAD, RU_FNS_KEY, RU_FNS_QR
+from tests.checks_service.factories import (
+    PROVERKACHEKA_PAYLOAD,
+    RU_FNS_KEY,
+    RU_FNS_QR,
+    make_qr_photo,
+)
 
 
 async def test_preview_does_not_touch_the_paid_service(bench: Bench) -> None:
@@ -220,3 +226,61 @@ async def test_me_refuses_a_stranger(bench: Bench) -> None:
 
     assert response.status_code == 403
     assert bench.api.users.calls == []
+
+
+async def test_photo_returns_the_qr_string(bench: Bench) -> None:
+    """С фото возвращается только строка QR: внешний сервис и api не трогаются."""
+    response = await bench.photo(make_qr_photo(RU_FNS_QR), headers=bench.auth())
+
+    assert response.status_code == 200
+    assert response.json() == {"qr_raw": RU_FNS_QR}
+    assert bench.fetcher.calls == []
+    assert bench.api.checks.saved == []
+
+
+async def test_photo_prefers_the_receipt_qr(bench: Bench) -> None:
+    """Рекламный QR рядом с фискальным не мешает: берётся тот, что узнал реестр."""
+    photo = make_qr_photo("https://shop.example/promo", RU_FNS_QR)
+
+    response = await bench.photo(photo, headers=bench.auth())
+
+    assert response.json() == {"qr_raw": RU_FNS_QR}
+
+
+async def test_photo_with_unknown_qr_returns_it_anyway(bench: Bench) -> None:
+    """Чужой QR отдаётся как есть: что это не чек, скажет плашка."""
+    response = await bench.photo(make_qr_photo("https://shop.example/promo"), headers=bench.auth())
+
+    assert response.status_code == 200
+    assert response.json() == {"qr_raw": "https://shop.example/promo"}
+
+
+async def test_photo_without_qr_is_422(bench: Bench) -> None:
+    """Снимок без QR — свой код, чтобы страница попросила переснять."""
+    response = await bench.photo(make_qr_photo(), headers=bench.auth())
+
+    assert response.status_code == 422
+    assert response.json()["code"] == "qr_not_found"
+
+
+async def test_photo_that_is_not_an_image_is_422(bench: Bench) -> None:
+    """Не картинка — свой код, а не пятисотая."""
+    response = await bench.photo(b"not an image", headers=bench.auth())
+
+    assert response.status_code == 422
+    assert response.json()["code"] == "photo_unreadable"
+
+
+async def test_photo_over_the_limit_is_413(bench: Bench) -> None:
+    """Слишком большой файл отсекается до чтения картинки."""
+    response = await bench.photo(b"\0" * (MAX_PHOTO_BYTES + 1), headers=bench.auth())
+
+    assert response.status_code == 413
+    assert response.json()["code"] == "photo_too_large"
+
+
+async def test_photo_requires_a_signature(bench: Bench) -> None:
+    """Без подписи фото не расшифровывается."""
+    response = await bench.photo(make_qr_photo(RU_FNS_QR))
+
+    assert response.status_code == 401

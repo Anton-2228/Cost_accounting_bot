@@ -4,22 +4,20 @@
 // на сервер и показывает то, что он вернул. Поэтому сербский чек появится без
 // единой правки этого файла.
 //
-// Сканер — штатный `showScanQrPopup` Telegram: ноль зависимостей и ноль возни
-// с разрешениями камеры. Следствие принятое сознательно: на Telegram Desktop
-// сканера нет, приложение мобильное.
+// QR попадает на страницу двумя путями, дальше путь у чека один (плашка →
+// подтверждение → добавление):
+// - сканер — штатный `showScanQrPopup` Telegram: ноль зависимостей и ноль
+//   возни с разрешениями камеры, но на Telegram Desktop его нет;
+// - фото — снимок или файл из галереи. Страница его ужимает и отдаёт серверу,
+//   а тот возвращает строку QR (`POST /checks/decode-photo`). На Desktop это
+//   единственный путь.
 //
-// Сканер открывается сам при запуске: сканирование — главный сценарий
-// приложения, и лишний тап по кнопке ничего не решает. Кнопка остаётся путём
-// повтора — после отмены сканера, ошибки или добавленного чека.
-//
-// Исключение — отложенные чеки: отсканированы, но налоговая их пока не отдала.
-// Они живут на сервере, поэтому переживают закрытие приложения, и при запуске
-// страница сначала показывает их список — повторить или удалить, — а сканер
-// не открывает: иначе он заслонил бы то, ради чего человек, скорее всего,
-// и вернулся.
+// При запуске страница ничего сама не открывает: показывает обе кнопки и
+// список отложенных чеков — отсканированы, но налоговая их пока не отдала. Они
+// живут на сервере и переживают закрытие приложения.
 //
 // Язык страницы — язык, выбранный в боте. Страница спрашивает его у сервиса
-// (`GET /me`) раньше, чем откроет сканер: подпись сканера и все статусы уже
+// (`GET /me`) раньше, чем откроет кнопки: подпись сканера и все статусы уже
 // должны быть на нём. Не ответил сервис — язык клиента Telegram, если бот на
 // нём говорит, иначе английский: без ответа сервиса страница всё равно
 // работает, а не молчит.
@@ -34,9 +32,15 @@
     // Язык тех, кого бот ещё не знает. Повторяет умолчание бота и api.
     const DEFAULT_LANGUAGE = "en";
 
-    // Сколько ждать ответа про язык. Дольше — и человек смотрит на пустой экран
-    // вместо сканера, а на запасном языке страница работает ничуть не хуже.
+    // Сколько ждать ответа про язык. Дольше — и человек смотрит на неактивные
+    // кнопки, а на запасном языке страница работает ничуть не хуже.
     const LANGUAGE_TIMEOUT_MS = 3000;
+
+    // Фото ужимается до отправки: снимок телефона весит мегабайты, а для QR
+    // хватает и двух тысяч точек по длинной стороне — это сотни килобайт,
+    // быстро и на мобильном интернете. Предел сервера и nginx — 5 МБ.
+    const PHOTO_MAX_SIDE = 2000;
+    const PHOTO_QUALITY = 0.9;
 
     let lang = DEFAULT_LANGUAGE;
     let texts = LOCALES[DEFAULT_LANGUAGE];
@@ -44,6 +48,8 @@
     const els = {
         hint: document.getElementById("hint"),
         scan: document.getElementById("scan"),
+        photo: document.getElementById("photo"),
+        photoInput: document.getElementById("photo-input"),
         card: document.getElementById("card"),
         table: document.getElementById("card-table"),
         totalRow: document.getElementById("card-total-row"),
@@ -124,6 +130,7 @@
 
     function busy(isBusy) {
         els.scan.disabled = isBusy;
+        els.photo.disabled = isBusy;
         els.confirm.disabled = isBusy;
         els.cancel.disabled = isBusy;
         els.pendingList.querySelectorAll("button").forEach(function (button) {
@@ -190,7 +197,10 @@
     async function request(method, path, payload) {
         const headers = { "Authorization": authorization() };
         const init = { method: method, headers: headers };
-        if (payload !== undefined) {
+        if (payload instanceof FormData) {
+            // Заголовок с границей частей браузер ставит сам.
+            init.body = payload;
+        } else if (payload !== undefined) {
             headers["Content-Type"] = "application/json";
             init.body = JSON.stringify(payload);
         }
@@ -244,6 +254,52 @@
             setStatus(error.message, true);
         } finally {
             busy(false);
+        }
+    }
+
+    // Снимок → JPEG не больше PHOTO_MAX_SIDE по длинной стороне. Поворот из
+    // EXIF браузер применяет сам при отрисовке. Не вышло сжать (старый WebView,
+    // экзотический формат) — уходит оригинал: сервер прочитает и его, если он
+    // уложится в предел.
+    async function shrinkPhoto(file) {
+        try {
+            const bitmap = await createImageBitmap(file, { imageOrientation: "from-image" });
+            const scale = Math.min(1, PHOTO_MAX_SIDE / Math.max(bitmap.width, bitmap.height));
+            const canvas = document.createElement("canvas");
+            canvas.width = Math.round(bitmap.width * scale);
+            canvas.height = Math.round(bitmap.height * scale);
+            canvas.getContext("2d").drawImage(bitmap, 0, 0, canvas.width, canvas.height);
+            if (bitmap.close) {
+                bitmap.close();
+            }
+            const blob = await new Promise(function (resolve) {
+                canvas.toBlob(resolve, "image/jpeg", PHOTO_QUALITY);
+            });
+            return blob || file;
+        } catch (error) {
+            return file;
+        }
+    }
+
+    async function onPhoto(file) {
+        setStatus("", false);
+        resetCard();
+        busy(true);
+        setStatus(texts.status_uploading, false);
+        let qrRaw = null;
+        try {
+            const form = new FormData();
+            form.append("photo", await shrinkPhoto(file), "receipt.jpg");
+            const decoded = await request("POST", "/checks/decode-photo", form);
+            qrRaw = decoded && decoded.qr_raw;
+        } catch (error) {
+            setStatus(error.message, true);
+        } finally {
+            busy(false);
+        }
+        // Дальше — ровно как после сканера.
+        if (qrRaw) {
+            await onScanned(qrRaw);
         }
     }
 
@@ -397,8 +453,7 @@
             });
         } catch (error) {
             // Сюда попадает клиент, который версию заявил, а метод не тянет.
-            // Ловим потому, что этот вызов стоит на старте приложения:
-            // непойманный бросок оборвал бы всё, что идёт после него.
+            // Ловим, чтобы человек увидел подсказку про фото, а не тишину.
             scannerUnavailable();
         }
     }
@@ -410,34 +465,37 @@
             useLanguage(supported(navigator.language) || DEFAULT_LANGUAGE);
             els.hint.textContent = texts.outside_telegram;
             els.scan.disabled = true;
+            els.photo.disabled = true;
             return;
         }
         tg.ready();
         tg.expand();
 
-        // Кнопка сканера заблокирована в разметке, пока язык не известен:
-        // иначе подпись сканера успела бы открыться на чужом языке.
+        // Кнопки заблокированы в разметке, пока язык не известен: иначе подпись
+        // сканера и статусы успели бы показаться на чужом языке.
         useLanguage(await loadLanguage());
         els.scan.disabled = false;
+        els.photo.disabled = false;
 
         els.scan.addEventListener("click", openScanner);
+        els.photo.addEventListener("click", function () {
+            els.photoInput.click();
+        });
+        els.photoInput.addEventListener("change", function () {
+            const file = els.photoInput.files && els.photoInput.files[0];
+            // Сбрасываем выбор, иначе то же фото второй раз не вызовет `change`.
+            els.photoInput.value = "";
+            if (file) {
+                onPhoto(file);
+            }
+        });
         els.confirm.addEventListener("click", onConfirm);
         els.cancel.addEventListener("click", function () {
             resetCard();
             setStatus("", false);
         });
 
-        // Есть отложенные чеки — показываем их, а сканер не поднимаем: он
-        // заслонил бы список, ради которого человек, скорее всего, и вернулся.
-        const pending = await loadPending();
-        if (pending && pending.length > 0) {
-            return;
-        }
-
-        // Сканер поднимаем последним и отдельным тиком: слушатели к этому
-        // моменту уже на месте, а страница успевает отрисоваться — иначе
-        // закрывший сканер видит, как экран появляется только сейчас.
-        setTimeout(openScanner, 0);
+        await loadPending();
     }
 
     init();
