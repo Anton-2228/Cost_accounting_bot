@@ -6,3 +6,5 @@ __pycache__/
 .pytest_cache/
 tests/
 env/*.env
+qr_vision/node_modules/
+qr_vision/dist/

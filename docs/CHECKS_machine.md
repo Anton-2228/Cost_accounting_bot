@@ -35,7 +35,7 @@ checks_service/
 ├── main.py              create_app() + lifespan: здесь собирается граф объектов
 ├── config.py            pydantic-settings, env/checks_service.env
 ├── constants.py · logging.py · enums.py
-├── exceptions.py        ChecksError → 8 подклассов + register_exception_handlers
+├── exceptions.py        ChecksError → подклассы + register_exception_handlers
 ├── auth/
 │   ├── init_data.py     проверка подписи и свежести initData
 │   └── dependencies.py  Depends → telegram_id, 401/403
@@ -45,15 +45,23 @@ checks_service/
 │   └── ru_fns/
 │       ├── parser.py    t, s, fn, i→fd, fp; external_key = «ФН:ФД:ФП»
 │       └── fetcher.py   proverkacheka.com
-├── main_api/            клиент основного api: http + spreadsheets + checks + users
+├── main_api/            клиент основного api: http + spreadsheets + checks + users + llm_usages
+├── qr_vision/           клиент сайдкара qr-vision (фолбек QR, §4.2)
 ├── services/
-│   └── check_intake.py  оркестрация preview и сохранения
+│   ├── check_intake.py  оркестрация preview и сохранения
+│   ├── photo_decoder.py QR с фото: Pillow + zxing-cpp
+│   └── photo_qr.py      zxing, не справился — модель через qr-vision
 ├── requests/ · responses/
 └── routers/             system (/health) + mini_app
 
 mini_app/                статика, без сборщика
 ├── index.html · app.js · locales.js · styles.css
 └── config.js            единственная строка с адресом бэкенда
+
+qr_vision/               сайдкар фолбека QR: Node + pi (TS SDK), без порта наружу
+├── src/server.ts        POST /decode, GET /health; агент с bash и Python
+├── requirements.txt     базовые библиотеки агента (zxing-cpp, OpenCV, pyzbar)
+└── entrypoint.sh        готовит том /workspace: .venv, scripts/, NOTES.md
 ```
 
 Публикует всё это nginx хоста
@@ -141,7 +149,7 @@ loopback не возвращается. Оба обслуживает один s
 
 | Метод и путь | Назначение |
 |---|---|
-| `POST /api/v1/mini-app/checks/decode-photo` | multipart, поле `photo`: найти QR на фото → `{qr_raw}`; дальше страница идёт обычным путём `preview` → `checks`. Несколько QR — первый, который узнаёт реестр форматов, иначе первый найденный. zxing-cpp + Pillow в потоке; предел 5 МБ (`MAX_PHOTO_BYTES`, nginx `client_max_body_size 5m`) |
+| `POST /api/v1/mini-app/checks/decode-photo` | multipart, поле `photo`: найти QR на фото → `{qr_raw}`; дальше страница идёт обычным путём `preview` → `checks`. Несколько QR — первый, который узнаёт реестр форматов, иначе первый найденный. zxing-cpp + Pillow в потоке; предел 5 МБ (`MAX_PHOTO_BYTES`, nginx `client_max_body_size 5m`). zxing не нашёл QR — фолбек через сайдкар `qr-vision` (§4.2) |
 | `POST /api/v1/mini-app/checks/preview` | распознать формат и собрать плашку; внешний сервис не зовётся |
 | `POST /api/v1/mini-app/checks` | расшифровать и сохранить; 201 `{status: "saved"}`, повтор — 409; касса ещё не передала чек — 202 `{status: "pending", id, total, purchased_at}`, чек отложен |
 | `GET /api/v1/mini-app/pending-checks` | отложенные чеки со сводкой из QR, истёкшие тоже; страница показывает их при открытии |
@@ -202,6 +210,7 @@ Telegram кэширует статику агрессивно, и новая с�
 | `receipt_saves_total` | counter | `telegram_id`, `kind` | чек сохранён в api (тот же признак, что у лог-строки) |
 | `receipt_failures_total` | counter | `telegram_id`, `stage`, `reason` | любой отказ на `/checks/decode-photo` (`stage=photo`), `/checks/preview` и `/checks` |
 | `receipt_fetch_seconds` | histogram | `kind`, `outcome` | поход во внешний сервис расшифровки |
+| `qr_photo_fallbacks_total` | counter | `outcome` | обращение к модели за QR с фото (§4.2): `ok`, `empty`, `unrecognised`, `error` |
 
 `reason` — это `ChecksError.code` из таблицы выше: отказы считаются в **общем
 обработчике исключений**, ровно там же, где пишутся в журнал, поэтому новый
@@ -231,6 +240,51 @@ Postgres напрямую. Позиции показаны на двух ста�
 (видны сразу после сканирования, чек как он есть у налоговой) и из `records`
 (появляются после разбора в боте, уже с типом и категорией). Пока чек стоит в
 очереди `/check`, есть только первое.
+
+### 4.2. Фолбек QR: сайдкар qr-vision
+
+`checks_service/services/photo_qr.py`, `checks_service/qr_vision/`, сайдкар —
+`qr_vision/src/server.ts`. Зовётся, только когда zxing не нашёл на фото ни
+одного QR:
+
+1. Таблица пользователя ищется **до** модели: расход пишется на неё, а без неё
+   и чек класть некуда — `spreadsheet_not_found`, модель не зовётся.
+2. `POST qr-vision:8000/decode` `{image: base64, mimeType}` →
+   `{qr, model, usage}`. Сайдкар — Node с харнессом pi (TS SDK; Python SDK у pi
+   нет): на запрос своя сессия в памяти, без расширений, скиллов и
+   контекст-файлов; модель `anthropic/claude-opus-5.5` через OpenRouter,
+   thinking `low` (ниже эта модель не умеет). Таймаут сайдкара 110 с (вместе с
+   ожиданием в очереди), клиента — 120 с, nginx — 150 с.
+3. Расход пишется в `llm_usages` (`QR_PHOTO_FALLBACK`) **до** проверки ответа:
+   деньги потрачены в любом случае. Не записался — лог, не отказ.
+4. Строка годится, только если её узнаёт реестр форматов. Модели верить на
+   слово нельзя: прочитать QR по пикселям она может и выдумать — тогда её
+   ловит плашка с подтверждением пользователя и налоговая.
+
+**Агент работает кодом.** По пикселям модель QR почти не читает, поэтому у неё
+стандартные инструменты pi (`read`, `bash`, `edit`, `write`) и Python с
+`zxing-cpp`, OpenCV WeChatQRCode (модели — `/opt/wechat_qrcode`) и `pyzbar`.
+Фото кладётся файлом в `/workspace/requests/<uuid>/` и удаляется после ответа.
+OpenCV закреплён на 4.x: в 5.0 у WeChatQRCode другой конструктор, caffe-модели
+он не берёт.
+
+**Память.** `/workspace` — том `qr_vision_workspace`. Там `scripts/` (скрипты
+агента), `.venv` (создаётся при первом старте с `--system-site-packages`:
+база приходит из образа, доставленное агентом через `pip` лежит в томе) и
+`NOTES.md` (заметки агента). Список скриптов и заметки сайдкар дописывает в
+промпт каждого запроса. Запросы идут по одному: рабочий каталог общий.
+Посмотреть — `docker compose exec qr-vision ls /workspace/scripts`, сбросить —
+остановить сервис и `docker volume rm <проект>_qr_vision_workspace`.
+
+**Принятые риски.** bash не ограничен, а фото — чужой ввод: текст на снимке
+может оказаться инструкцией для модели. (1) Ключ OpenRouter лежит в окружении
+процесса и командам агента доступен — поэтому ключ отдельный и с лимитом
+расходов. (2) Подложенный в `scripts/` файл выполнится и на следующих запросах.
+Круг тех, кто может прислать фото, ограничен списком допуска checks_service.
+
+Любая неудача (сайдкар недоступен, таймаут, `qr: null`, незнакомый формат) —
+обычный `qr_not_found`, причина в журнале и в `qr_photo_fallbacks_total{outcome}`.
+Выключается `QR_VISION_ENABLED=false`.
 
 ---
 

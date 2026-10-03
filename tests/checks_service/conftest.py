@@ -35,12 +35,13 @@ from checks_service.formats.ru_fns.parser import RuFnsQrParser  # noqa: E402
 from checks_service.main import create_app  # noqa: E402
 from checks_service.main_api.spreadsheets import Spreadsheet  # noqa: E402
 from checks_service.services.check_intake import CheckIntakeService  # noqa: E402
+from checks_service.services.photo_qr import PhotoQrService  # noqa: E402
 from tests.checks_service.factories import (  # noqa: E402
     PROVERKACHEKA_PAYLOAD,
     RU_FNS_QR,
     make_init_data,
 )
-from tests.checks_service.fakes import FakeApiGateway, FakeFetcher  # noqa: E402
+from tests.checks_service.fakes import FakeApiGateway, FakeFetcher, FakeQrVision  # noqa: E402
 
 PHOTO_URL = "/api/v1/mini-app/checks/decode-photo"
 PREVIEW_URL = "/api/v1/mini-app/checks/preview"
@@ -58,10 +59,13 @@ class Bench:
         api: FakeApiGateway,
         fetcher: FakeFetcher,
         intake: CheckIntakeService,
+        qr_vision: FakeQrVision,
     ) -> None:
         self.client = client
         self.api = api
         self.fetcher = fetcher
+        #: Сайдкар фолбека QR: по умолчанию «недоступен» (`result = None`).
+        self.qr_vision = qr_vision
         #: Тот же сервис, что обслуживает запросы: через него зовётся фоновый
         #: проход, у которого HTTP-входа нет.
         self.intake = intake
@@ -110,11 +114,13 @@ async def bench() -> AsyncGenerator[Bench, None]:
     app.state.registry = registry
     intake = CheckIntakeService(registry=registry, api=api)  # type: ignore[arg-type]
     app.state.intake = intake
+    qr_vision = FakeQrVision()
+    app.state.photo_qr = PhotoQrService(registry=registry, api=api, qr_vision=qr_vision)  # type: ignore[arg-type]
     app.state.verifier = InitDataVerifier(BOT_TOKEN, max_age_seconds=3600)
 
     transport = ASGITransport(app=app)
     async with AsyncClient(transport=transport, base_url="http://test") as client:
-        yield Bench(client, api, fetcher, intake)
+        yield Bench(client, api, fetcher, intake, qr_vision)
 
 
 @pytest.fixture(autouse=True)

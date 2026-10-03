@@ -33,6 +33,27 @@ def decode_qr_codes(data: bytes) -> list[str]:
     return [barcode.text for barcode in barcodes if barcode.valid and barcode.text]
 
 
+#: Форматы Pillow → MIME-типы, которые принимает модель.
+_MIME_BY_FORMAT = {
+    "JPEG": "image/jpeg",
+    "PNG": "image/png",
+    "WEBP": "image/webp",
+    "GIF": "image/gif",
+}
+
+
+def image_mime_type(data: bytes) -> str | None:
+    """MIME-тип снимка по его содержимому; `None` — модели такой не показать.
+
+    По содержимому, а не по заголовку загрузки: заголовок пишет клиент.
+    """
+    try:
+        with Image.open(io.BytesIO(data)) as image:
+            return _MIME_BY_FORMAT.get(image.format or "")
+    except (UnidentifiedImageError, OSError, ValueError):
+        return None
+
+
 def _open(data: bytes) -> Image.Image:
     """Читает снимок, повёрнутый так, как его видел человек."""
     try:

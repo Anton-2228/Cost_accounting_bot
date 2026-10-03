@@ -23,6 +23,7 @@ from checks_service.formats.base import CheckPreview, ParsedCheck
 from checks_service.main_api.checks import SavedCheck
 from checks_service.main_api.pending_checks import PendingCheck
 from checks_service.main_api.spreadsheets import Spreadsheet
+from checks_service.qr_vision import QrVisionResult, QrVisionUsage
 
 
 @dataclass
@@ -56,6 +57,38 @@ class FakeSpreadsheetsClient:
         """Документ пользователя или `None`, если таблицы нет."""
         self.calls.append(telegram_id)
         return self.spreadsheet
+
+
+@dataclass
+class FakeLlmUsagesClient:
+    """Фейк клиента учёта обращений к модели."""
+
+    recorded: list[tuple[int, QrVisionUsage]] = field(default_factory=list)
+    #: Следующая запись ответит недоступностью api.
+    fail_with: ApiError | None = None
+
+    async def record_qr_fallback(self, spreadsheet_id: int, usage: QrVisionUsage) -> None:
+        """Запоминает расход или падает."""
+        if self.fail_with is not None:
+            raise self.fail_with
+        self.recorded.append((spreadsheet_id, usage))
+
+
+@dataclass
+class FakeQrVision:
+    """Фейк сайдкара qr_vision: отвечает заготовкой и ведёт журнал вызовов."""
+
+    #: Ответ сайдкара; `None` — сайдкар недоступен.
+    result: QrVisionResult | None = None
+    calls: list[str] = field(default_factory=list)
+
+    async def decode(self, data: bytes, *, mime_type: str) -> QrVisionResult | None:
+        """Возвращает заготовленный ответ."""
+        self.calls.append(mime_type)
+        return self.result
+
+    async def aclose(self) -> None:
+        """Закрывать нечего."""
 
 
 @dataclass
@@ -218,6 +251,7 @@ class FakeApiGateway:
     checks: FakeChecksClient = field(default_factory=FakeChecksClient)
     pending_checks: FakePendingChecksClient = field(default_factory=FakePendingChecksClient)
     users: FakeUsersClient = field(default_factory=FakeUsersClient)
+    llm_usages: FakeLlmUsagesClient = field(default_factory=FakeLlmUsagesClient)
 
     async def aclose(self) -> None:
         """Закрывать нечего."""

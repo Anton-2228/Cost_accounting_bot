@@ -16,3 +16,7 @@ google-sa.json
 # Переменные для подстановки в docker-compose.yml. Значения по умолчанию лежат
 # в самом compose, а этот файл машинно-зависимый: адрес и порт у каждого свои.
 .env
+
+# qr_vision: зависимости и сборка TypeScript.
+qr_vision/node_modules/
+qr_vision/dist/

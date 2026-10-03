@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from checks_service.main_api.checks import ChecksApiClient, SavedCheck
 from checks_service.main_api.http import ApiHttpClient
+from checks_service.main_api.llm_usages import LlmUsagesApiClient
 from checks_service.main_api.pending_checks import PendingCheck, PendingChecksApiClient
 from checks_service.main_api.spreadsheets import Spreadsheet, SpreadsheetsApiClient
 from checks_service.main_api.users import UsersApiClient
@@ -23,6 +24,7 @@ class ApiGateway:
         self.checks = ChecksApiClient(self._http)
         self.pending_checks = PendingChecksApiClient(self._http)
         self.users = UsersApiClient(self._http)
+        self.llm_usages = LlmUsagesApiClient(self._http)
 
     async def aclose(self) -> None:
         """Закрывает соединение с api."""
@@ -33,6 +35,7 @@ __all__ = [
     "ApiGateway",
     "ApiHttpClient",
     "ChecksApiClient",
+    "LlmUsagesApiClient",
     "PendingCheck",
     "PendingChecksApiClient",
     "SavedCheck",

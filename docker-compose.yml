@@ -135,10 +135,15 @@ services:
     environment:
       # Блок environment имеет приоритет над env_file.
       API_BASE_URL: http://api:8000/api/v1
+      QR_VISION_BASE_URL: http://qr-vision:8000
       TZ: UTC
     depends_on:
       api:
         condition: service_healthy
+      # Не `service_healthy`: фолбек необязателен, и без него сервис работает —
+      # фото без читаемого QR просто получит `qr_not_found`.
+      qr-vision:
+        condition: service_started
     ports:
       # Единственный сервис, до которого доходит запрос из интернета, — но и он
       # слушает только 127.0.0.1: наружу его выводит веб-сервер хоста, у
@@ -152,6 +157,27 @@ services:
       timeout: 5s
       retries: 5
       start_period: 20s
+
+  qr-vision:
+    # Фолбек чтения QR с фото: pi + модель через OpenRouter. checks_service
+    # зовёт его, только когда zxing не справился. Порт не публикуется: ключ
+    # OpenRouter тратит только тот, кто уже внутри docker-сети.
+    build:
+      context: .
+      dockerfile: dockerfiles/qr_vision.Dockerfile
+    restart: unless-stopped
+    env_file: env/qr_vision.env
+    volumes:
+      # Память агента: написанные им скрипты, доставленные библиотеки (.venv) и
+      # заметки. Переживает пересоздание контейнера; сбросить —
+      # `docker volume rm` этого тома.
+      - qr_vision_workspace:/workspace
+    healthcheck:
+      test: ["CMD-SHELL", "node -e \"fetch('http://localhost:8000/health').then(r=>process.exit(r.ok?0:1),()=>process.exit(1))\""]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 15s
 
   prometheus:
     # Тег пиннуется, как у postgres и redis: `latest` однажды сменит формат
@@ -355,6 +381,9 @@ services:
 volumes:
   pg_data:
   redis_data:
+  # Рабочий каталог агента qr-vision. Потеря не смертельна: агент напишет
+  # скрипты заново, просто первые запросы будут дольше и дороже.
+  qr_vision_workspace:
   # Метрики и настройки Grafana. Про них надо помнить при бэкапе — но потеря их
   # не смертельна: точные числа лежат в pg_data, а дашборды в репозитории.
   prometheus_data:

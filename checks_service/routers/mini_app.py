@@ -2,13 +2,11 @@
 
 from __future__ import annotations
 
-import anyio
 from fastapi import APIRouter, Depends, File, Request, Response, UploadFile, status
 
 from checks_service import constants
 from checks_service.auth.dependencies import current_telegram_id
-from checks_service.exceptions import PhotoTooLargeError, QrNotFoundError
-from checks_service.formats.registry import FormatRegistry
+from checks_service.exceptions import PhotoTooLargeError
 from checks_service.main_api import ApiGateway
 from checks_service.requests.scan_request import ScanRequest
 from checks_service.responses.check_preview_response import CheckPreviewResponse
@@ -20,7 +18,7 @@ from checks_service.responses.pending_check_response import (
 )
 from checks_service.responses.saved_check_response import SavedCheckResponse
 from checks_service.services.check_intake import CheckIntakeService, Deferred
-from checks_service.services.photo_decoder import decode_qr_codes
+from checks_service.services.photo_qr import PhotoQrService
 
 router = APIRouter(prefix="/api/v1/mini-app", tags=["mini-app"])
 
@@ -41,12 +39,12 @@ def get_api(request: Request) -> ApiGateway:
     return api
 
 
-def get_registry(request: Request) -> FormatRegistry:
-    """Достаёт реестр форматов из состояния приложения."""
-    registry = getattr(request.app.state, "registry", None)
-    if registry is None:  # pragma: no cover — возможно только при сбое сборки
-        raise RuntimeError("Реестр форматов не инициализирован в app.state")
-    return registry
+def get_photo_qr(request: Request) -> PhotoQrService:
+    """Достаёт сервис чтения QR с фото из состояния приложения."""
+    photo_qr = getattr(request.app.state, "photo_qr", None)
+    if photo_qr is None:  # pragma: no cover — возможно только при сбое сборки
+        raise RuntimeError("Сервис чтения QR с фото не инициализирован в app.state")
+    return photo_qr
 
 
 @router.get("/me", response_model=MeResponse)
@@ -69,15 +67,14 @@ async def me(
 async def decode_photo(
     photo: UploadFile = File(...),
     telegram_id: int = Depends(current_telegram_id),
-    registry: FormatRegistry = Depends(get_registry),
+    photo_qr: PhotoQrService = Depends(get_photo_qr),
 ) -> DecodedPhotoResponse:
     """Находит QR-код чека на фотографии и возвращает его строку.
 
     Только расшифровывает картинку: плашку и добавление страница просит
     обычными запросами, теми же, что после сканера, — путь чека один, как бы
-    QR ни попал на страницу. Если QR несколько, берётся первый, который узнаёт
-    реестр форматов (рядом с фискальным часто напечатан рекламный); не узнал
-    ни один — первый найденный, и плашка честно ответит `format_not_supported`.
+    QR ни попал на страницу. Сначала QR читает zxing, не справился — модель
+    (см. :class:`PhotoQrService`).
     """
     # Читаем на байт больше предела: так перебор виден, а лишнего в памяти нет.
     data = await photo.read(constants.MAX_PHOTO_BYTES + 1)
@@ -85,12 +82,7 @@ async def decode_photo(
         raise PhotoTooLargeError(
             "Фотография больше предела", details={"max_bytes": constants.MAX_PHOTO_BYTES}
         )
-
-    codes = await anyio.to_thread.run_sync(decode_qr_codes, data)
-    if not codes:
-        raise QrNotFoundError("На фотографии не найден QR-код", details={"bytes": len(data)})
-    recognised = next((code for code in codes if registry.recognises(code)), codes[0])
-    return DecodedPhotoResponse(qr_raw=recognised)
+    return DecodedPhotoResponse(qr_raw=await photo_qr.decode(data, telegram_id=telegram_id))
 
 
 @router.post("/checks/preview", response_model=CheckPreviewResponse)

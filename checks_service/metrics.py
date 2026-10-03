@@ -81,7 +81,21 @@ RECEIPT_FETCH_SECONDS = Histogram(
     buckets=(0.25, 0.5, 1, 2, 3, 5, 8, 13, 21, 34, 55, 89),
 )
 
-_ALL = (RECEIPT_PREVIEWS, RECEIPT_SAVES, RECEIPT_FAILURES, RECEIPT_FETCH_SECONDS)
+QR_PHOTO_FALLBACKS = Counter(
+    "qr_photo_fallbacks",
+    "Обращений к модели за QR с фото, когда zxing не справился",
+    # `ok` — строка узнана реестром; `empty` — модель не прочитала;
+    # `unrecognised` — прочитала не чек; `error` — сайдкар недоступен.
+    ["outcome"],
+)
+
+_ALL = (
+    RECEIPT_PREVIEWS,
+    RECEIPT_SAVES,
+    RECEIPT_FAILURES,
+    RECEIPT_FETCH_SECONDS,
+    QR_PHOTO_FALLBACKS,
+)
 
 
 def observe_preview(telegram_id: int | str, kind: CheckKind) -> None:
@@ -106,6 +120,11 @@ def observe_failure(telegram_id: int | str, stage: str, reason: str) -> None:
 def observe_fetch(kind: CheckKind, outcome: str, seconds: float) -> None:
     """Поход во внешний сервис расшифровки занял `seconds` и кончился `outcome`."""
     RECEIPT_FETCH_SECONDS.labels(kind=kind.value, outcome=outcome).observe(seconds)
+
+
+def observe_qr_fallback(outcome: str) -> None:
+    """Фолбек чтения QR с фото кончился `outcome`."""
+    QR_PHOTO_FALLBACKS.labels(outcome=outcome).inc()
 
 
 def render() -> tuple[bytes, str]:

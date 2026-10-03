@@ -1,0 +1,11 @@
+# Базовые библиотеки агента qr-vision. Ставятся в системный Python образа;
+# `/workspace/.venv` (том) создаётся поверх них с `--system-site-packages`,
+# поэтому обновление образа обновляет базу, а доставленное агентом остаётся.
+#
+# OpenCV закреплён на ветке 4.x намеренно: в 5.0 у WeChatQRCode другой
+# конструктор, и caffe-модели из /opt/wechat_qrcode он не принимает.
+zxing-cpp==3.1.1
+opencv-contrib-python-headless==4.14.0.94
+pyzbar==0.1.9
+pillow==12.3.0
+numpy==2.4.6

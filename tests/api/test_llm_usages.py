@@ -8,6 +8,7 @@ from httpx import AsyncClient
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from api.enums import LlmOperation
 from api.orm.llm_usage import LlmUsageORM
 from tests import factories
 
@@ -95,6 +96,34 @@ async def test_usage_without_entity_is_recorded(
 
     assert response.status_code == 201
     assert response.json()["data"]["entity_kind"] is None
+
+
+async def test_qr_photo_fallback_is_recorded(
+    client: AsyncClient,
+    session: AsyncSession,
+) -> None:
+    """Чтение QR с фото моделью (checks_service) учитывается своим видом.
+
+    Сущности у него нет: чека ещё не существует, модель как раз ищет его QR.
+    """
+    spreadsheet = await factories.create_spreadsheet(session)
+    await session.commit()
+
+    response = await client.post(
+        f"/api/v1/spreadsheets/{spreadsheet.id}/llm-usages",
+        json={
+            **_USAGE_BODY,
+            "operation": "QR_PHOTO_FALLBACK",
+            "entity_kind": None,
+            "entity_id": None,
+            "model": "anthropic/claude-opus-5.5",
+        },
+    )
+
+    assert response.status_code == 201
+    stored = (await session.scalars(select(LlmUsageORM))).one()
+    assert stored.operation == LlmOperation.QR_PHOTO_FALLBACK
+    assert stored.entity_kind is None
 
 
 async def test_half_filled_entity_pair_is_422(

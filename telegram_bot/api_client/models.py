@@ -72,10 +72,11 @@ class NotificationKind(StrEnum):
 
 
 class LlmOperation(StrEnum):
-    """О чём спрашивали модель. Различает две стадии разбора чека."""
+    """О чём спрашивали модель: две стадии разбора чека и чтение QR с фото."""
 
     SUGGEST_PRODUCT_TYPES = "SUGGEST_PRODUCT_TYPES"
     SUGGEST_CATEGORIES = "SUGGEST_CATEGORIES"
+    QR_PHOTO_FALLBACK = "QR_PHOTO_FALLBACK"
 
 
 class LlmEntityKind(StrEnum):

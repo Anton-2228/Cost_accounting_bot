@@ -7,6 +7,8 @@
 
 from __future__ import annotations
 
+from decimal import Decimal
+
 import httpx
 
 from checks_service.constants import MAX_PHOTO_BYTES
@@ -17,6 +19,7 @@ from checks_service.exceptions import (
     ReceiptNotFoundError,
     ReceiptNotReadyError,
 )
+from checks_service.qr_vision import QrVisionResult, QrVisionUsage
 from tests.checks_service.conftest import ALLOWED_ID, ME_URL, STRANGER_ID, Bench
 from tests.checks_service.factories import (
     PROVERKACHEKA_PAYLOAD,
@@ -284,3 +287,102 @@ async def test_photo_requires_a_signature(bench: Bench) -> None:
     response = await bench.photo(make_qr_photo(RU_FNS_QR))
 
     assert response.status_code == 401
+
+
+def _usage(cost: str | None = "0.0123") -> QrVisionUsage:
+    return QrVisionUsage(
+        model="anthropic/claude-opus-5.5",
+        prompt_tokens=1500,
+        completion_tokens=40,
+        total_tokens=1540,
+        cost=None if cost is None else Decimal(cost),
+        raw={"input": 1500, "output": 40, "totalTokens": 1540, "cost": cost},
+    )
+
+
+async def test_photo_read_by_zxing_does_not_call_the_model(bench: Bench) -> None:
+    """Модель платная: если QR прочитал zxing, к ней не ходят."""
+    bench.qr_vision.result = QrVisionResult(qr=RU_FNS_QR, usage=_usage())
+
+    response = await bench.photo(make_qr_photo(RU_FNS_QR), headers=bench.auth())
+
+    assert response.status_code == 200
+    assert bench.qr_vision.calls == []
+    assert bench.api.llm_usages.recorded == []
+
+
+async def test_photo_fallback_reads_the_qr(bench: Bench) -> None:
+    """zxing не справился — строку прочитала модель, расход записан на таблицу."""
+    bench.qr_vision.result = QrVisionResult(qr=RU_FNS_QR, usage=_usage())
+
+    response = await bench.photo(make_qr_photo(), headers=bench.auth())
+
+    assert response.status_code == 200
+    assert response.json() == {"qr_raw": RU_FNS_QR}
+    assert bench.qr_vision.calls == ["image/jpeg"]
+    assert bench.api.llm_usages.recorded == [(7, _usage())]
+
+
+async def test_photo_fallback_with_unknown_format_is_422(bench: Bench) -> None:
+    """Строка модели, которую не узнаёт реестр, не уходит дальше. Расход — всё равно."""
+    bench.qr_vision.result = QrVisionResult(qr="https://shop.example/promo", usage=_usage())
+
+    response = await bench.photo(make_qr_photo(), headers=bench.auth())
+
+    assert response.status_code == 422
+    assert response.json()["code"] == "qr_not_found"
+    assert len(bench.api.llm_usages.recorded) == 1
+
+
+async def test_photo_fallback_that_read_nothing_is_422(bench: Bench) -> None:
+    """Модель не прочитала QR — тот же `qr_not_found`, расход записан."""
+    bench.qr_vision.result = QrVisionResult(qr=None, usage=_usage())
+
+    response = await bench.photo(make_qr_photo(), headers=bench.auth())
+
+    assert response.json()["code"] == "qr_not_found"
+    assert len(bench.api.llm_usages.recorded) == 1
+
+
+async def test_photo_fallback_unavailable_is_422(bench: Bench) -> None:
+    """Сайдкар лежит — пользователь видит обычное «QR не найден»."""
+    bench.qr_vision.result = None
+
+    response = await bench.photo(make_qr_photo(), headers=bench.auth())
+
+    assert response.status_code == 422
+    assert response.json()["code"] == "qr_not_found"
+    assert bench.api.llm_usages.recorded == []
+
+
+async def test_photo_fallback_survives_a_failed_usage_record(bench: Bench) -> None:
+    """Не записался расход — не повод отказывать: строка уже прочитана."""
+    bench.qr_vision.result = QrVisionResult(qr=RU_FNS_QR, usage=_usage())
+    bench.api.llm_usages.fail_with = ApiError(503, "api лежит")
+
+    response = await bench.photo(make_qr_photo(), headers=bench.auth())
+
+    assert response.status_code == 200
+    assert response.json() == {"qr_raw": RU_FNS_QR}
+
+
+async def test_photo_fallback_needs_a_spreadsheet(bench: Bench) -> None:
+    """Без таблицы модель не зовут: расход некуда записать и чек некуда положить."""
+    bench.api.spreadsheets.spreadsheet = None
+    bench.qr_vision.result = QrVisionResult(qr=RU_FNS_QR, usage=_usage())
+
+    response = await bench.photo(make_qr_photo(), headers=bench.auth())
+
+    assert response.status_code == 404
+    assert response.json()["code"] == "spreadsheet_not_found"
+    assert bench.qr_vision.calls == []
+
+
+async def test_photo_fallback_is_not_called_for_a_non_image(bench: Bench) -> None:
+    """Нечитаемый файл отсекается до модели."""
+    bench.qr_vision.result = QrVisionResult(qr=RU_FNS_QR, usage=_usage())
+
+    response = await bench.photo(b"not an image", headers=bench.auth())
+
+    assert response.json()["code"] == "photo_unreadable"
+    assert bench.qr_vision.calls == []

@@ -16,8 +16,10 @@ from checks_service.formats.ru_fns import ProverkachekaFetcher, RuFnsQrParser
 from checks_service.formats.srb_suf import SrbSufQrParser, SufFetcher
 from checks_service.logging import get_logger, setup_logging
 from checks_service.main_api import ApiGateway
+from checks_service.qr_vision import QrVisionClient
 from checks_service.routers import mini_app_router, system_router
 from checks_service.services.check_intake import CheckIntakeService
+from checks_service.services.photo_qr import PhotoQrService
 from checks_service.tasks import PendingRetryLoop
 
 logger = get_logger(__name__)
@@ -57,6 +59,12 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     app.state.registry = registry
     intake = CheckIntakeService(registry=registry, api=api)
     app.state.intake = intake
+    qr_vision = (
+        QrVisionClient(settings.qr_vision_base_url, timeout=settings.qr_vision_timeout_seconds)
+        if settings.qr_vision_enabled
+        else None
+    )
+    app.state.photo_qr = PhotoQrService(registry=registry, api=api, qr_vision=qr_vision)
     app.state.verifier = InitDataVerifier(
         settings.telegram_bot_token,
         max_age_seconds=settings.init_data_max_age_seconds,
@@ -73,6 +81,8 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         yield
     finally:
         await retry_loop.stop()
+        if qr_vision is not None:
+            await qr_vision.aclose()
         await registry.aclose()
         await api.aclose()
         logger.info("Сервис остановлен")

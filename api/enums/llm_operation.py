@@ -22,3 +22,5 @@ class LlmOperation(StrEnum):
 
     SUGGEST_PRODUCT_TYPES = "SUGGEST_PRODUCT_TYPES"
     SUGGEST_CATEGORIES = "SUGGEST_CATEGORIES"
+    #: Чтение QR с фото чека моделью, когда zxing не справился (checks_service).
+    QR_PHOTO_FALLBACK = "QR_PHOTO_FALLBACK"

@@ -78,16 +78,35 @@ cp env/postgres.env.example env/postgres.env
 cp env/google_sheets_service.env.example env/google_sheets_service.env
 cp env/telegram_bot.env.example env/telegram_bot.env
 cp env/checks_service.env.example env/checks_service.env
+cp env/qr_vision.env.example env/qr_vision.env
 cp env/grafana.env.example env/grafana.env
 # заполнить пароли, положить ключ сервисного аккаунта в secrets/google_sa.json,
 # указать TELEGRAM_BOT_TOKEN, PROVERKACHEKA_API_TOKEN и списки доступа —
 # ALLOWED_TELEGRAM_IDS и ADMIN_TELEGRAM_IDS (одинаково боту и checks_service;
-# доступ = объединение списков, дублировать админов в первом не нужно)
+# доступ = объединение списков, дублировать админов в первом не нужно),
+# OPENROUTER_API_KEY для qr_vision (фолбек чтения QR с фото моделью)
 docker compose up -d --build
 curl -s localhost:8010/health          # api
 curl -s localhost:8011/health          # отчёт последнего прохода по очереди
 curl -s localhost:8012/health          # бэкенд Mini App
 ```
+
+`qr-vision` — сайдкар checks_service: когда zxing не прочитал QR на фото чека,
+фото уходит туда, и QR читает модель (`anthropic/claude-opus-5.5` через
+OpenRouter) под харнессом pi — его TypeScript SDK, потому что для Python SDK у
+pi нет. Порта у него нет даже на `127.0.0.1`: ключ OpenRouter тратит только
+checks_service изнутри docker-сети. Расход пишется в `llm_usages` с видом
+`QR_PHOTO_FALLBACK`. Не нужен — `QR_VISION_ENABLED=false` в
+`env/checks_service.env`, и фото без читаемого QR сразу получает
+`qr_not_found`.
+
+Агент читает QR кодом: у него bash и Python с `zxing-cpp`, OpenCV WeChatQRCode
+и `pyzbar`, до двух минут на фото. Свои скрипты, доставленные библиотеки и
+заметки он хранит в томе `qr_vision_workspace` и переиспользует на следующих
+фото (`docker compose exec qr-vision ls /workspace/scripts`). **Ключ OpenRouter
+для него заводите отдельный и с лимитом расходов:** bash у агента не ограничен,
+а фото — чужой ввод, и лимит ключа — потолок ущерба. Подробности и принятые
+риски — [docs/CHECKS_machine.md](docs/CHECKS_machine.md), §4.2.
 
 Ни один порт наружу не публикуется: всё висит на `127.0.0.1`. Бот работает
 через long polling и входящих соединений не ждёт, api и Postgres из интернета
