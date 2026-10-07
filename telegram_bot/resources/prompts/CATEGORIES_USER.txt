@@ -1,7 +1,5 @@
-Product types:
-"""
+Product types (JSON):
 {product_types}
-"""
 
 Categories:
 """

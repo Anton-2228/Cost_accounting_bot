@@ -3,7 +3,7 @@ Your task is to assign each product type a category from the given list.
 Assign exactly one category to each type. {fallback_rule}
 
 Your answer must be JSON with a single field "items" — an array of objects, one for each type given. Each object has exactly 2 fields:
- 1) id — a number, the type number exactly as it was given.
+ 1) id — a number, the value of the "id" field of the type exactly as it was given. Numbers inside "name" are part of the type name, not ids.
  2) category — a string; it may ONLY be a category from the given list, written exactly as it is in the list.
 
 IMPORTANT: there must be as many objects in the answer as types given. Do not skip types and do not invent new categories.

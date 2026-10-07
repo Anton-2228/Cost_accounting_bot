@@ -100,12 +100,16 @@ class AiClient:
         raw, usage = await self._invoke(
             TYPES_SYSTEM_PROMPT.format(language=ENGLISH_NAMES[language]),
             TYPES_USER_PROMPT.format(
-                products=_numbered(products),
+                products=_as_items(products),
                 types=_listed(known_types),
             ),
         )
         answer = _validate(raw, TypeSuggestions)
-        types = {item.id: item.type.strip().lower() for item in answer.items if item.id > 0}
+        types = {
+            item.id: item.type.strip().lower()
+            for item in answer.items
+            if 0 < item.id <= len(products)
+        }
         return types, usage
 
     async def suggest_categories(
@@ -124,12 +128,16 @@ class AiClient:
         raw, usage = await self._invoke(
             CATEGORIES_SYSTEM_PROMPT.format(fallback_rule=_fallback_rule(default_category)),
             CATEGORIES_USER_PROMPT.format(
-                product_types=_numbered(product_types),
+                product_types=_as_items(product_types),
                 categories=_listed(categories),
             ),
         )
         answer = _validate(raw, CategorySuggestions)
-        suggestions = {item.id: item.category.strip() for item in answer.items if item.id > 0}
+        suggestions = {
+            item.id: item.category.strip()
+            for item in answer.items
+            if 0 < item.id <= len(product_types)
+        }
         return suggestions, usage
 
     async def _invoke(self, system_prompt: str, user_prompt: str) -> tuple[str, LlmUsage | None]:
@@ -279,9 +287,15 @@ def _fallback_rule(default_category: str | None) -> str:
     return CATEGORIES_FALLBACK_RULE.format(default_category=default_category)
 
 
-def _numbered(values: Sequence[str]) -> str:
-    """Нумерованный список для промпта: номер и есть идентификатор в ответе."""
-    return "\n".join(f"{index}. {value}" for index, value in enumerate(values, start=1))
+def _as_items(values: Sequence[str]) -> str:
+    """JSON-список для промпта: номер и есть идентификатор в ответе.
+
+    Название лежит в отдельном поле: у позиций с чека бывают числовые
+    префиксы вроде «479: gumica», и в строке «1. 479: gumica» модель
+    принимала их за номер.
+    """
+    items = [{"id": index, "name": value} for index, value in enumerate(values, start=1)]
+    return json.dumps(items, ensure_ascii=False)
 
 
 def _listed(values: Sequence[str]) -> str:

@@ -1,7 +1,5 @@
-Products:
-"""
+Products (JSON):
 {products}
-"""
 
 Known types:
 """

@@ -101,3 +101,31 @@ async def test_without_basket_the_closest_category_is_asked() -> None:
     await client.suggest_categories(["dairy"], ["Food"], default_category=None)
     assert "closest" in prompts[0]
     assert '""' not in prompts[0]
+
+
+def _answering_client(answer: str) -> tuple[AiClient, list[str]]:
+    """Клиент с готовым ответом модели; в список пишется пользовательский промпт."""
+    client = AiClient(api_key="k", base_url=None, model="m", timeout=1, temperature=0)
+    prompts: list[str] = []
+
+    async def invoke(system_prompt: str, user_prompt: str) -> tuple[str, None]:
+        prompts.append(user_prompt)
+        return answer, None
+
+    client._invoke = invoke  # type: ignore[method-assign]
+    return client, prompts
+
+
+async def test_product_name_is_kept_apart_from_its_id() -> None:
+    """Числовой префикс названия лежит в поле `name` и не сливается с номером."""
+    client, prompts = _answering_client('{"items": []}')
+    await client.suggest_types(["479: gumica 3/4/kom"], [], language=Language.EN)
+    assert '[{"id": 1, "name": "479: gumica 3/4/kom"}]' in prompts[0]
+
+
+async def test_ids_outside_the_given_range_are_dropped() -> None:
+    """Номер из названия вместо номера позиции не должен попасть в ответ."""
+    answer = '{"items": [{"id": 479, "type": "прокладка"}, {"id": 1, "type": "шайба"}]}'
+    client, _ = _answering_client(answer)
+    types, _usage = await client.suggest_types(["479: gumica"], [], language=Language.EN)
+    assert types == {1: "шайба"}
