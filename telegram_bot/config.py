@@ -55,6 +55,10 @@ class Settings(BaseSettings):
     # Пусто — официальный адрес OpenAI. Значение нужно для совместимых
     # провайдеров и прокси, через которые бот и ходит на практике.
     openai_base_url: str | None = None
+    # Прокси для обращений к провайдеру модели. Пусто — напрямую. Отдельный от
+    # `telegram_proxy_url`: с сервера может быть закрыт только один из двух
+    # адресов, и прокси, который пускает к Telegram, не обязан пускать к модели.
+    openai_proxy_url: str | None = None
     ai_timeout_seconds: float = constants.DEFAULT_AI_TIMEOUT_SECONDS
     ai_temperature: float = constants.DEFAULT_AI_TEMPERATURE
 
@@ -73,7 +77,7 @@ class Settings(BaseSettings):
     app_name: str = "Cost Accounting Telegram Bot"
     log_level: str = "INFO"
 
-    @field_validator("telegram_proxy_url", "openai_base_url", mode="before")
+    @field_validator("telegram_proxy_url", "openai_base_url", "openai_proxy_url", mode="before")
     @classmethod
     def _empty_to_none(cls, value: object) -> object:
         """Пустая строка в окружении — это «не задано», а не адрес.

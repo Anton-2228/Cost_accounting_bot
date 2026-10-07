@@ -26,7 +26,7 @@ from collections.abc import Sequence
 from decimal import Decimal, InvalidOperation
 from typing import Any
 
-from openai import APIError, AsyncOpenAI, OpenAIError
+from openai import APIError, AsyncOpenAI, DefaultAsyncHttpxClient, OpenAIError
 from openai.types.chat import ChatCompletion
 from pydantic import ValidationError
 
@@ -68,8 +68,17 @@ class AiClient:
         model: str,
         timeout: float,
         temperature: float,
+        proxy: str | None = None,
     ) -> None:
-        self._client = AsyncOpenAI(api_key=api_key, base_url=base_url, timeout=timeout)
+        # `DefaultAsyncHttpxClient`, а не голый `httpx.AsyncClient`: он несёт
+        # умолчания SDK (лимиты соединений, редиректы), которые иначе пропали бы.
+        http_client = DefaultAsyncHttpxClient(proxy=proxy) if proxy else None
+        self._client = AsyncOpenAI(
+            api_key=api_key,
+            base_url=base_url,
+            timeout=timeout,
+            http_client=http_client,
+        )
         self._model = model
         self._temperature = temperature
 

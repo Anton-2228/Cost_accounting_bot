@@ -53,6 +53,7 @@ CATCH_UP = NotificationCatchUp(API, AIOGRAM_WRAPPER)
 AI = AiClient(
     api_key=settings.openai_api_key,
     base_url=settings.openai_base_url,
+    proxy=settings.openai_proxy_url,
     model=settings.openai_model,
     timeout=settings.ai_timeout_seconds,
     temperature=settings.ai_temperature,
